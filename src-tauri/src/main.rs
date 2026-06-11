@@ -554,7 +554,7 @@ fn latest_valid_backup(app: &AppHandle) -> Result<Option<(PathBuf, TaskFlowData)
 }
 
 fn create_startup_backup(app: &AppHandle) -> Result<(), String> {
-    let today = Utc::now().format("%Y-%m-%d").to_string();
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let dir = backup_dir(app)?;
     let has_today = fs::read_dir(&dir)
         .map_err(|err| err.to_string())?
@@ -1389,7 +1389,7 @@ fn reorder_tasks(app: AppHandle, data: ReorderTaskPayload) -> Result<bool, Strin
 #[tauri::command]
 fn get_due_summary(app: AppHandle) -> Result<DueSummary, String> {
     let data = read_data(&app)?;
-    let date = Utc::now().date_naive().to_string();
+    let date = chrono::Local::now().date_naive().to_string();
     let open: Vec<Task> = data
         .tasks
         .into_iter()
