@@ -19,6 +19,7 @@ use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
 
 const SCHEMA_VERSION: u32 = 3;
 const WIDGET_COLLAPSED_HEIGHT: f64 = 46.0;
+const WIDGET_MINI_SIZE: f64 = 48.0;
 const WIDGET_SCREEN_MARGIN: f64 = 24.0;
 const LOG_MAX_BYTES: u64 = 1024 * 1024;
 
@@ -166,6 +167,9 @@ struct WidgetConfig {
     always_on_top: bool,
     compact: bool,
     collapsed: bool,
+    mini: bool,
+    mini_edge: Option<String>,
+    mini_y: Option<i32>,
     status_filter: String,
     opacity: f64,
     limit: usize,
@@ -183,6 +187,7 @@ struct WidgetConfigPatch {
     always_on_top: Option<bool>,
     compact: Option<bool>,
     collapsed: Option<bool>,
+    mini: Option<bool>,
     status_filter: Option<String>,
     opacity: Option<f64>,
     limit: Option<usize>,
@@ -200,6 +205,9 @@ struct StoredWidgetConfig {
     always_on_top: Option<bool>,
     compact: Option<bool>,
     collapsed: Option<bool>,
+    mini: Option<bool>,
+    mini_edge: Option<String>,
+    mini_y: Option<i32>,
     status_filter: Option<String>,
     opacity: Option<f64>,
     limit: Option<usize>,
@@ -644,6 +652,7 @@ struct AppState {
 struct WidgetConfigState {
     config: Mutex<Option<WidgetConfig>>,
     dirty_since: Mutex<Option<Instant>>,
+    mini_snap_at: Mutex<Option<Instant>>,
 }
 
 const FLUSH_DEBOUNCE: Duration = Duration::from_millis(500);
@@ -998,6 +1007,9 @@ fn default_widget_config(app: &AppHandle) -> WidgetConfig {
         always_on_top: false,
         compact: false,
         collapsed: false,
+        mini: false,
+        mini_edge: None,
+        mini_y: None,
         status_filter: "open".into(),
         opacity: 0.96,
         limit: 8,
@@ -1019,20 +1031,35 @@ fn clamp_widget_config(mut config: WidgetConfig) -> WidgetConfig {
     config
 }
 
-fn effective_widget_height(config: &WidgetConfig) -> f64 {
-    if config.collapsed {
-        WIDGET_COLLAPSED_HEIGHT
+fn effective_widget_size(config: &WidgetConfig) -> (f64, f64) {
+    if config.mini {
+        (WIDGET_MINI_SIZE, WIDGET_MINI_SIZE)
+    } else if config.collapsed {
+        (config.width, WIDGET_COLLAPSED_HEIGHT)
     } else {
-        config.height
+        (config.width, config.height)
     }
 }
 
 fn apply_widget_bounds(window: &Window, config: &WidgetConfig) {
     let _ = window.set_resizable(false);
-    let _ = window.set_size(LogicalSize::new(
-        config.width,
-        effective_widget_height(config),
-    ));
+    let (width, height) = effective_widget_size(config);
+    let _ = window.set_size(LogicalSize::new(width, height));
+}
+
+fn mini_position(app: &AppHandle, config: &WidgetConfig) -> (f64, f64) {
+    let Some((left, top, width, height)) = active_monitor_bounds(app) else {
+        return (config.x as f64, config.y as f64);
+    };
+    let edge = config.mini_edge.as_deref().unwrap_or("right");
+    let x = if edge == "left" {
+        left
+    } else {
+        left + width - WIDGET_MINI_SIZE
+    };
+    let y = (config.mini_y.unwrap_or(config.y) as f64)
+        .clamp(top + 8.0, (top + height - WIDGET_MINI_SIZE - 8.0).max(top + 8.0));
+    (x, y)
 }
 
 fn stored_to_widget_config(app: &AppHandle, stored: StoredWidgetConfig) -> WidgetConfig {
@@ -1043,6 +1070,9 @@ fn stored_to_widget_config(app: &AppHandle, stored: StoredWidgetConfig) -> Widge
         always_on_top: stored.always_on_top.unwrap_or(defaults.always_on_top),
         compact: stored.compact.unwrap_or(defaults.compact),
         collapsed: stored.collapsed.unwrap_or(defaults.collapsed),
+        mini: stored.mini.unwrap_or(defaults.mini),
+        mini_edge: stored.mini_edge.or(defaults.mini_edge),
+        mini_y: stored.mini_y.or(defaults.mini_y),
         status_filter: stored.status_filter.unwrap_or(defaults.status_filter),
         opacity: stored.opacity.unwrap_or(defaults.opacity),
         limit: stored.limit.unwrap_or(defaults.limit),
@@ -1079,33 +1109,32 @@ fn clamp_widget_xy(app: &AppHandle, config: &WidgetConfig, x: f64, y: f64) -> (f
     };
 
     let margin = WIDGET_SCREEN_MARGIN;
-    let widget_height = effective_widget_height(config);
+    let (widget_width, widget_height) = effective_widget_size(config);
     let min_x = left + margin;
     let min_y = top + margin;
-    let max_x = left + (width - config.width - margin).max(margin);
+    let max_x = left + (width - widget_width - margin).max(margin);
     let max_y = top + (height - widget_height - margin).max(margin);
     (x.clamp(min_x, max_x), y.clamp(min_y, max_y))
 }
 
 fn safe_widget_position(app: &AppHandle, config: &WidgetConfig) -> (f64, f64) {
+    if config.mini {
+        return mini_position(app, config);
+    }
     let Some((left, top, width, height)) = active_monitor_bounds(app) else {
         return (config.x.max(40) as f64, config.y.max(40) as f64);
     };
 
     let margin = WIDGET_SCREEN_MARGIN;
-    let widget_height = effective_widget_height(config);
+    let (widget_width, widget_height) = effective_widget_size(config);
     let min_x = left + margin;
     let min_y = top + margin;
-    let max_x = left + (width - config.width - margin).max(margin);
+    let max_x = left + (width - widget_width - margin).max(margin);
     let max_y = top + (height - widget_height - margin).max(margin);
     (
         (config.x as f64).clamp(min_x, max_x),
         (config.y as f64).clamp(min_y, max_y),
     )
-}
-
-fn smart_resize_position(app: &AppHandle, after: &WidgetConfig) -> (f64, f64) {
-    clamp_widget_xy(app, after, after.x as f64, after.y as f64)
 }
 
 fn read_widget_config(app: &AppHandle) -> WidgetConfig {
@@ -1171,6 +1200,7 @@ fn write_widget_config_to_disk(app: &AppHandle, config: &WidgetConfig) -> Result
 
 fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<WidgetConfig, String> {
     let mut config = read_widget_config(app);
+    let previous = config.clone();
     if let Some(project_id) = patch.project_id {
         config.project_id = project_id.filter(|item| !item.is_empty());
     }
@@ -1185,6 +1215,9 @@ fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<Widg
     }
     if let Some(collapsed) = patch.collapsed {
         config.collapsed = collapsed;
+    }
+    if let Some(mini) = patch.mini {
+        config.mini = mini;
     }
     if let Some(status_filter) = patch.status_filter {
         config.status_filter = status_filter;
@@ -1208,21 +1241,99 @@ fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<Widg
         config.height = height;
     }
     config = clamp_widget_config(config);
-    if patch.collapsed.is_some() {
-        let (x, y) = smart_resize_position(app, &config);
-        config.x = x.round() as i32;
-        config.y = y.round() as i32;
+    let size_changed =
+        patch.collapsed.is_some() || patch.mini.is_some() || patch.width.is_some() || patch.height.is_some();
+    if size_changed {
+        let (old_w, old_h) = effective_widget_size(&previous);
+        let (_, new_h) = effective_widget_size(&config);
+        if config.mini && !previous.mini {
+            // 进入悬浮球：吸附到最近的左右屏边，球心对齐原中心
+            if let Some((left, top, width, height)) = active_monitor_bounds(app) {
+                let center_x = previous.x as f64 + old_w / 2.0;
+                let edge = if center_x < left + width / 2.0 { "left" } else { "right" };
+                config.mini_edge = Some(edge.to_string());
+                let ball_y = (previous.y as f64 + old_h / 2.0 - WIDGET_MINI_SIZE / 2.0)
+                    .clamp(top + 8.0, (top + height - WIDGET_MINI_SIZE - 8.0).max(top + 8.0));
+                config.mini_y = Some(ball_y.round() as i32);
+            }
+        } else if !config.mini {
+            // 折叠/展开：下半屏固定底边向上伸缩，上半屏固定顶边向下伸缩
+            if old_h != new_h {
+                if let Some((_, top, _, height)) = active_monitor_bounds(app) {
+                    let center_y = previous.y as f64 + old_h / 2.0;
+                    if center_y > top + height / 2.0 {
+                        config.y = (previous.y as f64 + old_h - new_h).round() as i32;
+                    }
+                }
+            }
+            let (x, y) = clamp_widget_xy(app, &config, config.x as f64, config.y as f64);
+            config.x = x.round() as i32;
+            config.y = y.round() as i32;
+        }
     }
     write_widget_config(app, &config)?;
     if let Some(window) = app.get_window("widget") {
         let _ = window.set_always_on_top(config.always_on_top);
-        if patch.width.is_some() || patch.height.is_some() || patch.collapsed.is_some() {
+        if size_changed {
             apply_widget_bounds(&window, &config);
-            let _ = window.set_position(LogicalPosition::new(config.x as f64, config.y as f64));
+            let (px, py) = if config.mini {
+                mini_position(app, &config)
+            } else {
+                (config.x as f64, config.y as f64)
+            };
+            let _ = window.set_position(LogicalPosition::new(px, py));
         }
         let _ = window.emit("widget-config-updated", &config);
     }
     Ok(config)
+}
+
+fn save_widget_mini_position(app: &AppHandle, x: i32, y: i32) {
+    let mut config = read_widget_config(app);
+    if !config.mini {
+        return;
+    }
+    if let Some((left, _top, width, _height)) = active_monitor_bounds(app) {
+        let center = x as f64 + WIDGET_MINI_SIZE / 2.0;
+        let edge = if center < left + width / 2.0 { "left" } else { "right" };
+        config.mini_edge = Some(edge.to_string());
+    }
+    config.mini_y = Some(y);
+    let _ = write_widget_config(app, &config);
+    if let Some(state) = app.try_state::<WidgetConfigState>() {
+        if let Ok(mut pending) = state.mini_snap_at.lock() {
+            *pending = Some(Instant::now());
+        };
+    };
+}
+
+fn maybe_snap_mini(app: &AppHandle) {
+    let due = {
+        let Some(state) = app.try_state::<WidgetConfigState>() else {
+            return;
+        };
+        let pending = state.mini_snap_at.lock().ok().map(|guard| *guard);
+        match pending {
+            Some(Some(at)) if at.elapsed() >= Duration::from_millis(400) => true,
+            _ => false,
+        }
+    };
+    if !due {
+        return;
+    }
+    if let Some(state) = app.try_state::<WidgetConfigState>() {
+        if let Ok(mut pending) = state.mini_snap_at.lock() {
+            *pending = None;
+        };
+    };
+    let config = read_widget_config(app);
+    if !config.mini {
+        return;
+    }
+    if let Some(window) = app.get_window("widget") {
+        let (x, y) = mini_position(app, &config);
+        let _ = window.set_position(LogicalPosition::new(x, y));
+    };
 }
 
 fn save_widget_position(
@@ -1254,10 +1365,13 @@ fn ensure_widget_window(app: &AppHandle) -> Result<Window, String> {
         return Ok(window);
     }
     let mut config = clamp_widget_config(read_widget_config(app));
-    let (x, y) = safe_widget_position(app, &config);
-    config.x = x.round() as i32;
-    config.y = y.round() as i32;
+    let (pos_x, pos_y) = safe_widget_position(app, &config);
+    if !config.mini {
+        config.x = pos_x.round() as i32;
+        config.y = pos_y.round() as i32;
+    }
     write_widget_config(app, &config)?;
+    let (width, height) = effective_widget_size(&config);
     WindowBuilder::new(app, "widget", WindowUrl::App("index.html?widget".into()))
         .title("小光任务组件")
         .decorations(false)
@@ -1266,10 +1380,10 @@ fn ensure_widget_window(app: &AppHandle) -> Result<Window, String> {
         .visible(false)
         .always_on_top(config.always_on_top)
         .skip_taskbar(true)
-        .inner_size(config.width, effective_widget_height(&config))
-        .min_inner_size(280.0, 46.0)
+        .inner_size(width, height)
+        .min_inner_size(WIDGET_MINI_SIZE, 46.0)
         .max_inner_size(360.0, 520.0)
-        .position(config.x as f64, config.y as f64)
+        .position(pos_x, pos_y)
         .build()
         .map_err(|err| err.to_string())
 }
@@ -1307,8 +1421,10 @@ fn show_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
     config.visible = true;
     let window = ensure_widget_window(app)?;
     let (x, y) = safe_widget_position(app, &config);
-    config.x = x.round() as i32;
-    config.y = y.round() as i32;
+    if !config.mini {
+        config.x = x.round() as i32;
+        config.y = y.round() as i32;
+    }
     write_widget_config(app, &config)?;
     window
         .set_always_on_top(config.always_on_top)
@@ -1975,6 +2091,7 @@ fn main() {
             app.manage(WidgetConfigState {
                 config: Mutex::new(None),
                 dirty_since: Mutex::new(None),
+                mini_snap_at: Mutex::new(None),
             });
             app.manage(MainWindowState {
                 config: Mutex::new(None),
@@ -1995,6 +2112,7 @@ fn main() {
             thread::spawn(move || loop {
                 thread::sleep(Duration::from_millis(250));
                 flush_all(&flush_handle, false);
+                maybe_snap_mini(&flush_handle);
             });
             if let Err(error) = create_startup_backup(&handle) {
                 let _ = append_log(&handle, "warn", "startup backup failed", Some(error));
@@ -2058,19 +2176,20 @@ fn main() {
                 WindowEvent::Moved(position) if label == "widget" => {
                     let app = event.window().app_handle();
                     let scale = event.window().scale_factor().unwrap_or(1.0).max(1.0);
-                    save_widget_position(
-                        &app,
-                        Some((position.x as f64 / scale).round() as i32),
-                        Some((position.y as f64 / scale).round() as i32),
-                        None,
-                        None,
-                    );
+                    let x = (position.x as f64 / scale).round() as i32;
+                    let y = (position.y as f64 / scale).round() as i32;
+                    let config = read_widget_config(&app);
+                    if config.mini {
+                        save_widget_mini_position(&app, x, y);
+                    } else {
+                        save_widget_position(&app, Some(x), Some(y), None, None);
+                    }
                 }
                 WindowEvent::Resized(size) if label == "widget" => {
                     let app = event.window().app_handle();
                     let scale = event.window().scale_factor().unwrap_or(1.0).max(1.0);
                     let config = read_widget_config(&app);
-                    if config.collapsed {
+                    if config.collapsed || config.mini {
                         return;
                     }
                     save_widget_position(

@@ -328,10 +328,51 @@ async function showMain() {
   await api.showMainWindow()
 }
 
+// ── 悬浮球 ────────────────────────────────────────────
+const miniEdge = computed(() => config.value?.miniEdge || 'right')
+let ballPress = null
+
+function ballMouseDown(event) {
+  if (event.button !== 0) return
+  ballPress = { x: event.screenX, y: event.screenY, dragged: false }
+}
+
+function ballMouseMove(event) {
+  if (!ballPress || ballPress.dragged) return
+  if (Math.abs(event.screenX - ballPress.x) + Math.abs(event.screenY - ballPress.y) > 4) {
+    ballPress.dragged = true
+    window.__TAURI__?.window?.appWindow?.startDragging?.()
+  }
+}
+
+function ballMouseUp() {
+  const press = ballPress
+  ballPress = null
+  if (press && !press.dragged) {
+    patchConfig({ mini: false })
+  }
+}
+
+function toMini() {
+  closeMenu()
+  patchConfig({ mini: true })
+}
+
 // ── 右键菜单 ──────────────────────────────────────────
 function openMenu(event) {
+  if (config.value?.mini) return
+  if (config.value?.collapsed) {
+    // 折叠态窗口只有 46px 高，弹横向迷你菜单
+    const barWidth = 184
+    menu.value = {
+      bar: true,
+      x: Math.max(4, Math.min(event.clientX, window.innerWidth - barWidth - 4)),
+      y: 5,
+    }
+    return
+  }
   const menuWidth = 168
-  const menuHeight = 250
+  const menuHeight = 280
   const x = Math.min(event.clientX, window.innerWidth - menuWidth - 6)
   const y = Math.min(event.clientY, window.innerHeight - menuHeight - 6)
   menu.value = { x: Math.max(4, x), y: Math.max(4, y) }
@@ -408,7 +449,25 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- 悬浮球形态 -->
   <div
+    v-if="config?.mini"
+    class="widget-ball-wrap"
+    :class="`edge-${miniEdge}`"
+    title="单击展开小光任务，可拖动调整位置"
+    @mousedown="ballMouseDown"
+    @mousemove="ballMouseMove"
+    @mouseup="ballMouseUp"
+    @contextmenu.prevent
+  >
+    <div class="widget-ball" :style="shellStyle">
+      <span class="ball-icon">{{ scope?.icon || '☀️' }}</span>
+      <span v-if="pendingCount" class="ball-badge">{{ pendingCount > 99 ? '99' : pendingCount }}</span>
+    </div>
+  </div>
+
+  <div
+    v-else
     class="widget-shell"
     :class="{ compact: config?.compact, collapsed: config?.collapsed }"
     :style="shellStyle"
@@ -428,6 +487,7 @@ onUnmounted(() => {
         </button>
         <button :class="{ active: config?.alwaysOnTop }" title="置顶" @click="setTop">⇧</button>
         <button :class="{ active: config?.compact }" title="紧凑" @click="setCompact">≡</button>
+        <button title="缩为悬浮球" @click="toMini">◐</button>
         <button title="打开主窗口" @click="showMain">□</button>
         <button title="隐藏组件" @click="api.hideWidget">×</button>
       </div>
@@ -494,9 +554,24 @@ onUnmounted(() => {
       </main>
     </template>
 
+    <!-- 折叠态横向迷你菜单 -->
+    <div
+      v-if="menu && menu.bar"
+      class="widget-menu-bar"
+      :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
+      @click.stop
+      @contextmenu.prevent
+    >
+      <button title="展开" @click="menuAction(toggleCollapsed)">▾</button>
+      <button :class="{ active: config?.alwaysOnTop }" title="置顶" @click="menuAction(setTop)">⇧</button>
+      <button title="缩为悬浮球" @click="menuAction(toMini)">◐</button>
+      <button title="打开主窗口" @click="menuAction(showMain)">□</button>
+      <button title="隐藏组件" @click="menuAction(api.hideWidget)">×</button>
+    </div>
+
     <!-- 右键菜单 -->
     <div
-      v-if="menu"
+      v-if="menu && !menu.bar"
       class="widget-menu"
       :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
       @click.stop
@@ -510,6 +585,9 @@ onUnmounted(() => {
       </button>
       <button @click="menuAction(toggleCollapsed)">
         <i>{{ config?.collapsed ? '✓' : '' }}</i>折叠为标题栏
+      </button>
+      <button @click="menuAction(toMini)">
+        <i></i>缩为悬浮球
       </button>
       <div class="menu-sep" />
       <div class="menu-row">
@@ -542,6 +620,79 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.widget-ball-wrap {
+  height: 100vh;
+  width: 100vw;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+}
+.widget-ball {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.12), transparent 70%),
+    var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 6px 18px rgba(0,0,0,.3);
+  transition: transform .18s ease;
+}
+.edge-right .widget-ball { transform: translateX(21px); }
+.edge-left .widget-ball { transform: translateX(-21px); }
+.widget-ball-wrap:hover .widget-ball { transform: translateX(0); }
+.ball-icon {
+  font-size: 19px;
+  line-height: 1;
+}
+.ball-badge {
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #1a1000;
+  font-size: 10px;
+  font-weight: 700;
+}
+.edge-left .ball-badge {
+  left: auto;
+  right: -3px;
+}
+.widget-menu-bar {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0,0,0,.3);
+  -webkit-app-region: no-drag;
+}
+.widget-menu-bar button {
+  width: 30px;
+  height: 28px;
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.widget-menu-bar button:hover,
+.widget-menu-bar button.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 .widget-shell {
   height: 100vh;
   display: flex;
