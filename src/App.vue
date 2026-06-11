@@ -125,9 +125,9 @@ function toggleTheme() {
 
 // ── Window controls ───────────────────────────────────
 // window 对象在 Vue 模板编译上下文中不在白名单内，须通过函数桥接
-function minimizeWindow() { api.minimizeWindow() }
-function maximizeWindow() { api.maximizeWindow() }
-function closeWindow()    { api.closeWindow() }
+function minimizeWindow() { api.minimizeWindow().catch(e => showToast(`最小化失败：${e?.message || e}`)) }
+function maximizeWindow() { api.maximizeWindow().catch(e => showToast(`最大化失败：${e?.message || e}`)) }
+function closeWindow()    { api.closeWindow().catch(e => showToast(`关闭失败：${e?.message || e}`)) }
 
 // ── Font ─────────────────────────────────────────────
 const fontFamily     = ref(localStorage.getItem('taskflow-font') || '')
@@ -447,6 +447,10 @@ function recordShortcut(event) {
     return
   }
   shortcutDraft.value = [...parts, main].join('+')
+  shortcutRecording.value = false
+  event.target?.blur?.()
+  // 按下组合键立即生效
+  saveShortcut(shortcutDraft.value)
 }
 
 async function saveShortcut(value) {
@@ -894,7 +898,7 @@ onUnmounted(() => {
             </div>
             <div class="settings-card">
               <h2>全局快速添加</h2>
-              <p>在任何应用里按下快捷键，立即弹出任务输入框。点击输入框后按下想要的组合键。</p>
+              <p>在任何应用里按下快捷键，立即弹出任务输入框。点击输入框后按下想要的组合键，松手即生效。</p>
               <div class="widget-setting-row">
                 <span>快捷键</span>
                 <input
@@ -908,11 +912,6 @@ onUnmounted(() => {
                 />
               </div>
               <div class="option-group widget-options">
-                <button
-                  class="option-btn"
-                  :disabled="(shortcutDraft || '') === (appSettings?.quickAddShortcut || '')"
-                  @click="saveShortcut(shortcutDraft)"
-                >保存</button>
                 <button
                   class="option-btn"
                   :disabled="!appSettings?.quickAddShortcut"

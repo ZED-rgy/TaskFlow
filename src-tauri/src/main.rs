@@ -2250,7 +2250,10 @@ fn main() {
     let instance_listener = match std::net::TcpListener::bind(("127.0.0.1", SINGLE_INSTANCE_PORT)) {
         Ok(listener) => Some(listener),
         Err(_) => {
-            let _ = std::net::TcpStream::connect(("127.0.0.1", SINGLE_INSTANCE_PORT));
+            if let Ok(mut stream) = std::net::TcpStream::connect(("127.0.0.1", SINGLE_INSTANCE_PORT)) {
+                use std::io::Write;
+                let _ = stream.write_all(b"taskflow-show");
+            }
             return;
         }
     };
@@ -2317,8 +2320,14 @@ fn main() {
             if let Some(listener) = instance_listener {
                 let single_handle = handle.clone();
                 thread::spawn(move || {
+                    use std::io::Read;
                     for stream in listener.incoming() {
-                        if stream.is_ok() {
+                        let Ok(mut stream) = stream else { continue };
+                        // 必须带握手暗号，避免本地端口扫描误触发唤起主窗口
+                        let _ = stream.set_read_timeout(Some(Duration::from_millis(300)));
+                        let mut buf = [0u8; 16];
+                        let read = stream.read(&mut buf).unwrap_or(0);
+                        if &buf[..read] == b"taskflow-show" {
                             let _ = show_main(&single_handle);
                         }
                     }
