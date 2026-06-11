@@ -3,17 +3,13 @@
     "version": "1.0.0",
     "description": "轻量个人任务管理器",
     "author": "小光任务",
-    "main": "electron/main.js",
     "scripts": {
-        "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+        "dev": "npx @tauri-apps/cli dev",
         "build:renderer": "vite build",
         "generate:icon": "node scripts/generate-icon.js",
-        "build:dir": "npm run generate:icon && npm run build:renderer && electron-builder --dir",
-        "build:electron": "npm run generate:icon && npm run build:renderer && electron-builder --win zip",
         "build": "npm run lite:exe && node scripts/copy-lite-release.js",
         "preview": "vite preview",
-        "test:smoke": "node scripts/smoke-store.js",
-        "verify": "node --check electron/main.js && node --check electron/preload.js && node --check electron/store.js && npm run test:smoke && npm run build:renderer",
+        "verify": "npm run build:renderer && cargo check --manifest-path src-tauri/Cargo.toml",
         "lite:dev": "npx @tauri-apps/cli dev",
         "lite:exe": "npx @tauri-apps/cli build --bundles none",
         "lite:build": "npx @tauri-apps/cli build",
@@ -26,36 +22,6 @@
     "devDependencies": {
         "@tauri-apps/cli": "^1.6.3",
         "@vitejs/plugin-vue": "^5.0.4",
-        "concurrently": "^8.2.2",
-        "cross-env": "^7.0.3",
-        "electron": "^29.1.1",
-        "electron-builder": "^24.13.3",
-        "vite": "^5.1.6",
-        "wait-on": "^7.2.0"
-    },
-    "build": {
-        "appId": "com.personal.taskflow",
-        "productName": "小光任务",
-        "directories": {
-            "output": "release"
-        },
-        "files": [
-            "dist/**",
-            "electron/**",
-            "assets/**",
-            "!electron/node_modules"
-        ],
-        "win": {
-            "target": [
-                {
-                    "target": "zip",
-                    "arch": [
-                        "x64"
-                    ]
-                }
-            ],
-            "icon": "assets/icon.ico",
-            "signAndEditExecutable": false
-        }
+        "vite": "^5.1.6"
     }
 }
