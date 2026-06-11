@@ -691,7 +691,7 @@ fn read_app_settings(app: &AppHandle) -> AppSettings {
             }
         }
     }
-    let settings = app_settings_path(app)
+    let settings: AppSettings = app_settings_path(app)
         .ok()
         .filter(|path| path.exists())
         .and_then(|path| fs::read_to_string(path).ok())
