@@ -19,6 +19,9 @@ export const api = {
   getWidgetConfig: () => invoke('get_widget_config'),
   updateWidgetConfig: data => invoke('update_widget_config', { data }),
   getSystemFonts: () => invoke('get_system_fonts'),
+  getAppSettings: () => invoke('get_app_settings'),
+  setQuickAddShortcut: shortcut => invoke('set_quick_add_shortcut', { shortcut }),
+  openQuickAdd: () => invoke('open_quick_add_window'),
 
   getAppInfo: () => invoke('get_app_info'),
   getLogs: () => invoke('get_logs'),

@@ -414,6 +414,51 @@ async function refreshWidgetConfig() {
   widgetConfig.value = await api.getWidgetConfig()
 }
 
+// ── 全局快速添加快捷键 ─────────────────────────────────
+const appSettings = ref(null)
+const shortcutDraft = ref('')
+const shortcutRecording = ref(false)
+
+async function refreshAppSettings() {
+  try {
+    appSettings.value = await api.getAppSettings()
+    shortcutDraft.value = appSettings.value?.quickAddShortcut || ''
+  } catch (error) {
+    console.warn('[settings] load app settings failed', error)
+  }
+}
+
+function recordShortcut(event) {
+  event.preventDefault()
+  event.stopPropagation()
+  const key = event.key
+  if (['Control', 'Shift', 'Alt', 'Meta'].includes(key)) return
+  const parts = []
+  if (event.ctrlKey) parts.push('CmdOrCtrl')
+  if (event.altKey) parts.push('Alt')
+  if (event.shiftKey) parts.push('Shift')
+  if (event.metaKey) parts.push('Super')
+  let main = key
+  if (key === ' ') main = 'Space'
+  else if (key.length === 1) main = key.toUpperCase()
+  else if (key.startsWith('Arrow')) main = key.slice(5)
+  if (!parts.length && !/^F\d+$/.test(main)) {
+    showToast('请至少包含一个修饰键（Ctrl / Alt / Shift）')
+    return
+  }
+  shortcutDraft.value = [...parts, main].join('+')
+}
+
+async function saveShortcut(value) {
+  try {
+    appSettings.value = await api.setQuickAddShortcut(value)
+    shortcutDraft.value = appSettings.value?.quickAddShortcut || ''
+    showToast(value ? `快捷键已设为 ${shortcutDraft.value}` : '全局快捷键已停用')
+  } catch (error) {
+    showToast(String(error?.message || error))
+  }
+}
+
 async function selectProject(id) {
   currentView.value = 'project'
   selectedId.value = id
@@ -425,6 +470,7 @@ function selectView(view) {
     refreshLogs()
     refreshDueSummary()
     refreshWidgetConfig()
+    refreshAppSettings()
     loadSystemFonts()
   }
 }
@@ -845,6 +891,36 @@ onUnmounted(() => {
               <p>应用启动后会提醒今天截止和已逾期的未完成任务。</p>
               <p>今天截止：{{ dueSummary?.todayCount || 0 }} 个</p>
               <p>已逾期：{{ dueSummary?.overdueCount || 0 }} 个</p>
+            </div>
+            <div class="settings-card">
+              <h2>全局快速添加</h2>
+              <p>在任何应用里按下快捷键，立即弹出任务输入框。点击输入框后按下想要的组合键。</p>
+              <div class="widget-setting-row">
+                <span>快捷键</span>
+                <input
+                  class="shortcut-input"
+                  :class="{ recording: shortcutRecording }"
+                  :value="shortcutRecording ? '请按下组合键...' : (shortcutDraft || '未设置')"
+                  readonly
+                  @focus="shortcutRecording = true"
+                  @blur="shortcutRecording = false"
+                  @keydown="shortcutRecording && recordShortcut($event)"
+                />
+              </div>
+              <div class="option-group widget-options">
+                <button
+                  class="option-btn"
+                  :disabled="(shortcutDraft || '') === (appSettings?.quickAddShortcut || '')"
+                  @click="saveShortcut(shortcutDraft)"
+                >保存</button>
+                <button
+                  class="option-btn"
+                  :disabled="!appSettings?.quickAddShortcut"
+                  @click="saveShortcut('')"
+                >停用</button>
+                <button class="option-btn" @click="api.openQuickAdd()">试一试</button>
+              </div>
+              <p class="shortcut-current">当前生效：{{ appSettings?.quickAddShortcut || '（未启用）' }}　弹窗内 Enter 添加并关闭，Ctrl+Enter 连续添加</p>
             </div>
             <div class="settings-card widget-settings-card">
               <h2>桌面组件</h2>
@@ -1552,6 +1628,29 @@ onUnmounted(() => {
 .toast button {
   color: var(--accent);
   font-size: 12px;
+}
+.shortcut-input {
+  min-width: 190px;
+  height: 30px;
+  padding: 0 10px;
+  text-align: center;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.shortcut-input.recording {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  color: var(--accent);
+}
+.shortcut-current {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
 }
 </style>
 

@@ -1,64 +1,67 @@
 {
-    "build":  {
-                  "beforeDevCommand":  "npm.cmd run build:renderer",
-                  "beforeBuildCommand":  "npm.cmd run build:renderer",
-                  "devPath":  "../dist",
-                  "distDir":  "../dist",
-                  "withGlobalTauri":  true
-              },
-    "package":  {
-                    "productName":  "小光任务",
-                    "version":  "0.1.0"
-                },
-    "tauri":  {
-                  "allowlist":  {
-                                    "all":  false,
-                                    "dialog":  {
-                                                   "all":  true
-                                               },
-                                    "fs":  {
-                                               "all":  false
-                                           },
-                                    "notification":  {
-                                                         "all":  true
-                                                     },
-                                    "window":  {
-                                                   "all":  true
-                                               }
-                                },
-                  "bundle":  {
-                                 "active":  true,
-                                 "targets":  [
-                                                 "nsis"
-                                             ],
-                                 "identifier":  "com.personal.taskflow-lite",
-                                 "icon":  [
-                                              "../assets/icon.ico"
-                                          ],
-                                 "windows":  {
-                                                 "webviewInstallMode":  {
-                                                                            "type":  "embedBootstrapper"
-                                                                        }
-                                             }
-                             },
-                  "security":  {
-                                   "csp":  null
-                               },
-                  "systemTray":  {
-                                     "iconPath":  "../assets/icon.ico",
-                                     "iconAsTemplate":  false
-                                 },
-                  "windows":  [
-                                  {
-                                      "title":  "小光任务",
-                                      "width":  1100,
-                                      "height":  720,
-                                      "minWidth":  680,
-                                      "minHeight":  480,
-                                      "decorations":  false,
-                                      "transparent":  false,
-                                      "resizable":  true
-                                  }
-                  ]
-              }
+    "build": {
+        "beforeDevCommand": "npm.cmd run build:renderer",
+        "beforeBuildCommand": "npm.cmd run build:renderer",
+        "devPath": "../dist",
+        "distDir": "../dist",
+        "withGlobalTauri": true
+    },
+    "package": {
+        "productName": "小光任务",
+        "version": "0.1.0"
+    },
+    "tauri": {
+        "allowlist": {
+            "all": false,
+            "dialog": {
+                "all": true
+            },
+            "fs": {
+                "all": false
+            },
+            "notification": {
+                "all": true
+            },
+            "window": {
+                "all": true
+            },
+            "globalShortcut": {
+                "all": true
+            }
+        },
+        "bundle": {
+            "active": true,
+            "targets": [
+                "nsis"
+            ],
+            "identifier": "com.personal.taskflow-lite",
+            "icon": [
+                "../assets/icon.ico"
+            ],
+            "windows": {
+                "webviewInstallMode": {
+                    "type": "embedBootstrapper"
+                }
+            }
+        },
+        "security": {
+            "csp": null
+        },
+        "systemTray": {
+            "iconPath": "../assets/icon.ico",
+            "iconAsTemplate": false
+        },
+        "windows": [
+            {
+                "title": "小光任务",
+                "width": 1100,
+                "height": 720,
+                "minWidth": 680,
+                "minHeight": 480,
+                "decorations": false,
+                "transparent": false,
+                "resizable": true
+            }
+        ]
+    }
 }

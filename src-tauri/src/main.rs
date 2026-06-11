@@ -11,8 +11,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{
-    AppHandle, CustomMenuItem, LogicalPosition, LogicalSize, Manager, SystemTray, SystemTrayEvent,
-    SystemTrayMenu, SystemTrayMenuItem, Window, WindowBuilder, WindowEvent, WindowUrl,
+    AppHandle, CustomMenuItem, GlobalShortcutManager, LogicalPosition, LogicalSize, Manager,
+    SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, Window, WindowBuilder,
+    WindowEvent, WindowUrl,
 };
 use uuid::Uuid;
 use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
@@ -22,6 +23,9 @@ const WIDGET_COLLAPSED_HEIGHT: f64 = 46.0;
 const WIDGET_MINI_SIZE: f64 = 48.0;
 const WIDGET_SCREEN_MARGIN: f64 = 24.0;
 const LOG_MAX_BYTES: u64 = 1024 * 1024;
+const SINGLE_INSTANCE_PORT: u16 = 38917;
+const WIDGET_IDLE_DESTROY: Duration = Duration::from_secs(300);
+const DEFAULT_QUICK_ADD_SHORTCUT: &str = "CmdOrCtrl+Alt+N";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -653,6 +657,101 @@ struct WidgetConfigState {
     config: Mutex<Option<WidgetConfig>>,
     dirty_since: Mutex<Option<Instant>>,
     mini_snap_at: Mutex<Option<Instant>>,
+    hidden_at: Mutex<Option<Instant>>,
+    allow_destroy: Mutex<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AppSettings {
+    quick_add_shortcut: String,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        AppSettings {
+            quick_add_shortcut: DEFAULT_QUICK_ADD_SHORTCUT.into(),
+        }
+    }
+}
+
+struct AppSettingsState {
+    settings: Mutex<Option<AppSettings>>,
+}
+
+fn app_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(data_dir(app)?.join("app-settings.json"))
+}
+
+fn read_app_settings(app: &AppHandle) -> AppSettings {
+    if let Some(state) = app.try_state::<AppSettingsState>() {
+        if let Ok(guard) = state.settings.lock() {
+            if let Some(settings) = guard.as_ref() {
+                return settings.clone();
+            }
+        }
+    }
+    let settings = app_settings_path(app)
+        .ok()
+        .filter(|path| path.exists())
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|raw| serde_json::from_str(raw.trim_start_matches('\u{feff}')).ok())
+        .unwrap_or_default();
+    if let Some(state) = app.try_state::<AppSettingsState>() {
+        if let Ok(mut guard) = state.settings.lock() {
+            *guard = Some(settings.clone());
+        }
+    }
+    settings
+}
+
+fn write_app_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
+    if let Some(state) = app.try_state::<AppSettingsState>() {
+        if let Ok(mut guard) = state.settings.lock() {
+            *guard = Some(settings.clone());
+        }
+    }
+    let path = app_settings_path(app)?;
+    let raw = serde_json::to_string_pretty(settings).map_err(|err| err.to_string())?;
+    fs::write(path, raw).map_err(|err| err.to_string())
+}
+
+fn open_quick_add(app: &AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_window("quickadd") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+    let window = WindowBuilder::new(app, "quickadd", WindowUrl::App("index.html?quickadd".into()))
+        .title("快速添加任务")
+        .decorations(false)
+        .transparent(true)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .inner_size(560.0, 120.0)
+        .center()
+        .build()
+        .map_err(|err| err.to_string())?;
+    let _ = window.set_focus();
+    Ok(())
+}
+
+fn apply_quick_add_shortcut(app: &AppHandle, accelerator: &str) -> Result<(), String> {
+    let mut manager = app.global_shortcut_manager();
+    let _ = manager.unregister_all();
+    let accelerator = accelerator.trim();
+    if accelerator.is_empty() {
+        return Ok(());
+    }
+    let handle = app.clone();
+    manager
+        .register(accelerator, move || {
+            if let Err(error) = open_quick_add(&handle) {
+                let _ = append_log(&handle, "error", "quick add open failed", Some(error));
+            }
+        })
+        .map_err(|err| err.to_string())
 }
 
 const FLUSH_DEBOUNCE: Duration = Duration::from_millis(500);
@@ -1317,6 +1416,33 @@ fn save_widget_mini_position(app: &AppHandle, x: i32, y: i32) {
     };
 }
 
+fn maybe_destroy_widget(app: &AppHandle) {
+    let Some(window) = app.get_window("widget") else {
+        return;
+    };
+    let Some(state) = app.try_state::<WidgetConfigState>() else {
+        return;
+    };
+    let idle = {
+        let hidden = state.hidden_at.lock().ok().map(|guard| *guard);
+        match hidden {
+            Some(Some(at)) => at.elapsed() >= WIDGET_IDLE_DESTROY,
+            _ => false,
+        }
+    };
+    if !idle || read_widget_config(app).visible {
+        return;
+    }
+    if let Ok(mut hidden) = state.hidden_at.lock() {
+        *hidden = None;
+    };
+    if let Ok(mut allow) = state.allow_destroy.lock() {
+        *allow = true;
+    };
+    let _ = window.close();
+    let _ = append_log(app, "info", "widget window destroyed after idle", None);
+}
+
 fn maybe_snap_mini(app: &AppHandle) {
     let due = {
         let Some(state) = app.try_state::<WidgetConfigState>() else {
@@ -1427,6 +1553,14 @@ fn show_main(app: &AppHandle) -> Result<(), String> {
 }
 
 fn show_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
+    if let Some(state) = app.try_state::<WidgetConfigState>() {
+        if let Ok(mut hidden) = state.hidden_at.lock() {
+            *hidden = None;
+        };
+        if let Ok(mut allow) = state.allow_destroy.lock() {
+            *allow = false;
+        };
+    };
     let mut config = read_widget_config(app);
     config.visible = true;
     let window = ensure_widget_window(app)?;
@@ -1449,6 +1583,11 @@ fn show_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
 }
 
 fn hide_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
+    if let Some(state) = app.try_state::<WidgetConfigState>() {
+        if let Ok(mut hidden) = state.hidden_at.lock() {
+            *hidden = Some(Instant::now());
+        };
+    };
     let mut config = read_widget_config(app);
     config.visible = false;
     write_widget_config(app, &config)?;
@@ -2034,6 +2173,31 @@ fn reg_value_to_string(value: &winreg::RegValue) -> String {
 }
 
 #[tauri::command]
+fn get_app_settings(app: AppHandle) -> AppSettings {
+    read_app_settings(&app)
+}
+
+#[tauri::command]
+fn set_quick_add_shortcut(app: AppHandle, shortcut: String) -> Result<AppSettings, String> {
+    let shortcut = shortcut.trim().to_string();
+    let previous = read_app_settings(&app);
+    if let Err(error) = apply_quick_add_shortcut(&app, &shortcut) {
+        let _ = apply_quick_add_shortcut(&app, &previous.quick_add_shortcut);
+        return Err(format!("快捷键注册失败：{}", error));
+    }
+    let settings = AppSettings {
+        quick_add_shortcut: shortcut,
+    };
+    write_app_settings(&app, &settings)?;
+    Ok(settings)
+}
+
+#[tauri::command]
+fn open_quick_add_window(app: AppHandle) -> Result<(), String> {
+    open_quick_add(&app)
+}
+
+#[tauri::command]
 fn win_minimize(window: Window) -> Result<(), String> {
     window.minimize().map_err(|err| err.to_string())
 }
@@ -2082,9 +2246,17 @@ fn next_repeat_date(date: Option<&str>, repeat: &str) -> Option<String> {
 }
 
 fn main() {
+    // 单实例锁：绑定本地端口；已有实例则通知其显示主窗口后退出
+    let instance_listener = match std::net::TcpListener::bind(("127.0.0.1", SINGLE_INSTANCE_PORT)) {
+        Ok(listener) => Some(listener),
+        Err(_) => {
+            let _ = std::net::TcpStream::connect(("127.0.0.1", SINGLE_INSTANCE_PORT));
+            return;
+        }
+    };
     tauri::Builder::default()
         .system_tray(build_system_tray())
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle();
             let _ = append_log(&handle, "info", "小光任务 started", None);
             let initial = match read_data(&handle) {
@@ -2102,6 +2274,11 @@ fn main() {
                 config: Mutex::new(None),
                 dirty_since: Mutex::new(None),
                 mini_snap_at: Mutex::new(None),
+                hidden_at: Mutex::new(None),
+                allow_destroy: Mutex::new(false),
+            });
+            app.manage(AppSettingsState {
+                settings: Mutex::new(None),
             });
             app.manage(MainWindowState {
                 config: Mutex::new(None),
@@ -2123,15 +2300,29 @@ fn main() {
                 thread::sleep(Duration::from_millis(250));
                 flush_all(&flush_handle, false);
                 maybe_snap_mini(&flush_handle);
+                maybe_destroy_widget(&flush_handle);
             });
             if let Err(error) = create_startup_backup(&handle) {
                 let _ = append_log(&handle, "warn", "startup backup failed", Some(error));
             }
-            let widget_visible = read_widget_config(&handle).visible;
-            if let Err(error) = ensure_widget_window(&handle) {
-                let _ = append_log(&handle, "error", "widget preload failed", Some(error));
-            } else if widget_visible {
-                let _ = show_widget_window(&handle);
+            if read_widget_config(&handle).visible {
+                if let Err(error) = show_widget_window(&handle) {
+                    let _ = append_log(&handle, "error", "widget restore failed", Some(error));
+                }
+            }
+            let settings = read_app_settings(&handle);
+            if let Err(error) = apply_quick_add_shortcut(&handle, &settings.quick_add_shortcut) {
+                let _ = append_log(&handle, "warn", "quick add shortcut register failed", Some(error));
+            }
+            if let Some(listener) = instance_listener {
+                let single_handle = handle.clone();
+                thread::spawn(move || {
+                    for stream in listener.incoming() {
+                        if stream.is_ok() {
+                            let _ = show_main(&single_handle);
+                        }
+                    }
+                });
             }
             Ok(())
         })
@@ -2143,8 +2334,20 @@ fn main() {
                     let _ = event.window().hide();
                 }
                 WindowEvent::CloseRequested { api, .. } if label == "widget" => {
-                    api.prevent_close();
                     let app = event.window().app_handle();
+                    let allow = app
+                        .try_state::<WidgetConfigState>()
+                        .and_then(|state| state.allow_destroy.lock().ok().map(|guard| *guard))
+                        .unwrap_or(false);
+                    if allow {
+                        if let Some(state) = app.try_state::<WidgetConfigState>() {
+                            if let Ok(mut flag) = state.allow_destroy.lock() {
+                                *flag = false;
+                            };
+                        };
+                        return;
+                    }
+                    api.prevent_close();
                     let _ = hide_widget_window(&app);
                 }
                 WindowEvent::Moved(position) if label == "main" => {
@@ -2243,6 +2446,9 @@ fn main() {
             import_data,
             export_logs,
             get_system_fonts,
+            get_app_settings,
+            set_quick_add_shortcut,
+            open_quick_add_window,
             win_minimize,
             win_maximize,
             win_close
