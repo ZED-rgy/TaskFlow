@@ -25,6 +25,51 @@ const dueSummary = ref(null)
 const widgetConfig = ref(null)
 let toastTimer = null
 let unlistenDataChanged = null
+let unlistenOpenTask = null
+
+// ── Undo stack（Ctrl+Z 撤销删除）────────────────────────
+const undoStack = []
+
+function pushUndo(entry) {
+  undoStack.push(entry)
+  if (undoStack.length > 20) undoStack.shift()
+}
+
+async function undoLast() {
+  const entry = undoStack.pop()
+  if (!entry) {
+    showToast('没有可撤销的删除')
+    return
+  }
+  try {
+    if (entry.type === 'tasks') {
+      tasks.value = await api.restoreTasks(entry.tasks)
+      showToast('已恢复删除的任务')
+    } else if (entry.type === 'project') {
+      const restored = await api.restoreProject({ project: entry.project, tasks: entry.tasks })
+      projects.value = restored.projects
+      tasks.value = restored.tasks
+      showToast('已恢复删除的项目')
+    }
+  } catch (error) {
+    showToast(`撤销失败：${error.message || '未知错误'}`)
+  }
+}
+
+function collectTaskTreeIds(id) {
+  const ids = new Set([id])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const task of tasks.value) {
+      if (task.parentId && ids.has(task.parentId) && !ids.has(task.id)) {
+        ids.add(task.id)
+        changed = true
+      }
+    }
+  }
+  return ids
+}
 
 // ── Theme ─────────────────────────────────────────────
 const THEMES = [
@@ -393,6 +438,13 @@ function closeTaskDetail() {
 }
 
 function handleKeydown(event) {
+  if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
+    const tag = event.target?.tagName
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+      event.preventDefault()
+      undoLast()
+    }
+  }
   if (event.key === 'Escape') {
     if (confirmState.value) closeConfirm()
     else closeTaskDetail()
@@ -466,12 +518,11 @@ async function onDeleteProject(id) {
         selectedId.value = null
       }
     }
+    pushUndo({ type: 'project', project: deleted.project, tasks: deleted.tasks })
     showToast('项目已删除', {
-      label: '撤销',
+      label: '撤销 (Ctrl+Z)',
       run: async () => {
-        const restored = await api.restoreProject(deleted)
-        projects.value = restored.projects
-        tasks.value = restored.tasks
+        await undoLast()
         await selectProject(id)
         toast.value = null
       }
@@ -505,18 +556,39 @@ async function onCreateTask(data) {
 }
 
 async function onUpdateTask(data) {
-  const result = await api.updateTask(data)
-  const updated = result?.task || result
-  if (!updated) {
-    showToast('任务更新失败')
-    return
-  }
-  if (Array.isArray(result?.tasks)) {
-    tasks.value = result.tasks
-    return
-  }
+  // 乐观更新：先改界面，后台落库，失败回滚
   const i = tasks.value.findIndex(t => t.id === data.id)
-  if (i !== -1) tasks.value[i] = updated
+  const prev = i !== -1 ? { ...tasks.value[i] } : null
+  if (prev) {
+    const patched = { ...prev, ...data }
+    if (data.completed !== undefined) {
+      patched.completedAt = data.completed ? new Date().toISOString() : null
+    }
+    tasks.value[i] = patched
+  }
+  const rollback = () => {
+    if (!prev) return
+    const j = tasks.value.findIndex(t => t.id === data.id)
+    if (j !== -1) tasks.value[j] = prev
+  }
+  try {
+    const result = await api.updateTask(data)
+    const updated = result?.task || result
+    if (!updated) {
+      rollback()
+      showToast('任务更新失败')
+      return
+    }
+    if (Array.isArray(result?.tasks)) {
+      tasks.value = result.tasks
+      return
+    }
+    const j = tasks.value.findIndex(t => t.id === data.id)
+    if (j !== -1) tasks.value[j] = updated
+  } catch (error) {
+    rollback()
+    showToast(`任务更新失败：${error.message || '未知错误'}`)
+  }
 }
 
 async function onDeleteTask(id) {
@@ -526,18 +598,25 @@ async function onDeleteTask(id) {
 
   const doDeleteTask = async () => {
     closeConfirm()
-    const deleted = await api.deleteTask(id)
-    const toRemove = new Set(deleted.tasks.map(t => t.id))
-    tasks.value = tasks.value.filter(t => !toRemove.has(t.id))
-    if (toRemove.has(selectedTaskId.value)) closeTaskDetail()
-    showToast('任务已删除', {
-      label: '撤销',
-      run: async () => {
-        const restoredTasks = await api.restoreTasks(deleted.tasks)
-        tasks.value = restoredTasks
-        toast.value = null
-      }
-    })
+    // 乐观删除：先移除界面，后台执行，失败恢复
+    const removeIds = collectTaskTreeIds(id)
+    const removed = tasks.value.filter(t => removeIds.has(t.id))
+    tasks.value = tasks.value.filter(t => !removeIds.has(t.id))
+    if (removeIds.has(selectedTaskId.value)) closeTaskDetail()
+    try {
+      const deleted = await api.deleteTask(id)
+      pushUndo({ type: 'tasks', tasks: deleted.tasks })
+      showToast('任务已删除', {
+        label: '撤销 (Ctrl+Z)',
+        run: async () => {
+          await undoLast()
+          toast.value = null
+        }
+      })
+    } catch (error) {
+      tasks.value = [...tasks.value, ...removed]
+      showToast(`删除失败：${error.message || '未知错误'}`)
+    }
   }
 
   if (skipDeleteConfirm.value) { await doDeleteTask(); return }
@@ -648,12 +727,23 @@ onMounted(() => {
   window.__TAURI__?.event?.listen?.('taskflow-data-changed', loadProjects).then(unlisten => {
     unlistenDataChanged = unlisten
   })
+  window.__TAURI__?.event?.listen?.('open-task', async event => {
+    const id = event.payload?.id
+    if (!id) return
+    const task = tasks.value.find(t => t.id === id)
+    if (!task) return
+    await selectProject(task.projectId)
+    selectTask(id)
+  }).then(unlisten => {
+    unlistenOpenTask = unlisten
+  })
   window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   if (unlistenDataChanged) unlistenDataChanged()
+  if (unlistenOpenTask) unlistenOpenTask()
 })
 </script>
 
@@ -765,9 +855,15 @@ onUnmounted(() => {
                   :value="widgetConfig?.projectId || selectedId || projects[0]?.id"
                   @change="updateWidgetConfig({ projectId: $event.target.value })"
                 >
-                  <option v-for="project in projects" :key="project.id" :value="project.id">
-                    {{ project.icon }} {{ project.name }}
-                  </option>
+                  <optgroup label="智能视图">
+                    <option value="view:today">☀️ 今天</option>
+                    <option value="view:upcoming">📅 近 7 天</option>
+                  </optgroup>
+                  <optgroup label="项目">
+                    <option v-for="project in projects" :key="project.id" :value="project.id">
+                      {{ project.icon }} {{ project.name }}
+                    </option>
+                  </optgroup>
                 </select>
               </div>
               <div class="widget-setting-row">

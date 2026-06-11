@@ -148,6 +148,16 @@ function cancelEdit() {
               <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
             </svg>
           </button>
+          <button
+            v-if="dueState === 'overdue'"
+            class="action-btn action-postpone"
+            title="顺延到今天"
+            @click.stop="$emit('update', { id: task.id, dueDate: today })"
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+              <path d="M1.5 6h7M6 3l3 3-3 3M10.5 2.5v7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
           <label class="inline-date-label" :class="{ 'has-date': task.dueDate }" title="截止日期" @click.stop>
             <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
               <rect x="1" y="2.5" width="12" height="10.5" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
@@ -362,6 +372,8 @@ function cancelEdit() {
   transition: color .1s, background .1s;
 }
 .action-btn:hover       { color: var(--accent); background: var(--accent-soft); }
+.action-postpone        { color: var(--danger); opacity: .85; }
+.action-postpone:hover  { color: var(--accent); background: var(--accent-soft); opacity: 1; }
 .action-delete:hover    { color: var(--danger); background: var(--danger-soft); }
 /* Drag handle */
 .drag-handle {

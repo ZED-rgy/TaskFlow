@@ -7,9 +7,12 @@ const tasks = ref([])
 const config = ref(null)
 const loading = ref(true)
 const taskDraft = ref('')
-const busyTaskId = ref('')
 const creating = ref(false)
 const errorText = ref('')
+const pendingIds = ref(new Set())
+const undoState = ref(null)
+const menu = ref(null)
+let undoTimer = null
 let timer = null
 let healthTimer = null
 let loadTimer = null
@@ -21,9 +24,30 @@ let mounted = false
 let unlistenConfig = null
 let unlistenData = null
 
-const project = computed(() =>
-  projects.value.find(item => item.id === config.value?.projectId) || projects.value[0] || null
-)
+function localDateKey(date = new Date()) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+const todayKey = ref(localDateKey())
+
+const SMART_VIEWS = [
+  { id: 'view:today', name: '今天', icon: '☀️' },
+  { id: 'view:upcoming', name: '近 7 天', icon: '📅' },
+]
+
+const scopeId = computed(() => config.value?.projectId || projects.value[0]?.id || '')
+
+const isSmartView = computed(() => String(scopeId.value).startsWith('view:'))
+
+const scope = computed(() => {
+  if (isSmartView.value) {
+    return SMART_VIEWS.find(item => item.id === scopeId.value) || SMART_VIEWS[0]
+  }
+  return projects.value.find(item => item.id === scopeId.value) || projects.value[0] || null
+})
 
 const activeFilter = computed(() => config.value?.statusFilter || 'open')
 
@@ -33,14 +57,58 @@ const filterLabel = computed(() => {
   return '未完成'
 })
 
-const projectTasks = computed(() =>
-  tasks.value
-    .filter(task => task.projectId === project.value?.id && !task.parentId)
+function dateState(dueDate) {
+  if (!dueDate) return ''
+  const key = String(dueDate).slice(0, 10)
+  if (key < todayKey.value) return 'overdue'
+  if (key === todayKey.value) return 'today'
+  return 'future'
+}
+
+function withinNextWeek(dueDate) {
+  if (!dueDate) return false
+  const key = String(dueDate).slice(0, 10)
+  const date = new Date(`${key}T00:00:00`)
+  const today = new Date(`${todayKey.value}T00:00:00`)
+  const diff = (date - today) / 86400000
+  return diff >= 0 && diff <= 7
+}
+
+function formatDueShort(dueDate) {
+  if (!dueDate) return ''
+  const [, m, d] = String(dueDate).slice(0, 10).split('-')
+  return `${+m}/${+d}`
+}
+
+const scopeTasks = computed(() => {
+  const roots = tasks.value.filter(task => !task.parentId)
+  if (scopeId.value === 'view:today') {
+    return roots
+      .filter(task => {
+        const state = dateState(task.dueDate)
+        return state === 'today' || (state === 'overdue' && !task.completed)
+      })
+      .sort((a, b) => {
+        const sa = dateState(a.dueDate) === 'overdue' ? 0 : 1
+        const sb = dateState(b.dueDate) === 'overdue' ? 0 : 1
+        if (sa !== sb) return sa - sb
+        return String(a.dueDate || '').localeCompare(String(b.dueDate || '')) || (a.position || 0) - (b.position || 0)
+      })
+  }
+  if (scopeId.value === 'view:upcoming') {
+    return roots
+      .filter(task => withinNextWeek(task.dueDate) || (dateState(task.dueDate) === 'overdue' && !task.completed))
+      .sort((a, b) =>
+        String(a.dueDate || '').localeCompare(String(b.dueDate || '')) || (a.position || 0) - (b.position || 0)
+      )
+  }
+  return roots
+    .filter(task => task.projectId === scope.value?.id)
     .sort((a, b) => (a.position || 0) - (b.position || 0))
-)
+})
 
 const filteredTasks = computed(() =>
-  projectTasks.value
+  scopeTasks.value
     .filter(task => {
       if (activeFilter.value === 'all') return true
       if (activeFilter.value === 'completed') return task.completed
@@ -48,6 +116,8 @@ const filteredTasks = computed(() =>
     })
     .slice(0, config.value?.limit || 8)
 )
+
+const pendingCount = computed(() => scopeTasks.value.filter(task => !task.completed).length)
 
 const shellStyle = computed(() => ({
   opacity: String(config.value?.opacity ?? 0.96),
@@ -103,30 +173,57 @@ function scheduleLoad(delay = 120) {
   }, delay)
 }
 
+function markPending(id, on) {
+  const next = new Set(pendingIds.value)
+  if (on) next.add(id)
+  else next.delete(id)
+  pendingIds.value = next
+}
+
 async function toggleTask(task) {
-  if (busyTaskId.value) return
-  busyTaskId.value = task.id
+  if (pendingIds.value.has(task.id)) return
+  // 乐观更新：立即打勾，后台同步，失败回滚
+  const idx = tasks.value.findIndex(item => item.id === task.id)
+  if (idx === -1) return
+  const prev = { ...tasks.value[idx] }
+  const nextCompleted = !prev.completed
+  tasks.value[idx] = {
+    ...prev,
+    completed: nextCompleted,
+    completedAt: nextCompleted ? new Date().toISOString() : null,
+  }
+  markPending(task.id, true)
   try {
-    await withTimeout(api.updateTask({ id: task.id, completed: !task.completed }), 12000, 'toggle task')
-    await load(true)
+    const result = await withTimeout(
+      api.updateTask({ id: task.id, completed: nextCompleted }),
+      12000,
+      'toggle task'
+    )
+    if (Array.isArray(result?.tasks)) tasks.value = result.tasks
     errorText.value = ''
   } catch (error) {
+    const j = tasks.value.findIndex(item => item.id === task.id)
+    if (j !== -1) tasks.value[j] = prev
     errorText.value = '操作失败，请重试'
     console.warn('[widget] toggle failed', error)
   } finally {
-    busyTaskId.value = ''
+    markPending(task.id, false)
   }
 }
 
 async function createTask() {
   const title = taskDraft.value.trim()
-  if (!title || !project.value || creating.value) return
+  if (!title || creating.value) return
+  const targetProject = isSmartView.value
+    ? projects.value[0]
+    : scope.value
+  if (!targetProject) return
   creating.value = true
   try {
     await withTimeout(api.createTask({
-      projectId: project.value.id,
+      projectId: targetProject.id,
       title,
-      position: projectTasks.value.length,
+      dueDate: isSmartView.value ? todayKey.value : null,
     }), 12000, 'create task')
     taskDraft.value = ''
     if (activeFilter.value === 'completed') {
@@ -142,52 +239,120 @@ async function createTask() {
   }
 }
 
+function clearUndo() {
+  if (undoTimer) window.clearTimeout(undoTimer)
+  undoTimer = null
+  undoState.value = null
+}
+
 async function deleteTask(task) {
-  if (busyTaskId.value) return
-  busyTaskId.value = task.id
+  if (pendingIds.value.has(task.id)) return
+  // 乐观删除 + 可撤销
+  const removeIds = new Set([task.id])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const item of tasks.value) {
+      if (item.parentId && removeIds.has(item.parentId) && !removeIds.has(item.id)) {
+        removeIds.add(item.id)
+        changed = true
+      }
+    }
+  }
+  const removed = tasks.value.filter(item => removeIds.has(item.id))
+  tasks.value = tasks.value.filter(item => !removeIds.has(item.id))
+  markPending(task.id, true)
   try {
-    await withTimeout(api.deleteTask(task.id), 12000, 'delete task')
-    await load(true)
+    const deleted = await withTimeout(api.deleteTask(task.id), 12000, 'delete task')
+    clearUndo()
+    undoState.value = { tasks: deleted.tasks, title: task.title }
+    undoTimer = window.setTimeout(() => {
+      undoState.value = null
+      undoTimer = null
+    }, 6000)
     errorText.value = ''
   } catch (error) {
+    tasks.value = [...tasks.value, ...removed]
     errorText.value = '删除失败，请重试'
     console.warn('[widget] delete failed', error)
   } finally {
-    busyTaskId.value = ''
+    markPending(task.id, false)
   }
 }
 
-async function selectProject(event) {
+async function undoDelete() {
+  const entry = undoState.value
+  clearUndo()
+  if (!entry) return
+  try {
+    tasks.value = await withTimeout(api.restoreTasks(entry.tasks), 12000, 'restore tasks')
+    errorText.value = ''
+  } catch (error) {
+    errorText.value = '撤销失败，请重试'
+    console.warn('[widget] undo failed', error)
+  }
+}
+
+async function openInMain(task) {
+  try {
+    await api.showMainWindow()
+    await window.__TAURI__?.event?.emit?.('open-task', { id: task.id })
+  } catch (error) {
+    console.warn('[widget] open in main failed', error)
+  }
+}
+
+async function selectScope(event) {
   const projectId = event.target.value
-  config.value = await withTimeout(api.updateWidgetConfig({ projectId }), 8000, 'select project')
+  config.value = await withTimeout(api.updateWidgetConfig({ projectId }), 8000, 'select scope')
   await load(true)
 }
 
-async function setCompact() {
-  config.value = await withTimeout(api.updateWidgetConfig({ compact: !config.value?.compact }), 8000, 'set compact')
+async function patchConfig(patch) {
+  try {
+    config.value = await withTimeout(api.updateWidgetConfig(patch), 8000, 'patch config')
+  } catch (error) {
+    console.warn('[widget] patch config failed', error)
+  }
 }
 
-async function setTop() {
-  config.value = await withTimeout(api.updateWidgetConfig({ alwaysOnTop: !config.value?.alwaysOnTop }), 8000, 'set top')
-}
-
-async function setFilter(statusFilter) {
-  config.value = await withTimeout(api.updateWidgetConfig({ statusFilter }), 8000, 'set filter')
+function setCompact() { patchConfig({ compact: !config.value?.compact }) }
+function setTop() { patchConfig({ alwaysOnTop: !config.value?.alwaysOnTop }) }
+function setFilter(statusFilter) {
+  patchConfig({ statusFilter })
   scheduleLoad(0)
 }
-
-async function toggleCollapsed() {
-  config.value = await withTimeout(api.updateWidgetConfig({ collapsed: !config.value?.collapsed }), 8000, 'toggle collapsed')
-}
+function toggleCollapsed() { patchConfig({ collapsed: !config.value?.collapsed }) }
 
 async function showMain() {
   await api.showMainWindow()
 }
 
+// ── 右键菜单 ──────────────────────────────────────────
+function openMenu(event) {
+  const menuWidth = 168
+  const menuHeight = 250
+  const x = Math.min(event.clientX, window.innerWidth - menuWidth - 6)
+  const y = Math.min(event.clientY, window.innerHeight - menuHeight - 6)
+  menu.value = { x: Math.max(4, x), y: Math.max(4, y) }
+}
+
+function closeMenu() {
+  menu.value = null
+}
+
+function menuAction(action) {
+  closeMenu()
+  action()
+}
+
+const OPACITY_STEPS = [0.84, 0.96, 1.0]
+const LIMIT_STEPS = [5, 8, 12]
+
 function recoverWidget(reason) {
   console.warn('[widget] recovering', reason)
-  busyTaskId.value = ''
   creating.value = false
+  pendingIds.value = new Set()
   loadInFlight = null
   loadStartedAt = 0
   healthFailures = 0
@@ -216,7 +381,10 @@ async function runHealthCheck() {
 onMounted(() => {
   mounted = true
   load()
-  timer = setInterval(() => scheduleLoad(0), 60000)
+  timer = setInterval(() => {
+    todayKey.value = localDateKey()
+    scheduleLoad(0)
+  }, 60000)
   healthTimer = setInterval(runHealthCheck, 45000)
   window.__TAURI__?.event?.listen?.('widget-config-updated', event => {
     config.value = event.payload
@@ -233,6 +401,7 @@ onUnmounted(() => {
   if (timer) clearInterval(timer)
   if (healthTimer) clearInterval(healthTimer)
   if (loadTimer) window.clearTimeout(loadTimer)
+  if (undoTimer) window.clearTimeout(undoTimer)
   if (unlistenConfig) unlistenConfig()
   if (unlistenData) unlistenData()
 })
@@ -243,12 +412,14 @@ onUnmounted(() => {
     class="widget-shell"
     :class="{ compact: config?.compact, collapsed: config?.collapsed }"
     :style="shellStyle"
+    @contextmenu.prevent="openMenu"
+    @click="closeMenu"
   >
     <header class="widget-titlebar" data-tauri-drag-region>
       <div class="widget-project" data-tauri-drag-region>
-        <span class="widget-icon">{{ project?.icon || '☀️' }}</span>
-        <strong>{{ project?.name || '待办' }}</strong>
-        <small>{{ filteredTasks.length }}</small>
+        <span class="widget-icon">{{ scope?.icon || '☀️' }}</span>
+        <strong>{{ scope?.name || '待办' }}</strong>
+        <small>{{ pendingCount }}</small>
         <em>{{ filterLabel }}</em>
       </div>
       <div class="widget-actions">
@@ -264,10 +435,17 @@ onUnmounted(() => {
 
     <template v-if="!config?.collapsed">
       <section class="widget-controls">
-        <select :value="project?.id" @change="selectProject">
-          <option v-for="item in projects" :key="item.id" :value="item.id">
-            {{ item.icon }} {{ item.name }}
-          </option>
+        <select :value="scopeId" @change="selectScope">
+          <optgroup label="智能视图">
+            <option v-for="item in SMART_VIEWS" :key="item.id" :value="item.id">
+              {{ item.icon }} {{ item.name }}
+            </option>
+          </optgroup>
+          <optgroup label="项目">
+            <option v-for="item in projects" :key="item.id" :value="item.id">
+              {{ item.icon }} {{ item.name }}
+            </option>
+          </optgroup>
         </select>
         <div class="widget-filters">
           <button :class="{ active: activeFilter === 'open' }" @click="setFilter('open')">未完成</button>
@@ -276,16 +454,20 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <form v-if="!config?.compact" class="widget-create" @submit.prevent="createTask">
+      <form class="widget-create" @submit.prevent="createTask">
         <input
           v-model="taskDraft"
           type="text"
           maxlength="80"
-          placeholder="添加任务..."
+          :placeholder="isSmartView ? '添加今天的任务...' : '添加任务...'"
         />
         <button type="submit" :disabled="!taskDraft.trim() || creating">＋</button>
       </form>
       <p v-if="errorText" class="widget-error">{{ errorText }}</p>
+      <div v-if="undoState" class="widget-undo">
+        <span>已删除「{{ undoState.title }}」</span>
+        <button @click="undoDelete">撤销</button>
+      </div>
 
       <main class="widget-list">
         <p v-if="loading" class="widget-empty">读取中...</p>
@@ -294,16 +476,68 @@ onUnmounted(() => {
           v-for="task in filteredTasks"
           :key="task.id"
           class="widget-task"
-          :class="{ completed: task.completed, busy: busyTaskId === task.id }"
+          :class="{ completed: task.completed, busy: pendingIds.has(task.id) }"
+          :title="task.title + '（双击在主窗口打开）'"
+          @dblclick="openInMain(task)"
         >
           <button class="widget-task-main" @click="toggleTask(task)">
             <span class="widget-check" />
-            <span>{{ task.title }}</span>
+            <span class="widget-task-title">{{ task.title }}</span>
           </button>
-          <button class="widget-delete" title="删除任务" @click.stop="deleteTask(task)">×</button>
+          <span
+            v-if="task.dueDate"
+            class="widget-due"
+            :class="dateState(task.dueDate)"
+          >{{ formatDueShort(task.dueDate) }}</span>
+          <button class="widget-delete" title="删除任务（可撤销）" @click.stop="deleteTask(task)">×</button>
         </div>
       </main>
     </template>
+
+    <!-- 右键菜单 -->
+    <div
+      v-if="menu"
+      class="widget-menu"
+      :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
+      @click.stop
+      @contextmenu.prevent
+    >
+      <button @click="menuAction(setTop)">
+        <i>{{ config?.alwaysOnTop ? '✓' : '' }}</i>窗口置顶
+      </button>
+      <button @click="menuAction(setCompact)">
+        <i>{{ config?.compact ? '✓' : '' }}</i>紧凑模式
+      </button>
+      <button @click="menuAction(toggleCollapsed)">
+        <i>{{ config?.collapsed ? '✓' : '' }}</i>折叠为标题栏
+      </button>
+      <div class="menu-sep" />
+      <div class="menu-row">
+        <span>透明度</span>
+        <div>
+          <button
+            v-for="step in OPACITY_STEPS"
+            :key="step"
+            :class="{ active: Math.abs((config?.opacity ?? 0.96) - step) < 0.02 }"
+            @click="menuAction(() => patchConfig({ opacity: step }))"
+          >{{ Math.round(step * 100) }}</button>
+        </div>
+      </div>
+      <div class="menu-row">
+        <span>显示数量</span>
+        <div>
+          <button
+            v-for="step in LIMIT_STEPS"
+            :key="step"
+            :class="{ active: (config?.limit || 8) === step }"
+            @click="menuAction(() => patchConfig({ limit: step }))"
+          >{{ step }}</button>
+        </div>
+      </div>
+      <div class="menu-sep" />
+      <button @click="menuAction(showMain)"><i></i>打开主窗口</button>
+      <button @click="menuAction(api.hideWidget)"><i></i>隐藏组件</button>
+    </div>
   </div>
 </template>
 
@@ -313,6 +547,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
   color: var(--text-primary);
   background:
     linear-gradient(180deg, rgba(255,255,255,.10), transparent 120px),
@@ -464,6 +699,37 @@ onUnmounted(() => {
   font-size: 11px;
   -webkit-app-region: no-drag;
 }
+.widget-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 5px 10px 0;
+  padding: 5px 9px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  -webkit-app-region: no-drag;
+}
+.widget-undo span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.widget-undo button {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.widget-undo button:hover {
+  background: var(--bg-base);
+}
 .widget-list {
   flex: 1;
   overflow-y: auto;
@@ -474,7 +740,7 @@ onUnmounted(() => {
   width: 100%;
   min-height: 34px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px;
+  grid-template-columns: minmax(0, 1fr) auto 24px;
   align-items: center;
   gap: 4px;
   border-radius: 6px;
@@ -484,6 +750,7 @@ onUnmounted(() => {
 }
 .widget-task.busy {
   opacity: .6;
+  pointer-events: none;
 }
 .widget-task-main {
   min-width: 0;
@@ -495,7 +762,7 @@ onUnmounted(() => {
   color: var(--text-secondary);
   text-align: left;
 }
-.widget-task-main span:last-child {
+.widget-task-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -514,10 +781,28 @@ onUnmounted(() => {
   flex-shrink: 0;
   border: 2px solid var(--border-strong);
   border-radius: 4px;
+  transition: background .12s, border-color .12s;
 }
 .widget-task.completed .widget-check {
   background: var(--accent);
   border-color: var(--accent);
+}
+.widget-due {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+.widget-due.today {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.widget-due.overdue {
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 .widget-delete {
   width: 22px;
@@ -539,8 +824,76 @@ onUnmounted(() => {
   color: var(--text-muted);
   font-size: 12px;
 }
+.widget-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 168px;
+  padding: 5px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.3);
+  -webkit-app-region: no-drag;
+}
+.widget-menu > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 27px;
+  padding: 0 8px;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  text-align: left;
+}
+.widget-menu > button:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+.widget-menu > button i {
+  width: 13px;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--accent);
+}
+.menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+.menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.menu-row > div {
+  display: flex;
+  gap: 3px;
+}
+.menu-row > div button {
+  min-width: 26px;
+  height: 21px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.menu-row > div button.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
 .widget-shell.compact .widget-titlebar { height: 32px; }
 .widget-shell.compact .widget-controls { display: none; }
+.widget-shell.compact .widget-create { padding-top: 5px; }
+.widget-shell.compact .widget-create input,
+.widget-shell.compact .widget-create button { height: 25px; }
 .widget-shell.compact .widget-task { min-height: 28px; }
 .widget-shell.compact .widget-task-main { min-height: 28px; padding-block: 5px; }
 </style>

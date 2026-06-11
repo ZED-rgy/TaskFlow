@@ -759,12 +759,124 @@ fn flush_widget_config(app: &AppHandle, force: bool) -> Result<bool, String> {
     Ok(true)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MainWindowConfig {
+    x: Option<i32>,
+    y: Option<i32>,
+    width: f64,
+    height: f64,
+    maximized: bool,
+}
+
+impl Default for MainWindowConfig {
+    fn default() -> Self {
+        MainWindowConfig {
+            x: None,
+            y: None,
+            width: 1100.0,
+            height: 720.0,
+            maximized: false,
+        }
+    }
+}
+
+struct MainWindowState {
+    config: Mutex<Option<MainWindowConfig>>,
+    dirty_since: Mutex<Option<Instant>>,
+}
+
+fn main_window_config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(data_dir(app)?.join("main-window.json"))
+}
+
+fn read_main_window_config(app: &AppHandle) -> Option<MainWindowConfig> {
+    if let Some(state) = app.try_state::<MainWindowState>() {
+        if let Ok(guard) = state.config.lock() {
+            if let Some(config) = guard.as_ref() {
+                return Some(config.clone());
+            }
+        }
+    }
+    let path = main_window_config_path(app).ok()?;
+    if !path.exists() {
+        return None;
+    }
+    let config: MainWindowConfig = fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(raw.trim_start_matches('\u{feff}')).ok())?;
+    if let Some(state) = app.try_state::<MainWindowState>() {
+        if let Ok(mut guard) = state.config.lock() {
+            *guard = Some(config.clone());
+        }
+    }
+    Some(config)
+}
+
+fn update_main_window_config(app: &AppHandle, patch: impl FnOnce(&mut MainWindowConfig)) {
+    let Some(state) = app.try_state::<MainWindowState>() else {
+        return;
+    };
+    let current = read_main_window_config(app).unwrap_or_default();
+    let mut next = current.clone();
+    patch(&mut next);
+    if let Ok(mut guard) = state.config.lock() {
+        *guard = Some(next.clone());
+    }
+    if let Ok(mut dirty) = state.dirty_since.lock() {
+        *dirty = Some(Instant::now());
+    }
+}
+
+fn flush_main_window_config(app: &AppHandle, force: bool) -> Result<bool, String> {
+    let Some(state) = app.try_state::<MainWindowState>() else {
+        return Ok(false);
+    };
+    let marked = {
+        let dirty = state
+            .dirty_since
+            .lock()
+            .map_err(|_| "主窗口配置锁异常".to_string())?;
+        *dirty
+    };
+    let should_flush = match marked {
+        Some(changed_at) => force || changed_at.elapsed() >= FLUSH_DEBOUNCE,
+        None => false,
+    };
+    if !should_flush {
+        return Ok(false);
+    }
+    let snapshot = {
+        let guard = state
+            .config
+            .lock()
+            .map_err(|_| "主窗口配置锁异常".to_string())?;
+        guard.clone()
+    };
+    if let Some(config) = snapshot {
+        let path = main_window_config_path(app)?;
+        let raw = serde_json::to_string_pretty(&config).map_err(|err| err.to_string())?;
+        fs::write(path, raw).map_err(|err| err.to_string())?;
+    }
+    let mut dirty = state
+        .dirty_since
+        .lock()
+        .map_err(|_| "主窗口配置锁异常".to_string())?;
+    if *dirty == marked {
+        *dirty = None;
+    }
+    Ok(true)
+}
+
 fn flush_all(app: &AppHandle, force: bool) {
     if let Err(error) = flush_state(app, force) {
         let _ = append_log(app, "error", "data flush failed", Some(error));
     }
     if let Err(error) = flush_widget_config(app, force) {
         let _ = append_log(app, "error", "widget config flush failed", Some(error));
+    }
+    if let Err(error) = flush_main_window_config(app, force) {
+        let _ = append_log(app, "error", "main window config flush failed", Some(error));
     }
 }
 
@@ -1864,6 +1976,21 @@ fn main() {
                 config: Mutex::new(None),
                 dirty_since: Mutex::new(None),
             });
+            app.manage(MainWindowState {
+                config: Mutex::new(None),
+                dirty_since: Mutex::new(None),
+            });
+            if let Some(window) = app.get_window("main") {
+                if let Some(config) = read_main_window_config(&handle) {
+                    let _ = window.set_size(LogicalSize::new(config.width, config.height));
+                    if let (Some(x), Some(y)) = (config.x, config.y) {
+                        let _ = window.set_position(LogicalPosition::new(x as f64, y as f64));
+                    }
+                    if config.maximized {
+                        let _ = window.maximize();
+                    }
+                }
+            }
             let flush_handle = handle.clone();
             thread::spawn(move || loop {
                 thread::sleep(Duration::from_millis(250));
@@ -1891,6 +2018,42 @@ fn main() {
                     api.prevent_close();
                     let app = event.window().app_handle();
                     let _ = hide_widget_window(&app);
+                }
+                WindowEvent::Moved(position) if label == "main" => {
+                    let window = event.window();
+                    if window.is_maximized().unwrap_or(false) || window.is_minimized().unwrap_or(false) {
+                        return;
+                    }
+                    let app = window.app_handle();
+                    let scale = window.scale_factor().unwrap_or(1.0).max(1.0);
+                    let x = (position.x as f64 / scale).round() as i32;
+                    let y = (position.y as f64 / scale).round() as i32;
+                    update_main_window_config(&app, |config| {
+                        config.x = Some(x);
+                        config.y = Some(y);
+                    });
+                }
+                WindowEvent::Resized(size) if label == "main" => {
+                    let window = event.window();
+                    let app = window.app_handle();
+                    let maximized = window.is_maximized().unwrap_or(false);
+                    if maximized {
+                        update_main_window_config(&app, |config| {
+                            config.maximized = true;
+                        });
+                        return;
+                    }
+                    if window.is_minimized().unwrap_or(false) || size.width < 200 || size.height < 200 {
+                        return;
+                    }
+                    let scale = window.scale_factor().unwrap_or(1.0).max(1.0);
+                    let width = (size.width as f64 / scale).round();
+                    let height = (size.height as f64 / scale).round();
+                    update_main_window_config(&app, |config| {
+                        config.maximized = false;
+                        config.width = width;
+                        config.height = height;
+                    });
                 }
                 WindowEvent::Moved(position) if label == "widget" => {
                     let app = event.window().app_handle();

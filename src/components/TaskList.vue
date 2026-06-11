@@ -120,6 +120,27 @@ async function handleAddSubtask(parentId) {
   addInput.value?.focus()
 }
 
+// ── Keyboard navigation ───────────────────────────────
+const focusedId = ref(null)
+
+function isTypingTarget(target) {
+  const tag = target?.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable
+}
+
+function moveFocus(step) {
+  const list = visibleTasks.value
+  if (!list.length) return
+  const idx = list.findIndex(t => t.id === focusedId.value)
+  const next = idx === -1
+    ? (step > 0 ? 0 : list.length - 1)
+    : Math.min(Math.max(idx + step, 0), list.length - 1)
+  focusedId.value = list[next].id
+  nextTick(() => {
+    document.querySelector(`[data-id="${focusedId.value}"]`)?.scrollIntoView({ block: 'nearest' })
+  })
+}
+
 async function handleKeydown(event) {
   if (event.ctrlKey && event.key.toLowerCase() === 'f') {
     event.preventDefault()
@@ -129,6 +150,23 @@ async function handleKeydown(event) {
   if (event.ctrlKey && event.key.toLowerCase() === 'n' && !props.project.readonlyProject) {
     event.preventDefault()
     await focusAdd()
+  }
+  if (isTypingTarget(event.target) || event.ctrlKey || event.altKey || event.metaKey) return
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    moveFocus(1)
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    moveFocus(-1)
+  } else if (event.key === ' ' && focusedId.value) {
+    event.preventDefault()
+    const task = visibleTasks.value.find(t => t.id === focusedId.value)
+    if (task) emit('update', { id: task.id, completed: !task.completed })
+  } else if (event.key === 'Enter' && focusedId.value) {
+    event.preventDefault()
+    emit('selectTask', focusedId.value)
+  } else if (event.key === 'Escape') {
+    focusedId.value = null
   }
 }
 
@@ -222,6 +260,7 @@ onMounted(() => {
 })
 
 watch(() => props.project.id, () => {
+  focusedId.value = null
   scheduleSortableRefresh()
 })
 
@@ -351,6 +390,8 @@ onUnmounted(() => {
           :key="task.id"
           :data-id="task.id"
           class="task-wrapper"
+          :class="{ 'kb-focus': task.id === focusedId }"
+          @mousedown="focusedId = task.id"
         >
           <TaskItem
             :task="task"
@@ -632,6 +673,13 @@ onUnmounted(() => {
   gap: 3px;
 }
 .task-wrapper { position: relative; }
+
+/* Keyboard focus */
+.kb-focus :deep(.task-item:not(.is-sub) > .task-row) {
+  background: var(--bg-surface);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
 
 /* Sortable ghost/chosen */
 :deep(.task-ghost)    { opacity: .3; }
