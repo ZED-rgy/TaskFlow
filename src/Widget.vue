@@ -741,6 +741,9 @@ onUnmounted(() => {
   border-radius: 6px;
   background: var(--accent-soft);
 }
+.widget-project > * {
+  pointer-events: none;
+}
 .widget-project strong {
   min-width: 0;
   overflow: hidden;

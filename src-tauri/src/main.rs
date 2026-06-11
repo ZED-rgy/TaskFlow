@@ -1103,18 +1103,27 @@ fn active_monitor_bounds(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     ))
 }
 
-fn clamp_widget_xy(app: &AppHandle, config: &WidgetConfig, x: f64, y: f64) -> (f64, f64) {
+fn clamp_widget_xy_margin(
+    app: &AppHandle,
+    config: &WidgetConfig,
+    x: f64,
+    y: f64,
+    margin: f64,
+) -> (f64, f64) {
     let Some((left, top, width, height)) = active_monitor_bounds(app) else {
         return (x.max(40.0), y.max(40.0));
     };
 
-    let margin = WIDGET_SCREEN_MARGIN;
     let (widget_width, widget_height) = effective_widget_size(config);
     let min_x = left + margin;
     let min_y = top + margin;
     let max_x = left + (width - widget_width - margin).max(margin);
     let max_y = top + (height - widget_height - margin).max(margin);
     (x.clamp(min_x, max_x), y.clamp(min_y, max_y))
+}
+
+fn clamp_widget_xy(app: &AppHandle, config: &WidgetConfig, x: f64, y: f64) -> (f64, f64) {
+    clamp_widget_xy_margin(app, config, x, y, WIDGET_SCREEN_MARGIN)
 }
 
 fn safe_widget_position(app: &AppHandle, config: &WidgetConfig) -> (f64, f64) {
@@ -1266,7 +1275,8 @@ fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<Widg
                     }
                 }
             }
-            let (x, y) = clamp_widget_xy(app, &config, config.x as f64, config.y as f64);
+            let (x, y) =
+                clamp_widget_xy_margin(app, &config, config.x as f64, config.y as f64, 0.0);
             config.x = x.round() as i32;
             config.y = y.round() as i32;
         }
