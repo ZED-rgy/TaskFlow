@@ -293,6 +293,27 @@ async function undoDelete() {
   }
 }
 
+// 单击勾选与双击打开解耦：标题单击延迟执行，双击时取消，避免误勾选
+const toggleTimers = new Map()
+
+function onTitleClick(task) {
+  if (toggleTimers.has(task.id)) return
+  const timer = window.setTimeout(() => {
+    toggleTimers.delete(task.id)
+    toggleTask(task)
+  }, 240)
+  toggleTimers.set(task.id, timer)
+}
+
+function onRowDblclick(task) {
+  const timer = toggleTimers.get(task.id)
+  if (timer) {
+    window.clearTimeout(timer)
+    toggleTimers.delete(task.id)
+  }
+  openInMain(task)
+}
+
 async function openInMain(task) {
   try {
     await api.showMainWindow()
@@ -440,6 +461,8 @@ onMounted(() => {
 onUnmounted(() => {
   mounted = false
   if (timer) clearInterval(timer)
+  for (const t of toggleTimers.values()) window.clearTimeout(t)
+  toggleTimers.clear()
   if (healthTimer) clearInterval(healthTimer)
   if (loadTimer) window.clearTimeout(loadTimer)
   if (undoTimer) window.clearTimeout(undoTimer)
@@ -538,10 +561,10 @@ onUnmounted(() => {
           class="widget-task"
           :class="{ completed: task.completed, busy: pendingIds.has(task.id) }"
           :title="task.title + '（双击在主窗口打开）'"
-          @dblclick="openInMain(task)"
+          @dblclick="onRowDblclick(task)"
         >
-          <button class="widget-task-main" @click="toggleTask(task)">
-            <span class="widget-check" />
+          <button class="widget-task-main" @click="onTitleClick(task)">
+            <span class="widget-check" @click.stop="toggleTask(task)" @dblclick.stop />
             <span class="widget-task-title">{{ task.title }}</span>
           </button>
           <span

@@ -1078,6 +1078,25 @@ fn append_log(
             Utc::now().format("%Y%m%d-%H%M%S")
         ));
         let _ = fs::rename(&path, rotated);
+        if let Some(parent) = path.parent() {
+            if let Ok(entries) = fs::read_dir(parent) {
+                let mut old_logs: Vec<PathBuf> = entries
+                    .filter_map(Result::ok)
+                    .map(|entry| entry.path())
+                    .filter(|p| {
+                        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        name.starts_with("taskflow-")
+                            && name.ends_with(".log")
+                            && name != "taskflow.log"
+                    })
+                    .collect();
+                old_logs.sort();
+                let count = old_logs.len();
+                for old in old_logs.into_iter().take(count.saturating_sub(2)) {
+                    let _ = fs::remove_file(old);
+                }
+            }
+        }
     }
     let row = LogRow {
         time: now(),
@@ -1670,17 +1689,17 @@ fn update_widget_config(app: AppHandle, data: WidgetConfigPatch) -> Result<Widge
     patch_widget_config(&app, data)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn show_main_window(app: AppHandle) -> Result<(), String> {
     show_main(&app)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn show_widget(app: AppHandle) -> Result<WidgetConfig, String> {
     show_widget_window(&app)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn hide_widget(app: AppHandle) -> Result<WidgetConfig, String> {
     hide_widget_window(&app)
 }
@@ -2192,7 +2211,7 @@ fn set_quick_add_shortcut(app: AppHandle, shortcut: String) -> Result<AppSetting
     Ok(settings)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn open_quick_add_window(app: AppHandle) -> Result<(), String> {
     open_quick_add(&app)
 }
