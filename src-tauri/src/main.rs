@@ -825,7 +825,7 @@ fn update_main_window_config(app: &AppHandle, patch: impl FnOnce(&mut MainWindow
     }
     if let Ok(mut dirty) = state.dirty_since.lock() {
         *dirty = Some(Instant::now());
-    }
+    };
 }
 
 fn flush_main_window_config(app: &AppHandle, force: bool) -> Result<bool, String> {
