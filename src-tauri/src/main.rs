@@ -6,8 +6,9 @@ use std::{
     collections::{BTreeMap, HashSet},
     fs,
     path::PathBuf,
+    sync::Mutex,
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tauri::{
     AppHandle, CustomMenuItem, LogicalPosition, LogicalSize, Manager, SystemTray, SystemTrayEvent,
@@ -517,6 +518,7 @@ fn write_data_file(app: &AppHandle, data: &TaskFlowData, emit_change: bool) -> R
 }
 
 fn backup_raw_data_file(app: &AppHandle, reason: &str) -> Result<Option<PathBuf>, String> {
+    let _ = flush_state(app, true);
     let source = data_path(app)?;
     if !source.exists() {
         return Ok(None);
@@ -634,8 +636,136 @@ fn read_data(app: &AppHandle) -> Result<TaskFlowData, String> {
     }
 }
 
-fn write_data(app: &AppHandle, data: &TaskFlowData) -> Result<(), String> {
-    write_data_file(app, data, true)
+struct AppState {
+    data: Mutex<TaskFlowData>,
+    dirty_since: Mutex<Option<Instant>>,
+}
+
+struct WidgetConfigState {
+    config: Mutex<Option<WidgetConfig>>,
+    dirty_since: Mutex<Option<Instant>>,
+}
+
+const FLUSH_DEBOUNCE: Duration = Duration::from_millis(500);
+
+fn read_state(app: &AppHandle) -> Result<TaskFlowData, String> {
+    match app.try_state::<AppState>() {
+        Some(state) => {
+            let data = state
+                .data
+                .lock()
+                .map_err(|_| "数据状态锁异常".to_string())?;
+            Ok(data.clone())
+        }
+        None => read_data(app),
+    }
+}
+
+fn write_state(app: &AppHandle, data: &TaskFlowData) -> Result<(), String> {
+    match app.try_state::<AppState>() {
+        Some(state) => {
+            {
+                let mut guard = state
+                    .data
+                    .lock()
+                    .map_err(|_| "数据状态锁异常".to_string())?;
+                *guard = data.clone();
+            }
+            {
+                let mut dirty = state
+                    .dirty_since
+                    .lock()
+                    .map_err(|_| "数据状态锁异常".to_string())?;
+                *dirty = Some(Instant::now());
+            }
+            let _ = app.emit_all("taskflow-data-changed", ());
+            Ok(())
+        }
+        None => write_data_file(app, data, true),
+    }
+}
+
+fn flush_state(app: &AppHandle, force: bool) -> Result<bool, String> {
+    let Some(state) = app.try_state::<AppState>() else {
+        return Ok(false);
+    };
+    let marked = {
+        let dirty = state
+            .dirty_since
+            .lock()
+            .map_err(|_| "数据状态锁异常".to_string())?;
+        *dirty
+    };
+    let should_flush = match marked {
+        Some(changed_at) => force || changed_at.elapsed() >= FLUSH_DEBOUNCE,
+        None => false,
+    };
+    if !should_flush {
+        return Ok(false);
+    }
+    let snapshot = {
+        let data = state
+            .data
+            .lock()
+            .map_err(|_| "数据状态锁异常".to_string())?;
+        data.clone()
+    };
+    write_data_file(app, &snapshot, false)?;
+    let mut dirty = state
+        .dirty_since
+        .lock()
+        .map_err(|_| "数据状态锁异常".to_string())?;
+    if *dirty == marked {
+        *dirty = None;
+    }
+    Ok(true)
+}
+
+fn flush_widget_config(app: &AppHandle, force: bool) -> Result<bool, String> {
+    let Some(state) = app.try_state::<WidgetConfigState>() else {
+        return Ok(false);
+    };
+    let marked = {
+        let dirty = state
+            .dirty_since
+            .lock()
+            .map_err(|_| "组件配置锁异常".to_string())?;
+        *dirty
+    };
+    let should_flush = match marked {
+        Some(changed_at) => force || changed_at.elapsed() >= FLUSH_DEBOUNCE,
+        None => false,
+    };
+    if !should_flush {
+        return Ok(false);
+    }
+    let snapshot = {
+        let guard = state
+            .config
+            .lock()
+            .map_err(|_| "组件配置锁异常".to_string())?;
+        guard.clone()
+    };
+    if let Some(config) = snapshot {
+        write_widget_config_to_disk(app, &config)?;
+    }
+    let mut dirty = state
+        .dirty_since
+        .lock()
+        .map_err(|_| "组件配置锁异常".to_string())?;
+    if *dirty == marked {
+        *dirty = None;
+    }
+    Ok(true)
+}
+
+fn flush_all(app: &AppHandle, force: bool) {
+    if let Err(error) = flush_state(app, force) {
+        let _ = append_log(app, "error", "data flush failed", Some(error));
+    }
+    if let Err(error) = flush_widget_config(app, force) {
+        let _ = append_log(app, "error", "widget config flush failed", Some(error));
+    }
 }
 
 fn backup_file_name(reason: &str) -> String {
@@ -664,7 +794,7 @@ fn prune_backups(app: &AppHandle, limit: usize) -> Result<(), String> {
 fn create_backup(app: &AppHandle, reason: &str) -> Result<PathBuf, String> {
     let dir = backup_dir(app)?;
     let path = dir.join(backup_file_name(reason));
-    let data = read_data(app)?;
+    let data = read_state(app)?;
     let raw = serde_json::to_string_pretty(&data).map_err(|err| err.to_string())?;
     fs::write(&path, raw).map_err(|err| err.to_string())?;
     prune_backups(app, 30)?;
@@ -745,7 +875,7 @@ fn append_log(
 }
 
 fn default_widget_config(app: &AppHandle) -> WidgetConfig {
-    let project_id = read_data(app).ok().and_then(|data| {
+    let project_id = read_state(app).ok().and_then(|data| {
         let mut projects = data.projects;
         projects.sort_by_key(|project| project.position);
         projects.first().map(|project| project.id.clone())
@@ -867,6 +997,23 @@ fn smart_resize_position(app: &AppHandle, after: &WidgetConfig) -> (f64, f64) {
 }
 
 fn read_widget_config(app: &AppHandle) -> WidgetConfig {
+    if let Some(state) = app.try_state::<WidgetConfigState>() {
+        if let Ok(guard) = state.config.lock() {
+            if let Some(config) = guard.as_ref() {
+                return config.clone();
+            }
+        }
+    }
+    let config = read_widget_config_from_disk(app);
+    if let Some(state) = app.try_state::<WidgetConfigState>() {
+        if let Ok(mut guard) = state.config.lock() {
+            *guard = Some(config.clone());
+        }
+    }
+    config
+}
+
+fn read_widget_config_from_disk(app: &AppHandle) -> WidgetConfig {
     let path = match widget_config_path(app) {
         Ok(path) => path,
         Err(_) => return default_widget_config(app),
@@ -885,9 +1032,28 @@ fn read_widget_config(app: &AppHandle) -> WidgetConfig {
 }
 
 fn write_widget_config(app: &AppHandle, config: &WidgetConfig) -> Result<(), String> {
+    let clamped = clamp_widget_config(config.clone());
+    if let Some(state) = app.try_state::<WidgetConfigState>() {
+        {
+            let mut guard = state
+                .config
+                .lock()
+                .map_err(|_| "组件配置锁异常".to_string())?;
+            *guard = Some(clamped.clone());
+        }
+        let mut dirty = state
+            .dirty_since
+            .lock()
+            .map_err(|_| "组件配置锁异常".to_string())?;
+        *dirty = Some(Instant::now());
+        return Ok(());
+    }
+    write_widget_config_to_disk(app, &clamped)
+}
+
+fn write_widget_config_to_disk(app: &AppHandle, config: &WidgetConfig) -> Result<(), String> {
     let path = widget_config_path(app)?;
-    let raw = serde_json::to_string_pretty(&clamp_widget_config(config.clone()))
-        .map_err(|err| err.to_string())?;
+    let raw = serde_json::to_string_pretty(config).map_err(|err| err.to_string())?;
     fs::write(path, raw).map_err(|err| err.to_string())
 }
 
@@ -1087,6 +1253,7 @@ fn handle_system_tray_event(app: &AppHandle, event: SystemTrayEvent) {
             }
             "quit" => {
                 let _ = append_log(app, "info", "tray menu quit", None);
+                flush_all(app, true);
                 app.exit(0);
             }
             _ => {}
@@ -1116,7 +1283,7 @@ fn get_widget_config(app: AppHandle) -> WidgetConfig {
 
 #[tauri::command]
 fn health_check(app: AppHandle) -> Result<bool, String> {
-    read_data(&app)?;
+    read_state(&app)?;
     let _ = read_widget_config(&app);
     Ok(true)
 }
@@ -1143,14 +1310,14 @@ fn hide_widget(app: AppHandle) -> Result<WidgetConfig, String> {
 
 #[tauri::command]
 fn get_projects(app: AppHandle) -> Result<Vec<Project>, String> {
-    let mut projects = read_data(&app)?.projects;
+    let mut projects = read_state(&app)?.projects;
     projects.sort_by_key(|project| project.position);
     Ok(projects)
 }
 
 #[tauri::command]
 fn get_tasks(app: AppHandle, project_id: Option<String>) -> Result<Vec<Task>, String> {
-    let data = read_data(&app)?;
+    let data = read_state(&app)?;
     Ok(match project_id {
         Some(id) => data
             .tasks
@@ -1163,7 +1330,7 @@ fn get_tasks(app: AppHandle, project_id: Option<String>) -> Result<Vec<Task>, St
 
 #[tauri::command]
 fn create_project(app: AppHandle, data: ProjectPayload) -> Result<Project, String> {
-    let mut db = read_data(&app)?;
+    let mut db = read_state(&app)?;
     let project = Project {
         id: new_id(),
         name: data.name.unwrap_or_else(|| "新项目".into()),
@@ -1173,13 +1340,13 @@ fn create_project(app: AppHandle, data: ProjectPayload) -> Result<Project, Strin
         created_at: now(),
     };
     db.projects.push(project.clone());
-    write_data(&app, &db)?;
+    write_state(&app, &db)?;
     Ok(project)
 }
 
 #[tauri::command]
 fn update_project(app: AppHandle, data: ProjectPayload) -> Result<Option<Project>, String> {
-    let mut db = read_data(&app)?;
+    let mut db = read_state(&app)?;
     let id = data.id.unwrap_or_default();
     let mut updated = None;
     for project in &mut db.projects {
@@ -1197,13 +1364,13 @@ fn update_project(app: AppHandle, data: ProjectPayload) -> Result<Option<Project
             break;
         }
     }
-    write_data(&app, &db)?;
+    write_state(&app, &db)?;
     Ok(updated)
 }
 
 #[tauri::command]
 fn delete_project(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
-    let mut db = read_data(&app)?;
+    let mut db = read_state(&app)?;
     let project = db.projects.iter().find(|item| item.id == id).cloned();
     let tasks: Vec<Task> = db
         .tasks
@@ -1213,7 +1380,7 @@ fn delete_project(app: AppHandle, id: String) -> Result<serde_json::Value, Strin
         .collect();
     db.projects.retain(|item| item.id != id);
     db.tasks.retain(|task| task.project_id != id);
-    write_data(&app, &db)?;
+    write_state(&app, &db)?;
     Ok(serde_json::json!({ "project": project, "tasks": tasks }))
 }
 
@@ -1223,7 +1390,7 @@ fn restore_project(
     project: Option<Project>,
     tasks: Vec<Task>,
 ) -> Result<TaskFlowData, String> {
-    let mut db = read_data(&app)?;
+    let mut db = read_state(&app)?;
     if let Some(project) = project {
         if !db.projects.iter().any(|item| item.id == project.id) {
             db.projects.push(project);
@@ -1234,25 +1401,25 @@ fn restore_project(
             db.tasks.push(task);
         }
     }
-    write_data(&app, &db)?;
+    write_state(&app, &db)?;
     Ok(db)
 }
 
 #[tauri::command]
 fn reorder_projects(app: AppHandle, ids: Vec<String>) -> Result<bool, String> {
-    let mut db = read_data(&app)?;
+    let mut db = read_state(&app)?;
     for (index, id) in ids.iter().enumerate() {
         if let Some(project) = db.projects.iter_mut().find(|item| &item.id == id) {
             project.position = index as i32;
         }
     }
-    write_data(&app, &db)?;
+    write_state(&app, &db)?;
     Ok(true)
 }
 
 #[tauri::command]
 fn create_task(app: AppHandle, data: TaskPayload) -> Result<Task, String> {
-    let mut db = read_data(&app)?;
+    let mut db = read_state(&app)?;
     let project_id = data.project_id.ok_or("缺少项目 ID")?;
     let parent_id = data.parent_id.filter(|item| !item.is_empty());
     let position = data.position.unwrap_or_else(|| {
@@ -1277,13 +1444,13 @@ fn create_task(app: AppHandle, data: TaskPayload) -> Result<Task, String> {
         completed_at: None,
     };
     db.tasks.push(task.clone());
-    write_data(&app, &db)?;
+    write_state(&app, &db)?;
     Ok(task)
 }
 
 #[tauri::command]
 fn update_task(app: AppHandle, id: String, data: TaskPayload) -> Result<serde_json::Value, String> {
-    let mut db = read_data(&app)?;
+    let mut db = read_state(&app)?;
     let idx = db.tasks.iter().position(|task| task.id == id);
     let Some(idx) = idx else {
         return Ok(serde_json::Value::Null);
@@ -1336,13 +1503,13 @@ fn update_task(app: AppHandle, id: String, data: TaskPayload) -> Result<serde_js
             db.tasks.push(next);
         }
     }
-    write_data(&app, &db)?;
+    write_state(&app, &db)?;
     Ok(serde_json::json!({ "task": updated, "tasks": db.tasks }))
 }
 
 #[tauri::command]
 fn delete_task(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
-    let mut db = read_data(&app)?;
+    let mut db = read_state(&app)?;
     let ids = collect_task_tree(&db.tasks, &id);
     let deleted: Vec<Task> = db
         .tasks
@@ -1351,25 +1518,25 @@ fn delete_task(app: AppHandle, id: String) -> Result<serde_json::Value, String> 
         .cloned()
         .collect();
     db.tasks.retain(|task| !ids.contains(&task.id));
-    write_data(&app, &db)?;
+    write_state(&app, &db)?;
     Ok(serde_json::json!({ "tasks": deleted }))
 }
 
 #[tauri::command]
 fn restore_tasks(app: AppHandle, tasks: Vec<Task>) -> Result<Vec<Task>, String> {
-    let mut db = read_data(&app)?;
+    let mut db = read_state(&app)?;
     for task in tasks {
         if !db.tasks.iter().any(|item| item.id == task.id) {
             db.tasks.push(task);
         }
     }
-    write_data(&app, &db)?;
+    write_state(&app, &db)?;
     Ok(db.tasks)
 }
 
 #[tauri::command]
 fn reorder_tasks(app: AppHandle, data: ReorderTaskPayload) -> Result<bool, String> {
-    let mut db = read_data(&app)?;
+    let mut db = read_state(&app)?;
     for (index, id) in data.ordered_ids.iter().enumerate() {
         if let Some(task) = db
             .tasks
@@ -1382,13 +1549,13 @@ fn reorder_tasks(app: AppHandle, data: ReorderTaskPayload) -> Result<bool, Strin
             }
         }
     }
-    write_data(&app, &db)?;
+    write_state(&app, &db)?;
     Ok(true)
 }
 
 #[tauri::command]
 fn get_due_summary(app: AppHandle) -> Result<DueSummary, String> {
-    let data = read_data(&app)?;
+    let data = read_state(&app)?;
     let date = chrono::Local::now().date_naive().to_string();
     let open: Vec<Task> = data
         .tasks
@@ -1476,7 +1643,7 @@ fn export_data(app: AppHandle) -> Result<ExportResult, String> {
             file_path: None,
         });
     };
-    let raw = serde_json::to_string_pretty(&read_data(&app)?).map_err(|err| err.to_string())?;
+    let raw = serde_json::to_string_pretty(&read_state(&app)?).map_err(|err| err.to_string())?;
     fs::write(&path, raw).map_err(|err| err.to_string())?;
     append_log(
         &app,
@@ -1506,7 +1673,8 @@ fn import_data(app: AppHandle) -> Result<ImportResult, String> {
     let raw = fs::read_to_string(&path).map_err(|err| err.to_string())?;
     let (stored, _) = parse_stored_data(&raw).map_err(|_| "备份文件格式不正确".to_string())?;
     let data = normalize_import_data(normalize_stored_data(stored))?;
-    write_data(&app, &data)?;
+    write_state(&app, &data)?;
+    let _ = flush_state(&app, true);
     append_log(
         &app,
         "info",
@@ -1681,9 +1849,26 @@ fn main() {
         .setup(|app| {
             let handle = app.handle();
             let _ = append_log(&handle, "info", "小光任务 started", None);
-            if let Err(error) = read_data(&handle) {
-                let _ = append_log(&handle, "error", "startup data check failed", Some(error));
-            }
+            let initial = match read_data(&handle) {
+                Ok(data) => data,
+                Err(error) => {
+                    let _ = append_log(&handle, "error", "startup data check failed", Some(error));
+                    default_data()
+                }
+            };
+            app.manage(AppState {
+                data: Mutex::new(initial),
+                dirty_since: Mutex::new(None),
+            });
+            app.manage(WidgetConfigState {
+                config: Mutex::new(None),
+                dirty_since: Mutex::new(None),
+            });
+            let flush_handle = handle.clone();
+            thread::spawn(move || loop {
+                thread::sleep(Duration::from_millis(250));
+                flush_all(&flush_handle, false);
+            });
             if let Err(error) = create_startup_backup(&handle) {
                 let _ = append_log(&handle, "warn", "startup backup failed", Some(error));
             }
@@ -1770,6 +1955,11 @@ fn main() {
             win_maximize,
             win_close
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("error while running 小光任务")
+        .run(|app_handle, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                flush_all(app_handle, true);
+            }
+        });
 }
