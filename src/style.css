@@ -1,0 +1,309 @@
+﻿/* ── Reset ───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+button { border: none; background: none; cursor: pointer; font: inherit; }
+input  { border: none; outline: none; background: none; font: inherit; }
+
+/* ── Design Tokens ───────────────────────────────────── */
+:root {
+  --bg-deep:       #0B0F14;
+  --bg-base:       #10151B;
+  --bg-surface:    #161C23;
+  --bg-elevated:   #1E2630;
+  --bg-hover:      #26313D;
+
+  --border:        #28313B;
+  --border-strong: #394653;
+
+  --text-primary:  #F3F0E8;
+  --text-secondary:#B6B4AB;
+  --text-muted:    #707A85;
+
+  --accent:        #D58A2A;
+  --accent-glow:   rgba(213, 138, 42, 0.22);
+  --accent-soft:   rgba(213, 138, 42, 0.12);
+
+  --success:       #4F9469;
+  --danger:        #C95F55;
+  --danger-soft:   rgba(201, 95, 85, 0.14);
+  --info:          #4E86B8;
+  --info-soft:     rgba(78, 134, 184, 0.14);
+
+  --shadow-soft:   0 18px 38px rgba(0, 0, 0, .18);
+  --shadow-panel:  0 1px 0 rgba(255,255,255,.04), 0 16px 34px rgba(0,0,0,.22);
+
+  --font-display:  'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif;
+  --font-mono:     'Microsoft YaHei UI', 'Segoe UI', system-ui, sans-serif;
+  --app-font-size: 13px;
+  --app-font-scale: 1;
+
+  --radius:        8px;
+  --radius-sm:     6px;
+  --sidebar-w:     248px;
+  --titlebar-h:    40px;
+}
+
+/* ── Base ────────────────────────────────────────────── */
+html, body, #app {
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--app-font-size);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* ── User font scaling ─────────────────────────────────
+   Component styles intentionally use fixed px values for layout stability.
+   These scoped overrides make the Settings font-size control visible across
+   the text-bearing parts of the app without resizing icons or fixed controls. */
+.app-shell {
+  --font-xs: calc(10px * var(--app-font-scale));
+  --font-sm: calc(11px * var(--app-font-scale));
+  --font-md: calc(12px * var(--app-font-scale));
+  --font-base: calc(13px * var(--app-font-scale));
+  --font-lg: calc(15px * var(--app-font-scale));
+  --font-xl: calc(20px * var(--app-font-scale));
+  --font-title: calc(25px * var(--app-font-scale));
+}
+
+.app-shell :where(input, select, textarea, button) {
+  font-family: inherit;
+}
+
+.app-shell :where(
+  .app-brand,
+  .settings-card p,
+  .option-btn,
+  .primary-btn,
+  .secondary-btn,
+  .font-search-input,
+  .font-item-name,
+  .widget-setting-row span,
+  .widget-setting-row select,
+  .widget-setting-row input,
+  .log-row span,
+  .log-row strong,
+  .log-row p,
+  .toast,
+  .toast button
+) {
+  font-size: var(--font-md) !important;
+}
+
+.app-shell :where(
+  .section-label,
+  .proj-count,
+  .task-chip,
+  .due-chip,
+  .meta-chip,
+  .tag-pill,
+  .detail-kicker,
+  .field > span,
+  .subtask-head,
+  .theme-choice small,
+  .font-item-en
+) {
+  font-size: var(--font-sm) !important;
+}
+
+.app-shell :where(
+  .smart-name,
+  .proj-name,
+  .proj-name-input,
+  .new-name-input,
+  .task-title,
+  .task-title-input,
+  .task-notes,
+  .add-input,
+  .filter-select,
+  .search-input,
+  .settings-card h2,
+  .theme-choice strong,
+  .confirm-dialog p,
+  .skip-label
+) {
+  font-size: var(--font-base) !important;
+}
+
+.app-shell :where(
+  .font-preview-box,
+  .font-item-preview,
+  .field input,
+  .field textarea,
+  .field select,
+  .subtask-title,
+  .delete-btn
+) {
+  font-size: var(--font-lg) !important;
+}
+
+.app-shell :where(.detail-title, .empty-icon) {
+  font-size: var(--font-xl) !important;
+}
+
+.app-shell :where(.task-list-header h1, .settings-header h1) {
+  font-size: var(--font-title) !important;
+}
+
+html.widget-mode,
+body.widget-mode,
+body.widget-mode #app {
+  background: transparent;
+}
+
+/* ── Scrollbar ───────────────────────────────────────── */
+::-webkit-scrollbar       { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Grain overlay ───────────────────────────────────── */
+#app::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 180px;
+  opacity: 0.018;
+  z-index: 9999;
+}
+
+/* ── Light Theme ─────────────────────────────────────── */
+.theme-morning {
+  --bg-deep:       #DFE6EC;
+  --bg-base:       #EEF3F7;
+  --bg-surface:    #FBFCFD;
+  --bg-elevated:   #E7EEF4;
+  --bg-hover:      #DDE7EF;
+
+  --border:        #D4DDE6;
+  --border-strong: #BAC8D4;
+
+  --text-primary:  #16202A;
+  --text-secondary:#536171;
+  --text-muted:    #8A98A7;
+
+  --accent:        #B87324;
+  --accent-glow:   rgba(184, 115, 36, 0.18);
+  --accent-soft:   rgba(184, 115, 36, 0.10);
+
+  --success:       #34765B;
+  --danger:        #B84D46;
+  --danger-soft:   rgba(184, 77, 70, 0.11);
+  --info:          #3F78A8;
+  --info-soft:     rgba(63, 120, 168, 0.12);
+
+  --shadow-soft:   0 16px 34px rgba(52, 75, 98, .12);
+  --shadow-panel:  0 1px 0 rgba(255,255,255,.8), 0 18px 40px rgba(52,75,98,.13);
+}
+
+.theme-morning #app::after { opacity: 0.012; }
+
+.theme-midnight {
+  --bg-deep:       #0B0F14;
+  --bg-base:       #10151B;
+  --bg-surface:    #161C23;
+  --bg-elevated:   #1E2630;
+  --bg-hover:      #26313D;
+  --border:        #28313B;
+  --border-strong: #394653;
+  --text-primary:  #F3F0E8;
+  --text-secondary:#B6B4AB;
+  --text-muted:    #707A85;
+  --accent:        #D58A2A;
+  --accent-glow:   rgba(213, 138, 42, 0.22);
+  --accent-soft:   rgba(213, 138, 42, 0.12);
+  --success:       #4F9469;
+  --danger:        #C95F55;
+  --danger-soft:   rgba(201, 95, 85, 0.14);
+  --info:          #4E86B8;
+  --info-soft:     rgba(78, 134, 184, 0.14);
+  --shadow-soft:   0 18px 38px rgba(0, 0, 0, .18);
+  --shadow-panel:  0 1px 0 rgba(255,255,255,.04), 0 16px 34px rgba(0,0,0,.22);
+}
+
+.theme-forest {
+  --bg-deep:       #DDE8DE;
+  --bg-base:       #EEF4EF;
+  --bg-surface:    #FBFDF9;
+  --bg-elevated:   #E2ECE3;
+  --bg-hover:      #D7E5D9;
+  --border:        #CBDACD;
+  --border-strong: #AFC4B4;
+  --text-primary:  #17251D;
+  --text-secondary:#53655A;
+  --text-muted:    #87988D;
+  --accent:        #5F7F3F;
+  --accent-glow:   rgba(95, 127, 63, 0.18);
+  --accent-soft:   rgba(95, 127, 63, 0.12);
+  --success:       #2F7A67;
+  --danger:        #A95E50;
+  --danger-soft:   rgba(169, 94, 80, 0.12);
+  --info:          #3F7D8D;
+  --info-soft:     rgba(63, 125, 141, 0.12);
+  --shadow-soft:   0 16px 34px rgba(50, 84, 62, .12);
+  --shadow-panel:  0 1px 0 rgba(255,255,255,.82), 0 18px 40px rgba(50,84,62,.14);
+}
+
+.theme-graphite {
+  --bg-deep:       #DCE2E8;
+  --bg-base:       #E9EDF1;
+  --bg-surface:    #FAFBFC;
+  --bg-elevated:   #E1E7ED;
+  --bg-hover:      #D4DCE5;
+  --border:        #CCD5DE;
+  --border-strong: #AEBAC6;
+  --text-primary:  #151A1F;
+  --text-secondary:#4F5B66;
+  --text-muted:    #83909D;
+  --accent:        #59636F;
+  --accent-glow:   rgba(89, 99, 111, 0.18);
+  --accent-soft:   rgba(89, 99, 111, 0.11);
+  --success:       #3D7862;
+  --danger:        #A9514F;
+  --danger-soft:   rgba(169, 81, 79, 0.11);
+  --info:          #507A9C;
+  --info-soft:     rgba(80, 122, 156, 0.12);
+  --shadow-soft:   0 16px 34px rgba(45, 56, 68, .12);
+  --shadow-panel:  0 1px 0 rgba(255,255,255,.85), 0 18px 40px rgba(45,56,68,.13);
+}
+
+.theme-apricot {
+  --bg-deep:       #EADCD1;
+  --bg-base:       #F5EEE7;
+  --bg-surface:    #FFFDFC;
+  --bg-elevated:   #EFE2D8;
+  --bg-hover:      #E6D7CB;
+  --border:        #E0D0C3;
+  --border-strong: #C9B4A3;
+  --text-primary:  #281C16;
+  --text-secondary:#69584D;
+  --text-muted:    #9D8D82;
+  --accent:        #C06F3E;
+  --accent-glow:   rgba(192, 111, 62, 0.18);
+  --accent-soft:   rgba(192, 111, 62, 0.12);
+  --success:       #5E8068;
+  --danger:        #B25552;
+  --danger-soft:   rgba(178, 85, 82, 0.12);
+  --info:          #6E8C8A;
+  --info-soft:     rgba(110, 140, 138, 0.12);
+  --shadow-soft:   0 16px 34px rgba(108, 74, 49, .11);
+  --shadow-panel:  0 1px 0 rgba(255,255,255,.84), 0 18px 40px rgba(108,74,49,.13);
+}
+/* ── Theme transition ────────────────────────────────── */
+#app {
+  transition: background .2s ease, color .2s ease;
+}
+
+/* ── Transitions ─────────────────────────────────────── */
+.fade-enter-active, .fade-leave-active { transition: opacity .15s ease; }
+.fade-enter-from, .fade-leave-to       { opacity: 0; }
+
+.slide-enter-active { transition: all .18s ease; }
+.slide-leave-active { transition: all .14s ease; }
+.slide-enter-from   { opacity: 0; transform: translateY(-6px); }
+.slide-leave-to     { opacity: 0; transform: translateY(-4px); }
+
