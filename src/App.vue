@@ -3,7 +3,17 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import TaskList from './components/TaskList.vue'
 import TaskDetail from './components/TaskDetail.vue'
+import SettingsView from './components/SettingsView.vue'
 import { api } from './runtime/api.js'
+import { normalizeTheme } from './runtime/themes.js'
+import {
+  FONT_SIZES,
+  FALLBACK_FONTS,
+  fontSearchText,
+  expandFontQuery,
+  mergeFonts,
+  fontStack,
+} from './runtime/fonts.js'
 
 const projects = ref([])
 const tasks    = ref([])
@@ -72,46 +82,7 @@ function collectTaskTreeIds(id) {
 }
 
 // ── Theme ─────────────────────────────────────────────
-const THEMES = [
-  {
-    id: 'morning',
-    name: '晨雾',
-    desc: '清爽浅色，适合白天长时间整理任务',
-    swatches: ['#EEF3F7', '#FBFCFD', '#B87324', '#3F78A8'],
-  },
-  {
-    id: 'midnight',
-    name: '墨蓝',
-    desc: '低亮度深色，适合晚上和专注时段',
-    swatches: ['#10151B', '#161C23', '#D58A2A', '#4E86B8'],
-  },
-  {
-    id: 'forest',
-    name: '森林',
-    desc: '偏自然的绿调，适合日程和生活任务',
-    swatches: ['#EEF4EF', '#FBFDF9', '#5F7F3F', '#2F7A67'],
-  },
-  {
-    id: 'graphite',
-    name: '石墨',
-    desc: '克制中性灰，适合工作型任务管理',
-    swatches: ['#E9EDF1', '#FAFBFC', '#59636F', '#A66F2B'],
-  },
-  {
-    id: 'apricot',
-    name: '暮杏',
-    desc: '温暖柔和，适合低压的个人规划',
-    swatches: ['#F5EEE7', '#FFFDFC', '#C06F3E', '#6E8C8A'],
-  },
-]
-const THEME_IDS = THEMES.map(item => item.id)
-
-function normalizeTheme(value) {
-  if (value === 'light') return 'morning'
-  if (value === 'dark') return 'midnight'
-  return THEME_IDS.includes(value) ? value : 'morning'
-}
-
+// THEMES / normalizeTheme 见 ./runtime/themes.js
 const theme = ref(normalizeTheme(localStorage.getItem('taskflow-theme') || 'morning'))
 
 function setTheme(nextTheme) {
@@ -137,104 +108,7 @@ const fontSearch     = ref(localStorage.getItem('taskflow-font') || '')
 const fontPickerOpen = ref(false)
 const fontLoading    = ref(false)
 const fontLoadError  = ref('')
-const FONT_SIZES     = {
-  small: { size: '12px', scale: 0.92 },
-  medium: { size: '13px', scale: 1 },
-  large: { size: '15px', scale: 1.14 },
-}
-const COMMON_CHINESE_FONTS = [
-  { css: 'Microsoft YaHei UI', display: '微软雅黑 UI', search: 'Microsoft YaHei UI 微软雅黑 微软雅黑UI yahei' },
-  { css: 'Microsoft YaHei', display: '微软雅黑', search: 'Microsoft YaHei 微软雅黑 yahei' },
-  { css: 'DengXian', display: '等线', search: 'DengXian 等线 dengxian' },
-  { css: 'SimSun', display: '宋体', search: 'SimSun 宋体 songti song' },
-  { css: 'NSimSun', display: '新宋体', search: 'NSimSun 新宋体 songti song' },
-  { css: 'SimHei', display: '黑体', search: 'SimHei 黑体 heiti hei' },
-  { css: 'KaiTi', display: '楷体', search: 'KaiTi 楷体 kaiti kai' },
-  { css: 'FangSong', display: '仿宋', search: 'FangSong 仿宋 fangsong song' },
-  { css: 'YouYuan', display: '幼圆', search: 'YouYuan 幼圆 youyuan yuan' },
-  { css: 'FZShuTi', display: '方正舒体', search: 'FZShuTi 方正舒体 fzshuti fangzheng shu' },
-  { css: 'FZYaoTi', display: '方正姚体', search: 'FZYaoTi 方正姚体 fzyaoti fangzheng yao' },
-  { css: 'LiSu', display: '隶书', search: 'LiSu 隶书 lishu li' },
-  { css: 'STSong', display: '华文宋体', search: 'STSong 华文宋体 songti song' },
-  { css: 'STZhongsong', display: '华文中宋', search: 'STZhongsong 华文中宋 songti song' },
-  { css: 'STKaiti', display: '华文楷体', search: 'STKaiti 华文楷体 kaiti kai' },
-  { css: 'STFangsong', display: '华文仿宋', search: 'STFangsong 华文仿宋 fangsong song' },
-  { css: 'STXihei', display: '华文细黑', search: 'STXihei 华文细黑 heiti hei' },
-  { css: 'STXingkai', display: '华文行楷', search: 'STXingkai 华文行楷 xingkai xing 星 行 楷' },
-  { css: 'STXinwei', display: '华文新魏', search: 'STXinwei 华文新魏 xinwei wei' },
-  { css: 'STLiti', display: '华文隶书', search: 'STLiti 华文隶书 lishu li' },
-  { css: 'STCaiyun', display: '华文彩云', search: 'STCaiyun 华文彩云 caiyun yun' },
-  { css: 'STHupo', display: '华文琥珀', search: 'STHupo 华文琥珀 hupo' },
-  { css: 'Noto Sans SC', display: '思源黑体 / Noto Sans SC', search: 'Noto Sans SC 思源黑体 noto source han sans hei' },
-  { css: 'Noto Serif SC', display: '思源宋体 / Noto Serif SC', search: 'Noto Serif SC 思源宋体 noto source han serif song' },
-  { css: 'Source Han Serif SC', display: '思源宋体 / Source Han Serif', search: 'Source Han Serif SC 思源宋体 source han serif song' },
-  { css: 'HYZhongHeiTi', display: '汉仪中黑体', search: 'HYZhongHeiTi 汉仪中黑体 hanyi zhonghei hei' },
-]
-const LATIN_FONTS = [
-  'Segoe UI',
-  'Arial',
-  'Calibri',
-  'Consolas',
-].map(name => ({ css: name, display: name, search: name }))
-const FALLBACK_FONTS = [...COMMON_CHINESE_FONTS, ...LATIN_FONTS]
-const CHINESE_SEARCH_ALIASES = {
-  微: 'wei', 软: 'ruan', 雅: 'ya', 黑: 'hei', 宋: 'song', 楷: 'kai', 仿: 'fang',
-  等: 'deng', 线: 'xian', 圆: 'yuan', 幼: 'you', 隶: 'li', 书: 'shu',
-  华: 'hua', 文: 'wen', 行: 'xing', 星: 'xing', 新: 'xin', 魏: 'wei',
-  彩: 'cai', 云: 'yun', 琥: 'hu', 珀: 'po', 思: 'si', 源: 'yuan',
-  汉: 'han', 仪: 'yi', 中: 'zhong', 方: 'fang', 正: 'zheng', 舒: 'shu', 姚: 'yao',
-}
-
-function normalizeFontName(value) {
-  return String(value || '')
-    .replace(/\s*\((TrueType|OpenType|All res)\)\s*/gi, '')
-    .trim()
-}
-
-function fontSearchText(font) {
-  return [
-    font.css,
-    font.display,
-    font.search,
-    font.file,
-  ].filter(Boolean).join(' ').toLowerCase()
-}
-
-function expandFontQuery(query) {
-  const lower = query.trim().toLowerCase()
-  const pinyin = [...query].map(char => CHINESE_SEARCH_ALIASES[char] || '').filter(Boolean).join(' ')
-  return [lower, pinyin].filter(Boolean)
-}
-
-function mergeFonts(fonts = []) {
-  const byCss = new Map()
-  for (const font of [...COMMON_CHINESE_FONTS, ...fonts, ...LATIN_FONTS]) {
-    const css = normalizeFontName(font.css || font.display)
-    if (!css) continue
-    const known = COMMON_CHINESE_FONTS.find(item =>
-      item.css.toLowerCase() === css.toLowerCase() ||
-      fontSearchText(item).includes(css.toLowerCase())
-    )
-    const item = {
-      css: known?.css || css,
-      display: known?.display || normalizeFontName(font.display || css),
-      search: [known?.search, font.search, font.display, font.css, font.file].filter(Boolean).join(' '),
-      file: font.file || '',
-    }
-    const key = item.css.toLowerCase()
-    if (!byCss.has(key)) byCss.set(key, item)
-  }
-  return [...byCss.values()].sort((a, b) => {
-    const ac = /[\u4e00-\u9fff]/.test(a.display) ? 0 : 1
-    const bc = /[\u4e00-\u9fff]/.test(b.display) ? 0 : 1
-    return ac - bc || a.display.localeCompare(b.display, 'zh-Hans-CN')
-  })
-}
-
-function fontStack(name, fallback = 'system-ui, sans-serif') {
-  if (!name) return ''
-  return `"${String(name).replace(/"/g, '\\"')}", ${fallback}`
-}
+// FONT_SIZES、字体表与 mergeFonts / expandFontQuery / fontStack 等纯函数见 ./runtime/fonts.js
 
 // systemFonts 元素为 { css: string, display: string }
 const filteredFonts = computed(() => {
@@ -806,7 +680,7 @@ onUnmounted(() => {
       </div>
       <div class="titlebar-controls">
         <!-- Theme toggle -->
-        <button class="ctrl-btn theme-toggle" :title="theme === 'midnight' ? '切换到晨雾主题' : '切换到墨蓝主题'" @click="toggleTheme">
+        <button class="ctrl-btn theme-toggle" aria-label="切换明暗主题" :title="theme === 'midnight' ? '切换到晨雾主题' : '切换到墨蓝主题'" @click="toggleTheme">
           <!-- Sun (show when in dark mode, click to go light) -->
           <svg v-if="theme !== 'midnight'" width="13" height="13" viewBox="0 0 14 14" fill="none">
             <circle cx="7" cy="7" r="2.6" stroke="currentColor" stroke-width="1.4"/>
@@ -818,13 +692,13 @@ onUnmounted(() => {
           </svg>
         </button>
         <div class="ctrl-divider" />
-        <button class="ctrl-btn" @click="minimizeWindow">
+        <button class="ctrl-btn" aria-label="最小化窗口" title="最小化" @click="minimizeWindow">
           <svg width="10" height="2" viewBox="0 0 10 2"><rect width="10" height="1.5" rx=".75" fill="currentColor"/></svg>
         </button>
-        <button class="ctrl-btn" @click="maximizeWindow">
+        <button class="ctrl-btn" aria-label="最大化窗口" title="最大化/还原" @click="maximizeWindow">
           <svg width="10" height="10" viewBox="0 0 10 10"><rect x=".75" y=".75" width="8.5" height="8.5" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
         </button>
-        <button class="ctrl-btn ctrl-close" @click="closeWindow">
+        <button class="ctrl-btn ctrl-close" aria-label="关闭窗口" title="关闭" @click="closeWindow">
           <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
       </div>
@@ -862,257 +736,41 @@ onUnmounted(() => {
           @reorder="onReorderTasks"
           @selectTask="selectTask"
         />
-        <section v-else-if="currentView === 'settings'" class="settings-view">
-          <div class="settings-header">
-            <span class="settings-icon">⚙</span>
-            <div>
-              <h1>设置</h1>
-              <p>数据、备份和应用信息</p>
-            </div>
-          </div>
-
-          <div class="settings-grid">
-            <div class="settings-card">
-              <h2>数据备份</h2>
-              <p>导出当前所有项目和任务，或从备份文件恢复。</p>
-              <div class="settings-actions">
-                <button class="primary-btn" @click="onExportData">导出备份</button>
-                <button class="secondary-btn" @click="onImportData">导入备份</button>
-              </div>
-            </div>
-            <div class="settings-card">
-              <h2>存储位置</h2>
-              <p class="path-text">{{ appInfo?.dataPath }}</p>
-            </div>
-            <div class="settings-card">
-              <h2>自动备份</h2>
-              <p>启动和导入前会自动备份，保留最近 12 份。</p>
-              <p class="path-text">{{ appInfo?.backupDir }}</p>
-              <p>当前备份：{{ appInfo?.backup?.count || 0 }} 份</p>
-            </div>
-            <div class="settings-card">
-              <h2>提醒</h2>
-              <p>应用启动后会提醒今天截止和已逾期的未完成任务。</p>
-              <p>今天截止：{{ dueSummary?.todayCount || 0 }} 个</p>
-              <p>已逾期：{{ dueSummary?.overdueCount || 0 }} 个</p>
-            </div>
-            <div class="settings-card">
-              <h2>全局快速添加</h2>
-              <p>在任何应用里按下快捷键，立即弹出任务输入框。点击输入框后按下想要的组合键，松手即生效。</p>
-              <div class="widget-setting-row">
-                <span>快捷键</span>
-                <input
-                  class="shortcut-input"
-                  :class="{ recording: shortcutRecording }"
-                  :value="shortcutRecording ? '请按下组合键...' : (shortcutDraft || '未设置')"
-                  readonly
-                  @focus="shortcutRecording = true"
-                  @blur="shortcutRecording = false"
-                  @keydown="shortcutRecording && recordShortcut($event)"
-                />
-              </div>
-              <div class="option-group widget-options">
-                <button
-                  class="option-btn"
-                  :disabled="!appSettings?.quickAddShortcut"
-                  @click="saveShortcut('')"
-                >停用</button>
-                <button class="option-btn" @click="api.openQuickAdd()">试一试</button>
-              </div>
-              <p class="shortcut-current">当前生效：{{ appSettings?.quickAddShortcut || '（未启用）' }}　弹窗内 Enter 添加并关闭，Ctrl+Enter 连续添加</p>
-            </div>
-            <div class="settings-card widget-settings-card">
-              <h2>桌面组件</h2>
-              <p>把某个项目的未完成任务显示成桌面浮动小组件。</p>
-              <div class="widget-setting-row">
-                <span>显示项目</span>
-                <select
-                  :value="widgetConfig?.projectId || selectedId || projects[0]?.id"
-                  @change="updateWidgetConfig({ projectId: $event.target.value })"
-                >
-                  <optgroup label="智能视图">
-                    <option value="view:today">☀️ 今天</option>
-                    <option value="view:upcoming">📅 近 7 天</option>
-                  </optgroup>
-                  <optgroup label="项目">
-                    <option v-for="project in projects" :key="project.id" :value="project.id">
-                      {{ project.icon }} {{ project.name }}
-                    </option>
-                  </optgroup>
-                </select>
-              </div>
-              <div class="widget-setting-row">
-                <span>显示数量</span>
-                <input
-                  type="number"
-                  min="3"
-                  max="20"
-                  :value="widgetConfig?.limit || 8"
-                  @change="updateWidgetConfig({ limit: Number($event.target.value) })"
-                />
-              </div>
-              <div class="widget-setting-row">
-                <span>透明度</span>
-                <input
-                  type="range"
-                  min="0.72"
-                  max="1"
-                  step="0.02"
-                  :value="widgetConfig?.opacity || 0.96"
-                  @input="updateWidgetConfig({ opacity: Number($event.target.value) })"
-                />
-              </div>
-              <div class="widget-setting-row">
-                <span>筛选</span>
-                <div class="option-group inline-options">
-                  <button
-                    class="option-btn"
-                    :class="{ active: (widgetConfig?.statusFilter || 'open') === 'open' }"
-                    @click="updateWidgetConfig({ statusFilter: 'open' })"
-                  >未完成</button>
-                  <button
-                    class="option-btn"
-                    :class="{ active: widgetConfig?.statusFilter === 'all' }"
-                    @click="updateWidgetConfig({ statusFilter: 'all' })"
-                  >全部</button>
-                  <button
-                    class="option-btn"
-                    :class="{ active: widgetConfig?.statusFilter === 'completed' }"
-                    @click="updateWidgetConfig({ statusFilter: 'completed' })"
-                  >已完成</button>
-                </div>
-              </div>
-              <div class="option-group widget-options">
-                <button
-                  class="option-btn"
-                  :class="{ active: widgetConfig?.visible }"
-                  @click="toggleWidgetVisible"
-                >{{ widgetConfig?.visible ? '隐藏组件' : '显示组件' }}</button>
-                <button
-                  class="option-btn"
-                  :class="{ active: widgetConfig?.alwaysOnTop }"
-                  @click="updateWidgetConfig({ alwaysOnTop: !widgetConfig?.alwaysOnTop })"
-                >置顶</button>
-                <button
-                  class="option-btn"
-                  :class="{ active: widgetConfig?.compact }"
-                  @click="updateWidgetConfig({ compact: !widgetConfig?.compact })"
-                >紧凑</button>
-                <button
-                  class="option-btn"
-                  :class="{ active: widgetConfig?.collapsed }"
-                  @click="updateWidgetConfig({ collapsed: !widgetConfig?.collapsed })"
-                >折叠</button>
-                <button class="option-btn" @click="api.showMainWindow">显示主窗口</button>
-              </div>
-            </div>
-            <div class="settings-card">
-              <h2>删除确认</h2>
-              <p>删除项目或任务时是否弹出确认对话框。</p>
-              <div class="option-group" style="margin-top:12px">
-                <button
-                  class="option-btn"
-                  :class="{ active: !skipDeleteConfirm }"
-                  @click="toggleSkipDelete(false)"
-                >每次确认</button>
-                <button
-                  class="option-btn"
-                  :class="{ active: skipDeleteConfirm }"
-                  @click="toggleSkipDelete(true)"
-                >不再提醒</button>
-              </div>
-            </div>
-            <div class="settings-card theme-settings-card">
-              <h2>主题配色</h2>
-              <div class="theme-choice-grid">
-                <button
-                  v-for="item in THEMES"
-                  :key="item.id"
-                  class="theme-choice"
-                  :class="{ active: theme === item.id }"
-                  @click="setTheme(item.id)"
-                >
-                  <span class="theme-swatch-row">
-                    <span
-                      v-for="color in item.swatches"
-                      :key="color"
-                      class="theme-swatch"
-                      :style="{ background: color }"
-                    />
-                  </span>
-                  <strong>{{ item.name }}</strong>
-                  <small>{{ item.desc }}</small>
-                </button>
-              </div>
-            </div>
-
-            <div class="settings-card font-settings-card">
-              <h2>字体</h2>
-              <div class="font-preview-box" :style="{ fontFamily: fontFamily || 'inherit', fontSize: FONT_SIZES[fontSize]?.size || '13px' }">
-                {{ fontFamily || '默认字体' }} · 小光任务 · The quick brown fox · 0123
-              </div>
-              <div class="font-picker-wrap">
-                <div class="font-search-row">
-                  <input
-                    v-model="fontSearch"
-                    class="font-search-input"
-                    :placeholder="fontFamily || '搜索字体名称，如 Microsoft YaHei...'"
-                    @focus="fontPickerOpen = true"
-                    @input="fontPickerOpen = true"
-                />
-                  <button v-if="fontFamily" class="font-clear-btn" @mousedown.prevent="clearFont" title="恢复默认">×</button>
-                </div>
-                <div v-if="fontPickerOpen" class="font-dropdown">
-                  <div v-if="fontLoading" class="font-loading">正在读取系统字体列表…</div>
-                  <div v-else-if="fontLoadError" class="font-loading">{{ fontLoadError }}</div>
-                  <div
-                    v-for="font in filteredFonts"
-                    :key="font.css"
-                    class="font-item"
-                    :class="{ active: fontFamily === font.css }"
-                    @mousedown.prevent="selectFont(font)"
-                  >
-                    <span class="font-item-preview" :style="{ fontFamily: font.css }">Aa 文字</span>
-                    <span class="font-item-name">{{ font.display }}</span>
-                    <span v-if="font.css !== font.display" class="font-item-en">{{ font.css }}</span>
-                  </div>
-                  <div v-if="!fontLoading && systemFonts.length && !filteredFonts.length" class="font-loading">无匹配字体</div>
-                </div>
-              </div>
-              <p style="margin-top:14px; margin-bottom:6px; color:var(--text-muted); font-size:11px">字号</p>
-              <div class="option-group">
-                <button
-                  v-for="opt in [{ val:'small', label:'小 12px' }, { val:'medium', label:'中 13px' }, { val:'large', label:'大 15px' }]"
-                  :key="opt.val"
-                  class="option-btn"
-                  :class="{ active: fontSize === opt.val }"
-                  @click="setFontSize(opt.val)"
-                >{{ opt.label }}</button>
-              </div>
-            </div>
-            <div class="settings-card">
-              <h2>版本</h2>
-              <p>小光任务 {{ appInfo?.version || '1.0.0' }}</p>
-              <p>数据版本：{{ appInfo?.schemaVersion || '-' }}</p>
-            </div>
-            <div class="settings-card logs-card">
-              <h2>诊断日志</h2>
-              <p class="path-text">{{ appInfo?.logPath }}</p>
-              <div class="settings-actions compact">
-                <button class="secondary-btn" @click="onExportLogs">导出日志</button>
-                <button class="secondary-btn" @click="onClearLogs">清空日志</button>
-              </div>
-              <div class="log-list">
-                <div v-for="log in logs" :key="`${log.time}-${log.message}`" class="log-row">
-                  <span>{{ log.time?.slice(0, 19).replace('T', ' ') }}</span>
-                  <strong>{{ log.level }}</strong>
-                  <p>{{ log.message }}</p>
-                </div>
-                <p v-if="!logs.length">暂无日志</p>
-              </div>
-            </div>
-          </div>
-        </section>
+        <SettingsView
+          v-else-if="currentView === 'settings'"
+          :appInfo="appInfo"
+          :dueSummary="dueSummary"
+          :widgetConfig="widgetConfig"
+          :appSettings="appSettings"
+          :logs="logs"
+          :projects="projects"
+          :selectedId="selectedId"
+          :theme="theme"
+          :skipDeleteConfirm="skipDeleteConfirm"
+          :shortcutDraft="shortcutDraft"
+          :fontFamily="fontFamily"
+          :fontSize="fontSize"
+          :systemFonts="systemFonts"
+          :filteredFonts="filteredFonts"
+          :fontLoading="fontLoading"
+          :fontLoadError="fontLoadError"
+          v-model:fontSearch="fontSearch"
+          v-model:fontPickerOpen="fontPickerOpen"
+          v-model:shortcutRecording="shortcutRecording"
+          :onExportData="onExportData"
+          :onImportData="onImportData"
+          :onExportLogs="onExportLogs"
+          :onClearLogs="onClearLogs"
+          :updateWidgetConfig="updateWidgetConfig"
+          :toggleWidgetVisible="toggleWidgetVisible"
+          :saveShortcut="saveShortcut"
+          :recordShortcut="recordShortcut"
+          :setTheme="setTheme"
+          :setFontSize="setFontSize"
+          :selectFont="selectFont"
+          :clearFont="clearFont"
+          :toggleSkipDelete="toggleSkipDelete"
+        />
         <div v-else class="empty-screen">
           <div class="empty-icon">⬡</div>
           <p>选择或创建一个项目</p>
@@ -1258,314 +916,6 @@ onUnmounted(() => {
   opacity: 0.3;
 }
 
-.settings-view {
-  flex: 1;
-  overflow-y: auto;
-  padding: 30px 34px;
-}
-.settings-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-.settings-icon {
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border: 1px solid rgba(212, 146, 42, .18);
-  border-radius: var(--radius);
-}
-.settings-header h1 {
-  font-family: var(--font-display);
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-.settings-header p,
-.settings-card p {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
-}
-.settings-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow-soft);
-}
-.settings-card h2 {
-  font-size: 13px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-.logs-card {
-  grid-column: 1 / -1;
-}
-.log-list {
-  max-height: 180px;
-  overflow-y: auto;
-  margin-top: 10px;
-  border-top: 1px solid var(--border);
-}
-.log-row {
-  display: grid;
-  grid-template-columns: 150px 54px minmax(0, 1fr);
-  gap: 8px;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--border);
-  align-items: start;
-}
-.log-row span,
-.log-row strong,
-.log-row p {
-  font-size: 10.5px;
-}
-.log-row span { color: var(--text-muted); }
-.log-row strong {
-  color: var(--accent);
-  font-weight: 500;
-}
-.log-row p {
-  color: var(--text-secondary);
-  word-break: break-word;
-}
-.option-group {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-}
-.option-btn {
-  padding: 5px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--bg-elevated);
-  color: var(--text-secondary);
-  font-size: 12px;
-  transition: background .1s, color .1s, border-color .1s;
-}
-.option-btn:hover { color: var(--text-primary); border-color: var(--text-muted); }
-.option-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-.widget-settings-card { grid-column: 1 / -1; }
-.widget-setting-row {
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-}
-.widget-setting-row span {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-.widget-setting-row select,
-.widget-setting-row input[type="number"] {
-  min-width: 0;
-  height: 30px;
-  padding: 0 9px;
-  color: var(--text-secondary);
-  background: var(--bg-base);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  font: inherit;
-}
-.widget-setting-row input[type="range"] {
-  width: 100%;
-  accent-color: var(--accent);
-}
-.widget-options {
-  flex-wrap: wrap;
-  margin-top: 12px;
-}
-.inline-options {
-  margin-top: 0;
-  flex-wrap: wrap;
-}
-
-/* Theme picker */
-.theme-settings-card { grid-column: 1 / -1; }
-.theme-choice-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
-  gap: 10px;
-  margin-top: 10px;
-}
-.theme-choice {
-  min-height: 116px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 12px;
-  text-align: left;
-  color: var(--text-secondary);
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  transition: border-color .14s, background .14s, box-shadow .14s, transform .14s;
-}
-.theme-choice:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-elevated);
-  transform: translateY(-1px);
-}
-.theme-choice.active {
-  color: var(--text-primary);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-.theme-swatch-row {
-  width: 100%;
-  height: 28px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-.theme-swatch {
-  min-width: 0;
-}
-.theme-choice strong {
-  color: inherit;
-  font-size: 13px;
-  font-weight: 750;
-}
-.theme-choice small {
-  color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.45;
-}
-/* Font picker */
-.font-settings-card { grid-column: 1 / -1; }
-.font-preview-box {
-  padding: 10px 12px;
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  margin-bottom: 10px;
-  font-size: 14px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.font-picker-wrap { position: relative; }
-.font-search-row { display: flex; gap: 6px; }
-.font-search-input {
-  flex: 1;
-  padding: 7px 10px;
-  background: var(--bg-base);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 12px;
-  transition: border-color .12s;
-}
-.font-search-input:focus { border-color: var(--accent); outline: none; }
-.font-clear-btn {
-  width: 30px; height: 30px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  color: var(--text-muted);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  font-size: 15px;
-  transition: color .1s, border-color .1s;
-}
-.font-clear-btn:hover { color: var(--danger); border-color: var(--danger); }
-.font-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0; right: 0;
-  max-height: 240px;
-  overflow-y: auto;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  box-shadow: 0 8px 28px rgba(0,0,0,.35);
-  z-index: 100;
-}
-.font-loading {
-  padding: 16px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-.font-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 7px 12px;
-  cursor: pointer;
-  transition: background .07s;
-}
-.font-item:hover { background: var(--bg-elevated); }
-.font-item.active { background: var(--accent-soft); }
-.font-item-preview {
-  font-size: 15px;
-  color: var(--text-primary);
-  width: 44px;
-  flex-shrink: 0;
-}
-.font-item-name {
-  font-size: 12px;
-  color: var(--text-secondary);
-  flex: 1;
-}
-.font-item-en {
-  font-size: 10px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.settings-actions,
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 14px;
-}
-.path-text {
-  word-break: break-all;
-  user-select: text;
-}
-.primary-btn,
-.secondary-btn {
-  padding: 7px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  transition: background .12s, color .12s, border-color .12s;
-}
-.primary-btn {
-  color: #1a1000;
-  background: var(--accent);
-}
-.primary-btn:hover { filter: brightness(1.08); }
-.primary-btn.danger {
-  color: #fff;
-  background: var(--danger);
-}
-.secondary-btn {
-  color: var(--text-secondary);
-  border: 1px solid var(--border-strong);
-  background: var(--bg-elevated);
-}
-.secondary-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--text-muted);
-}
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1627,29 +977,6 @@ onUnmounted(() => {
 .toast button {
   color: var(--accent);
   font-size: 12px;
-}
-.shortcut-input {
-  min-width: 190px;
-  height: 30px;
-  padding: 0 10px;
-  text-align: center;
-  color: var(--text-primary);
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.shortcut-input.recording {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-  color: var(--accent);
-}
-.shortcut-current {
-  margin-top: 8px;
-  color: var(--text-muted);
-  font-size: 11px;
 }
 </style>
 

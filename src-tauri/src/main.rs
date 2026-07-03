@@ -26,6 +26,11 @@ const LOG_MAX_BYTES: u64 = 1024 * 1024;
 const SINGLE_INSTANCE_PORT: u16 = 38917;
 const WIDGET_IDLE_DESTROY: Duration = Duration::from_secs(300);
 const DEFAULT_QUICK_ADD_SHORTCUT: &str = "CmdOrCtrl+Alt+N";
+// 服务端字段上限（前端 maxlength 仅为提示，导入/接口可能绕过，需在此兜底）
+const MAX_TITLE_LEN: usize = 200;
+const MAX_NOTES_LEN: usize = 5000;
+const MAX_TAG_COUNT: usize = 16;
+const MAX_TAG_LEN: usize = 40;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -377,11 +382,22 @@ fn normalize_repeat(value: Option<String>) -> String {
     }
 }
 
+/// 按 Unicode 字符（而非字节）截断字符串，避免在多字节字符中间切断。
+fn clamp_chars(value: String, max: usize) -> String {
+    if value.chars().count() <= max {
+        value
+    } else {
+        value.chars().take(max).collect()
+    }
+}
+
 fn normalize_tags(tags: Option<Vec<String>>) -> Vec<String> {
+    let mut seen = HashSet::new();
     tags.unwrap_or_default()
         .into_iter()
-        .map(|tag| tag.trim().to_string())
-        .filter(|tag| !tag.is_empty())
+        .map(|tag| clamp_chars(tag.trim().to_string(), MAX_TAG_LEN))
+        .filter(|tag| !tag.is_empty() && seen.insert(tag.clone()))
+        .take(MAX_TAG_COUNT)
         .collect()
 }
 
@@ -769,7 +785,19 @@ fn read_state(app: &AppHandle) -> Result<TaskFlowData, String> {
     }
 }
 
-fn write_state(app: &AppHandle, data: &TaskFlowData) -> Result<(), String> {
+/// 把 `taskflow-data-changed` 事件广播给除发起窗口以外的所有窗口。
+/// 发起窗口（origin）通常已经做过乐观更新，再收到自己触发的事件只会引发一次
+/// 多余的全量重载，因此跳过它。其它窗口（如桌面组件、快速添加）仍需同步刷新。
+fn emit_data_changed(app: &AppHandle, origin: Option<&str>) {
+    for (label, window) in app.windows() {
+        if origin == Some(label.as_str()) {
+            continue;
+        }
+        let _ = window.emit("taskflow-data-changed", ());
+    }
+}
+
+fn write_state(app: &AppHandle, data: &TaskFlowData, origin: Option<&str>) -> Result<(), String> {
     match app.try_state::<AppState>() {
         Some(state) => {
             {
@@ -786,7 +814,7 @@ fn write_state(app: &AppHandle, data: &TaskFlowData) -> Result<(), String> {
                     .map_err(|_| "数据状态锁异常".to_string())?;
                 *dirty = Some(Instant::now());
             }
-            let _ = app.emit_all("taskflow-data-changed", ());
+            emit_data_changed(app, origin);
             Ok(())
         }
         None => write_data_file(app, data, true),
@@ -1725,7 +1753,7 @@ fn get_tasks(app: AppHandle, project_id: Option<String>) -> Result<Vec<Task>, St
 }
 
 #[tauri::command]
-fn create_project(app: AppHandle, data: ProjectPayload) -> Result<Project, String> {
+fn create_project(app: AppHandle, window: Window, data: ProjectPayload) -> Result<Project, String> {
     let mut db = read_state(&app)?;
     let project = Project {
         id: new_id(),
@@ -1736,12 +1764,16 @@ fn create_project(app: AppHandle, data: ProjectPayload) -> Result<Project, Strin
         created_at: now(),
     };
     db.projects.push(project.clone());
-    write_state(&app, &db)?;
+    write_state(&app, &db, Some(window.label()))?;
     Ok(project)
 }
 
 #[tauri::command]
-fn update_project(app: AppHandle, data: ProjectPayload) -> Result<Option<Project>, String> {
+fn update_project(
+    app: AppHandle,
+    window: Window,
+    data: ProjectPayload,
+) -> Result<Option<Project>, String> {
     let mut db = read_state(&app)?;
     let id = data.id.unwrap_or_default();
     let mut updated = None;
@@ -1760,12 +1792,12 @@ fn update_project(app: AppHandle, data: ProjectPayload) -> Result<Option<Project
             break;
         }
     }
-    write_state(&app, &db)?;
+    write_state(&app, &db, Some(window.label()))?;
     Ok(updated)
 }
 
 #[tauri::command]
-fn delete_project(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
+fn delete_project(app: AppHandle, window: Window, id: String) -> Result<serde_json::Value, String> {
     let mut db = read_state(&app)?;
     let project = db.projects.iter().find(|item| item.id == id).cloned();
     let tasks: Vec<Task> = db
@@ -1776,13 +1808,14 @@ fn delete_project(app: AppHandle, id: String) -> Result<serde_json::Value, Strin
         .collect();
     db.projects.retain(|item| item.id != id);
     db.tasks.retain(|task| task.project_id != id);
-    write_state(&app, &db)?;
+    write_state(&app, &db, Some(window.label()))?;
     Ok(serde_json::json!({ "project": project, "tasks": tasks }))
 }
 
 #[tauri::command]
 fn restore_project(
     app: AppHandle,
+    window: Window,
     project: Option<Project>,
     tasks: Vec<Task>,
 ) -> Result<TaskFlowData, String> {
@@ -1797,24 +1830,24 @@ fn restore_project(
             db.tasks.push(task);
         }
     }
-    write_state(&app, &db)?;
+    write_state(&app, &db, Some(window.label()))?;
     Ok(db)
 }
 
 #[tauri::command]
-fn reorder_projects(app: AppHandle, ids: Vec<String>) -> Result<bool, String> {
+fn reorder_projects(app: AppHandle, window: Window, ids: Vec<String>) -> Result<bool, String> {
     let mut db = read_state(&app)?;
     for (index, id) in ids.iter().enumerate() {
         if let Some(project) = db.projects.iter_mut().find(|item| &item.id == id) {
             project.position = index as i32;
         }
     }
-    write_state(&app, &db)?;
+    write_state(&app, &db, Some(window.label()))?;
     Ok(true)
 }
 
 #[tauri::command]
-fn create_task(app: AppHandle, data: TaskPayload) -> Result<Task, String> {
+fn create_task(app: AppHandle, window: Window, data: TaskPayload) -> Result<Task, String> {
     let mut db = read_state(&app)?;
     let project_id = data.project_id.ok_or("缺少项目 ID")?;
     let parent_id = data.parent_id.filter(|item| !item.is_empty());
@@ -1828,24 +1861,29 @@ fn create_task(app: AppHandle, data: TaskPayload) -> Result<Task, String> {
         id: new_id(),
         project_id,
         parent_id,
-        title: data.title.unwrap_or_default(),
-        notes: data.notes.unwrap_or_default(),
+        title: clamp_chars(data.title.unwrap_or_default(), MAX_TITLE_LEN),
+        notes: clamp_chars(data.notes.unwrap_or_default(), MAX_NOTES_LEN),
         completed: false,
         due_date: data.due_date,
-        priority: data.priority.unwrap_or_else(|| "normal".into()),
-        tags: data.tags.unwrap_or_default(),
-        repeat: data.repeat.unwrap_or_else(|| "none".into()),
+        priority: normalize_priority(data.priority),
+        tags: normalize_tags(data.tags),
+        repeat: normalize_repeat(data.repeat),
         position,
         created_at: now(),
         completed_at: None,
     };
     db.tasks.push(task.clone());
-    write_state(&app, &db)?;
+    write_state(&app, &db, Some(window.label()))?;
     Ok(task)
 }
 
 #[tauri::command]
-fn update_task(app: AppHandle, id: String, data: TaskPayload) -> Result<serde_json::Value, String> {
+fn update_task(
+    app: AppHandle,
+    window: Window,
+    id: String,
+    data: TaskPayload,
+) -> Result<serde_json::Value, String> {
     let mut db = read_state(&app)?;
     let idx = db.tasks.iter().position(|task| task.id == id);
     let Some(idx) = idx else {
@@ -1853,22 +1891,22 @@ fn update_task(app: AppHandle, id: String, data: TaskPayload) -> Result<serde_js
     };
     let was_completed = db.tasks[idx].completed;
     if let Some(title) = data.title {
-        db.tasks[idx].title = title;
+        db.tasks[idx].title = clamp_chars(title, MAX_TITLE_LEN);
     }
     if let Some(notes) = data.notes {
-        db.tasks[idx].notes = notes;
+        db.tasks[idx].notes = clamp_chars(notes, MAX_NOTES_LEN);
     }
     if data.due_date.is_some() {
         db.tasks[idx].due_date = data.due_date;
     }
-    if let Some(priority) = data.priority {
-        db.tasks[idx].priority = priority;
+    if data.priority.is_some() {
+        db.tasks[idx].priority = normalize_priority(data.priority);
     }
-    if let Some(tags) = data.tags {
-        db.tasks[idx].tags = tags;
+    if data.tags.is_some() {
+        db.tasks[idx].tags = normalize_tags(data.tags);
     }
-    if let Some(repeat) = data.repeat {
-        db.tasks[idx].repeat = repeat;
+    if data.repeat.is_some() {
+        db.tasks[idx].repeat = normalize_repeat(data.repeat);
     }
     if let Some(position) = data.position {
         db.tasks[idx].position = position;
@@ -1881,6 +1919,9 @@ fn update_task(app: AppHandle, id: String, data: TaskPayload) -> Result<serde_js
         db.tasks[idx].completed_at = if completed { Some(now()) } else { None };
     }
     let updated = db.tasks[idx].clone();
+    // 完成一个重复任务时，会自动生成下一期任务——这种情况下任务列表整体变化，
+    // 需要回传完整列表；其余更新只回传被改动的单条，避免无谓的全量序列化。
+    let mut spawned = false;
     if data.completed == Some(true) && !was_completed && updated.repeat != "none" {
         if let Some(next_due) = next_repeat_date(updated.due_date.as_deref(), &updated.repeat) {
             let mut next = updated.clone();
@@ -1897,14 +1938,19 @@ fn update_task(app: AppHandle, id: String, data: TaskPayload) -> Result<serde_js
                 })
                 .count() as i32;
             db.tasks.push(next);
+            spawned = true;
         }
     }
-    write_state(&app, &db)?;
-    Ok(serde_json::json!({ "task": updated, "tasks": db.tasks }))
+    write_state(&app, &db, Some(window.label()))?;
+    if spawned {
+        Ok(serde_json::json!({ "task": updated, "tasks": db.tasks }))
+    } else {
+        Ok(serde_json::json!({ "task": updated }))
+    }
 }
 
 #[tauri::command]
-fn delete_task(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
+fn delete_task(app: AppHandle, window: Window, id: String) -> Result<serde_json::Value, String> {
     let mut db = read_state(&app)?;
     let ids = collect_task_tree(&db.tasks, &id);
     let deleted: Vec<Task> = db
@@ -1914,24 +1960,24 @@ fn delete_task(app: AppHandle, id: String) -> Result<serde_json::Value, String> 
         .cloned()
         .collect();
     db.tasks.retain(|task| !ids.contains(&task.id));
-    write_state(&app, &db)?;
+    write_state(&app, &db, Some(window.label()))?;
     Ok(serde_json::json!({ "tasks": deleted }))
 }
 
 #[tauri::command]
-fn restore_tasks(app: AppHandle, tasks: Vec<Task>) -> Result<Vec<Task>, String> {
+fn restore_tasks(app: AppHandle, window: Window, tasks: Vec<Task>) -> Result<Vec<Task>, String> {
     let mut db = read_state(&app)?;
     for task in tasks {
         if !db.tasks.iter().any(|item| item.id == task.id) {
             db.tasks.push(task);
         }
     }
-    write_state(&app, &db)?;
+    write_state(&app, &db, Some(window.label()))?;
     Ok(db.tasks)
 }
 
 #[tauri::command]
-fn reorder_tasks(app: AppHandle, data: ReorderTaskPayload) -> Result<bool, String> {
+fn reorder_tasks(app: AppHandle, window: Window, data: ReorderTaskPayload) -> Result<bool, String> {
     let mut db = read_state(&app)?;
     for (index, id) in data.ordered_ids.iter().enumerate() {
         if let Some(task) = db
@@ -1945,7 +1991,7 @@ fn reorder_tasks(app: AppHandle, data: ReorderTaskPayload) -> Result<bool, Strin
             }
         }
     }
-    write_state(&app, &db)?;
+    write_state(&app, &db, Some(window.label()))?;
     Ok(true)
 }
 
@@ -2054,7 +2100,7 @@ fn export_data(app: AppHandle) -> Result<ExportResult, String> {
 }
 
 #[tauri::command]
-fn import_data(app: AppHandle) -> Result<ImportResult, String> {
+fn import_data(app: AppHandle, window: Window) -> Result<ImportResult, String> {
     let Some(path) = rfd::FileDialog::new()
         .set_title("导入小光任务备份")
         .add_filter("JSON", &["json"])
@@ -2069,7 +2115,7 @@ fn import_data(app: AppHandle) -> Result<ImportResult, String> {
     let raw = fs::read_to_string(&path).map_err(|err| err.to_string())?;
     let (stored, _) = parse_stored_data(&raw).map_err(|_| "备份文件格式不正确".to_string())?;
     let data = normalize_import_data(normalize_stored_data(stored))?;
-    write_state(&app, &data)?;
+    write_state(&app, &data, Some(window.label()))?;
     let _ = flush_state(&app, true);
     append_log(
         &app,
@@ -2264,16 +2310,36 @@ fn next_repeat_date(date: Option<&str>, repeat: &str) -> Option<String> {
     Some(next.to_string())
 }
 
+/// 尝试唤起已运行的实例：连接本地端口、发送握手暗号、读取应答。
+/// 只有收到本程序的应答 `ok` 才返回 true（说明端口确实由另一实例持有）。
+/// 这样可以区分「端口被本程序占用」与「端口被无关进程占用」。
+fn try_signal_existing_instance() -> bool {
+    use std::io::{Read, Write};
+    let Ok(mut stream) = std::net::TcpStream::connect(("127.0.0.1", SINGLE_INSTANCE_PORT)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    if stream.write_all(b"taskflow-show").is_err() {
+        return false;
+    }
+    let mut buf = [0u8; 8];
+    match stream.read(&mut buf) {
+        Ok(n) => &buf[..n] == b"ok",
+        Err(_) => false,
+    }
+}
+
 fn main() {
-    // 单实例锁：绑定本地端口；已有实例则通知其显示主窗口后退出
+    // 单实例锁：绑定本地回环端口（回环流量不触发 Windows 防火墙）。
+    // 端口被占用时，只有在握手确认对方确实是本程序的另一实例时才退出；
+    // 若端口被无关进程占用，则继续启动（不加单实例锁），避免应用无法打开。
     let instance_listener = match std::net::TcpListener::bind(("127.0.0.1", SINGLE_INSTANCE_PORT)) {
         Ok(listener) => Some(listener),
         Err(_) => {
-            if let Ok(mut stream) = std::net::TcpStream::connect(("127.0.0.1", SINGLE_INSTANCE_PORT)) {
-                use std::io::Write;
-                let _ = stream.write_all(b"taskflow-show");
+            if try_signal_existing_instance() {
+                return;
             }
-            return;
+            None
         }
     };
     tauri::Builder::default()
@@ -2339,7 +2405,7 @@ fn main() {
             if let Some(listener) = instance_listener {
                 let single_handle = handle.clone();
                 thread::spawn(move || {
-                    use std::io::Read;
+                    use std::io::{Read, Write};
                     for stream in listener.incoming() {
                         let Ok(mut stream) = stream else { continue };
                         // 必须带握手暗号，避免本地端口扫描误触发唤起主窗口
@@ -2347,6 +2413,8 @@ fn main() {
                         let mut buf = [0u8; 16];
                         let read = stream.read(&mut buf).unwrap_or(0);
                         if &buf[..read] == b"taskflow-show" {
+                            // 回应 ok，让新进程确认连到的确实是本程序的实例
+                            let _ = stream.write_all(b"ok");
                             let _ = show_main(&single_handle);
                         }
                     }

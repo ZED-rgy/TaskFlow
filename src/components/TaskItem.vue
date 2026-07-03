@@ -80,6 +80,8 @@ function cancelEdit() {
         v-if="subtasks.length"
         class="expand-btn"
         :class="{ open: expanded }"
+        :aria-label="expanded ? '收起子任务' : '展开子任务'"
+        :aria-expanded="expanded"
         @click.stop="expanded = !expanded"
       >
         <svg width="8" height="8" viewBox="0 0 8 8">
@@ -89,7 +91,13 @@ function cancelEdit() {
       <div v-else class="expand-placeholder" />
 
       <!-- Checkbox -->
-      <button class="checkbox" :class="{ checked: task.completed }" @click="toggle">
+      <button
+        class="checkbox"
+        :class="{ checked: task.completed }"
+        :aria-label="task.completed ? '标记为未完成' : '标记为完成'"
+        :aria-pressed="task.completed"
+        @click="toggle"
+      >
         <svg class="checkbox-svg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="1" y="1" width="16" height="16" rx="3.5" class="cb-box"/>
           <path class="cb-check" d="M4.5 9L7.5 12L13.5 6" stroke-linecap="round" stroke-linejoin="round"/>
