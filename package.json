@@ -5,11 +5,13 @@
     "author": "小光任务",
     "scripts": {
         "dev": "npx @tauri-apps/cli dev",
+        "dev:renderer": "vite",
         "build:renderer": "vite build",
         "generate:icon": "node scripts/generate-icon.js",
         "build": "npm run lite:exe && node scripts/copy-lite-release.js",
         "preview": "vite preview",
-        "verify": "npm run build:renderer && cargo check --manifest-path src-tauri/Cargo.toml",
+        "verify": "npm run build:renderer && cargo check --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
+        "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
         "lite:dev": "npx @tauri-apps/cli dev",
         "lite:exe": "npx @tauri-apps/cli build --bundles none",
         "lite:build": "npx @tauri-apps/cli build",
@@ -17,11 +19,4 @@
     },
     "dependencies": {
         "sortablejs": "^1.15.2",
-        "vue": "^3.4.21"
-    },
-    "devDependencies": {
-        "@tauri-apps/cli": "^1.6.3",
-        "@vitejs/plugin-vue": "^5.0.4",
-        "vite": "^5.1.6"
-    }
-}
+        "vue

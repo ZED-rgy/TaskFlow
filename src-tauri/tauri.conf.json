@@ -1,8 +1,8 @@
 {
     "build": {
-        "beforeDevCommand": "npm.cmd run build:renderer",
+        "beforeDevCommand": "npm.cmd run dev:renderer",
         "beforeBuildCommand": "npm.cmd run build:renderer",
-        "devPath": "../dist",
+        "devPath": "http://localhost:5173",
         "distDir": "../dist",
         "withGlobalTauri": true
     },
@@ -62,6 +62,4 @@
                 "transparent": false,
                 "resizable": true
             }
-        ]
-    }
-}
+      
