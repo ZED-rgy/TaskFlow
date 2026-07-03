@@ -2557,3 +2557,302 @@ fn main() {
             }
         });
 }
+
+// 纯函数单元测试：运行 `npm run test:rust`（或 cargo test --manifest-path src-tauri/Cargo.toml）
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_task(id: &str, project_id: &str, parent_id: Option<&str>, title: &str) -> Task {
+        Task {
+            id: id.into(),
+            project_id: project_id.into(),
+            parent_id: parent_id.map(String::from),
+            title: title.into(),
+            notes: String::new(),
+            completed: false,
+            due_date: None,
+            priority: "normal".into(),
+            tags: vec![],
+            repeat: "none".into(),
+            position: 0,
+            created_at: now(),
+            completed_at: None,
+        }
+    }
+
+    fn make_project(id: &str, name: &str) -> Project {
+        Project {
+            id: id.into(),
+            name: name.into(),
+            icon: "📋".into(),
+            color: "#D4922A".into(),
+            position: 0,
+            created_at: now(),
+        }
+    }
+
+    fn stored_project(id: &str, name: &str) -> StoredProject {
+        StoredProject {
+            id: Some(id.into()),
+            name: Some(name.into()),
+            icon: None,
+            color: None,
+            position: None,
+            created_at: None,
+        }
+    }
+
+    fn stored_task(id: &str, project_id: &str, title: &str) -> StoredTask {
+        StoredTask {
+            id: Some(id.into()),
+            project_id: Some(project_id.into()),
+            parent_id: None,
+            title: Some(title.into()),
+            notes: None,
+            completed: None,
+            due_date: None,
+            priority: None,
+            tags: None,
+            repeat: None,
+            position: None,
+            created_at: None,
+            completed_at: None,
+        }
+    }
+
+    // ── normalize_priority / normalize_repeat ──────────────
+
+    #[test]
+    fn priority_keeps_valid_values() {
+        for value in ["low", "normal", "high"] {
+            assert_eq!(normalize_priority(Some(value.into())), value);
+        }
+    }
+
+    #[test]
+    fn priority_falls_back_to_normal() {
+        assert_eq!(normalize_priority(None), "normal");
+        assert_eq!(normalize_priority(Some("urgent".into())), "normal");
+        assert_eq!(normalize_priority(Some(String::new())), "normal");
+    }
+
+    #[test]
+    fn repeat_keeps_valid_values() {
+        for value in ["none", "daily", "weekly", "monthly"] {
+            assert_eq!(normalize_repeat(Some(value.into())), value);
+        }
+    }
+
+    #[test]
+    fn repeat_falls_back_to_none() {
+        assert_eq!(normalize_repeat(None), "none");
+        assert_eq!(normalize_repeat(Some("yearly".into())), "none");
+    }
+
+    // ── clamp_chars ────────────────────────────────────────
+
+    #[test]
+    fn clamp_chars_keeps_short_strings() {
+        assert_eq!(clamp_chars("hello".into(), 10), "hello");
+        assert_eq!(clamp_chars("正好三字".into(), 4), "正好三字");
+    }
+
+    #[test]
+    fn clamp_chars_truncates_by_char_not_byte() {
+        // 中文按字符截断，不能在多字节中间切断
+        assert_eq!(clamp_chars("一二三四五".into(), 3), "一二三");
+    }
+
+    // ── normalize_tags ─────────────────────────────────────
+
+    #[test]
+    fn tags_trim_dedupe_and_drop_empty() {
+        let tags = normalize_tags(Some(vec![
+            " 工作 ".into(),
+            "工作".into(),
+            "  ".into(),
+            "生活".into(),
+        ]));
+        assert_eq!(tags, vec!["工作".to_string(), "生活".to_string()]);
+    }
+
+    #[test]
+    fn tags_respect_count_and_length_limits() {
+        let many: Vec<String> = (0..30).map(|i| format!("tag{i}")).collect();
+        assert_eq!(normalize_tags(Some(many)).len(), MAX_TAG_COUNT);
+
+        let long = "长".repeat(MAX_TAG_LEN + 10);
+        let tags = normalize_tags(Some(vec![long]));
+        assert_eq!(tags[0].chars().count(), MAX_TAG_LEN);
+    }
+
+    // ── next_repeat_date ───────────────────────────────────
+
+    #[test]
+    fn repeat_date_daily_weekly() {
+        assert_eq!(
+            next_repeat_date(Some("2026-07-04"), "daily").as_deref(),
+            Some("2026-07-05")
+        );
+        assert_eq!(
+            next_repeat_date(Some("2026-07-04"), "weekly").as_deref(),
+            Some("2026-07-11")
+        );
+    }
+
+    #[test]
+    fn repeat_date_monthly_clamps_month_end() {
+        // 月末溢出应收敛到下月最后一天
+        assert_eq!(
+            next_repeat_date(Some("2026-01-31"), "monthly").as_deref(),
+            Some("2026-02-28")
+        );
+        // 闰年 2 月
+        assert_eq!(
+            next_repeat_date(Some("2024-01-31"), "monthly").as_deref(),
+            Some("2024-02-29")
+        );
+        // 跨年
+        assert_eq!(
+            next_repeat_date(Some("2026-12-15"), "monthly").as_deref(),
+            Some("2027-01-15")
+        );
+    }
+
+    #[test]
+    fn repeat_date_rejects_invalid_input() {
+        assert_eq!(next_repeat_date(None, "daily"), None);
+        assert_eq!(next_repeat_date(Some("not-a-date"), "daily"), None);
+        assert_eq!(next_repeat_date(Some("2026-07-04"), "none"), None);
+        assert_eq!(next_repeat_date(Some("2026-07-04"), ""), None);
+    }
+
+    // ── collect_task_tree ──────────────────────────────────
+
+    #[test]
+    fn task_tree_collects_descendants() {
+        let tasks = vec![
+            make_task("a", "p", None, "根任务"),
+            make_task("b", "p", Some("a"), "子任务"),
+            make_task("c", "p", Some("b"), "孙任务"),
+            make_task("d", "p", None, "无关任务"),
+        ];
+        let ids = collect_task_tree(&tasks, "a");
+        assert_eq!(ids, vec!["a", "b", "c"]);
+    }
+
+    // ── normalize_stored_data ──────────────────────────────
+
+    #[test]
+    fn stored_data_empty_projects_returns_defaults() {
+        let data = normalize_stored_data(StoredTaskFlowData {
+            schema_version: None,
+            projects: None,
+            tasks: None,
+        });
+        assert_eq!(data.schema_version, SCHEMA_VERSION);
+        assert!(!data.projects.is_empty());
+    }
+
+    #[test]
+    fn stored_data_fills_project_defaults_and_dedupes_ids() {
+        let data = normalize_stored_data(StoredTaskFlowData {
+            schema_version: Some(SCHEMA_VERSION),
+            projects: Some(vec![stored_project("p1", "  "), stored_project("p1", "重复ID")]),
+            tasks: None,
+        });
+        assert_eq!(data.projects.len(), 2);
+        assert_eq!(data.projects[0].name, "未命名项目");
+        assert_eq!(data.projects[0].icon, "📋");
+        assert_ne!(data.projects[0].id, data.projects[1].id);
+    }
+
+    #[test]
+    fn stored_data_drops_orphan_and_untitled_tasks() {
+        let data = normalize_stored_data(StoredTaskFlowData {
+            schema_version: Some(SCHEMA_VERSION),
+            projects: Some(vec![stored_project("p1", "项目")]),
+            tasks: Some(vec![
+                stored_task("t1", "p1", "有效任务"),
+                stored_task("t2", "ghost", "孤儿任务"),
+                stored_task("t3", "p1", "   "),
+            ]),
+        });
+        assert_eq!(data.tasks.len(), 1);
+        assert_eq!(data.tasks[0].id, "t1");
+    }
+
+    #[test]
+    fn stored_data_repairs_completed_at() {
+        let mut done = stored_task("t1", "p1", "已完成缺时间戳");
+        done.completed = Some(true);
+        let mut undone = stored_task("t2", "p1", "未完成带时间戳");
+        undone.completed_at = Some(now());
+        let data = normalize_stored_data(StoredTaskFlowData {
+            schema_version: Some(SCHEMA_VERSION),
+            projects: Some(vec![stored_project("p1", "项目")]),
+            tasks: Some(vec![done, undone]),
+        });
+        assert!(data.tasks[0].completed_at.is_some());
+        assert!(data.tasks[1].completed_at.is_none());
+    }
+
+    // ── parse_stored_data ──────────────────────────────────
+
+    #[test]
+    fn parse_handles_bom_and_detects_migration() {
+        let json = "\u{feff}{\"schemaVersion\":1,\"projects\":[],\"tasks\":[]}";
+        let (stored, needs_migration) = parse_stored_data(json).expect("应能解析带 BOM 的 JSON");
+        assert_eq!(stored.schema_version, Some(1));
+        assert!(needs_migration);
+
+        let current = format!(
+            "{{\"schemaVersion\":{},\"projects\":[],\"tasks\":[]}}",
+            SCHEMA_VERSION
+        );
+        let (_, needs_migration) = parse_stored_data(&current).expect("应能解析当前版本 JSON");
+        assert!(!needs_migration);
+    }
+
+    #[test]
+    fn parse_rejects_invalid_json() {
+        assert!(parse_stored_data("not json").is_err());
+    }
+
+    // ── normalize_import_data ──────────────────────────────
+
+    #[test]
+    fn import_rejects_empty_projects() {
+        let data = TaskFlowData {
+            schema_version: SCHEMA_VERSION,
+            projects: vec![],
+            tasks: vec![],
+        };
+        assert!(normalize_import_data(data).is_err());
+    }
+
+    #[test]
+    fn import_fills_defaults_and_reindexes() {
+        let mut project = make_project("p1", "  ");
+        project.icon = " ".into();
+        let data = TaskFlowData {
+            schema_version: 1,
+            projects: vec![project],
+            tasks: vec![
+                make_task("t1", "p1", None, "任务A"),
+                make_task("t2", "ghost", None, "孤儿任务"),
+                make_task("t3", "p1", None, "任务B"),
+            ],
+        };
+        let result = normalize_import_data(data).expect("导入应成功");
+        assert_eq!(result.schema_version, SCHEMA_VERSION);
+        assert_eq!(result.projects[0].name, "未命名项目");
+        assert_eq!(result.projects[0].icon, "📋");
+        assert_eq!(result.tasks.len(), 2);
+        assert_eq!(
+            result.tasks.iter().map(|task| task.position).collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+    }
+}
