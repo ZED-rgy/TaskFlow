@@ -85,7 +85,30 @@ const totalCount = computed(() =>
   props.tasks.filter(t => !t.parentId).length
 )
 
-const showCompleted = ref(true)
+// ── 全部完成庆祝（轻量彩带，每个视图一次性触发）─────────
+const celebrating = ref(false)
+let celebrateTimer = null
+const CONFETTI_COLORS = ['#D4922A', '#5B8EC0', '#5E9E72', '#9B6CC8', '#C0504A']
+const confettiPieces = Array.from({ length: 18 }, (_, i) => ({
+  id: i,
+  left: 8 + Math.random() * 84,
+  delay: Math.random() * .25,
+  duration: .9 + Math.random() * .7,
+  color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+  tilt: Math.random() * 360,
+}))
+
+const openRootCount = computed(() =>
+  props.tasks.filter(t => !t.parentId && !t.completed).length
+)
+
+watch(openRootCount, (now, prev) => {
+  if (prev > 0 && now === 0 && totalCount.value > 0) {
+    celebrating.value = true
+    if (celebrateTimer) clearTimeout(celebrateTimer)
+    celebrateTimer = setTimeout(() => { celebrating.value = false }, 1800)
+  }
+})
 
 // ── 今天视图分区：已逾期 / 今天 ─────────────────────────
 function isOverdueTask(task) {
@@ -113,11 +136,7 @@ function postponeAllOverdue() {
   }
 }
 
-const visibleTasks = computed(() =>
-  showCompleted.value || statusFilter.value !== 'all'
-    ? rootTasks.value
-    : rootTasks.value.filter(t => !t.completed)
-)
+const visibleTasks = computed(() => rootTasks.value)
 
 // ── Add task ──────────────────────────────────────────
 const addInput    = ref(null)
@@ -302,7 +321,7 @@ watch(() => props.project.id, () => {
   scheduleSortableRefresh()
 })
 
-watch([searchQuery, statusFilter, dueFilter, priorityFilter, showCompleted, visibleTaskSignature], () => {
+watch([searchQuery, statusFilter, dueFilter, priorityFilter, visibleTaskSignature], () => {
   scheduleSortableRefresh()
 })
 
@@ -330,20 +349,19 @@ onUnmounted(() => {
           {{ project.name }}
         </h1>
       </div>
-      <div class="header-right">
-        <span class="task-stat">{{ totalCount - completedCount }} 待完成</span>
-        <button
-          class="toggle-completed"
-          :class="{ active: showCompleted }"
-          @click="showCompleted = !showCompleted"
-          :title="showCompleted ? '隐藏已完成' : '显示已完成'"
-        >
-          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-            <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
-            <path d="M4 7l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          {{ showCompleted ? '隐藏已完成' : '显示已完成' }}
-        </button>
+      <div class="header-right" v-if="totalCount > 0">
+        <svg class="progress-ring" width="26" height="26" viewBox="0 0 26 26" :title="`已完成 ${completedCount}/${totalCount}`">
+          <circle cx="13" cy="13" r="10.5" fill="none" stroke="var(--bg-elevated)" stroke-width="3"/>
+          <circle
+            cx="13" cy="13" r="10.5" fill="none"
+            :stroke="project.color" stroke-width="3" stroke-linecap="round"
+            :stroke-dasharray="2 * Math.PI * 10.5"
+            :stroke-dashoffset="2 * Math.PI * 10.5 * (1 - completedCount / totalCount)"
+            transform="rotate(-90 13 13)"
+            style="transition: stroke-dashoffset .45s ease"
+          />
+        </svg>
+        <span class="task-stat">{{ completedCount }}/{{ totalCount }} 已完成</span>
       </div>
     </div>
 
@@ -372,17 +390,6 @@ onUnmounted(() => {
         <option value="normal">普通</option>
         <option value="low">低优先级</option>
       </select>
-    </div>
-
-    <!-- Progress bar -->
-    <div class="progress-track" v-if="totalCount > 0">
-      <div
-        class="progress-fill"
-        :style="{
-          width: (completedCount / totalCount * 100) + '%',
-          background: project.color
-        }"
-      />
     </div>
 
     <!-- Add task input -->
@@ -476,8 +483,33 @@ onUnmounted(() => {
 
       <!-- Empty state -->
       <div v-if="visibleTasks.length === 0" class="list-empty">
-        <div class="empty-glyph">◇</div>
-        <p>{{ searchQuery ? '没有匹配的任务' : (showCompleted || completedCount === 0 ? '还没有任务，输入上方添加' : '所有任务已完成 ✓') }}</p>
+        <div class="empty-glyph">{{ searchQuery ? '◇' : (completedCount > 0 && statusFilter === 'open' ? '☀' : '◇') }}</div>
+        <p v-if="searchQuery">没有匹配的任务</p>
+        <p v-else-if="completedCount > 0 && statusFilter === 'open'">今日事今日毕，全部完成 ✓</p>
+        <p v-else-if="project.id === 'today'">今天没有到期任务，去项目里安排一些吧</p>
+        <p v-else>还没有任务，输入上方添加</p>
+        <div v-if="!searchQuery" class="empty-hints">
+          <span class="hint-item"><kbd>Ctrl</kbd><kbd>N</kbd> 新建任务</span>
+          <span class="hint-item"><kbd>Ctrl</kbd><kbd>F</kbd> 搜索</span>
+          <span class="hint-item"><kbd>↑</kbd><kbd>↓</kbd> 选择 · <kbd>空格</kbd> 完成</span>
+          <span class="hint-item"><kbd>Ctrl</kbd><kbd>Z</kbd> 撤销删除</span>
+        </div>
+      </div>
+
+      <!-- 全部完成庆祝 -->
+      <div v-if="celebrating" class="confetti-layer" aria-hidden="true">
+        <span
+          v-for="piece in confettiPieces"
+          :key="piece.id"
+          class="confetti"
+          :style="{
+            left: piece.left + '%',
+            background: piece.color,
+            animationDelay: piece.delay + 's',
+            animationDuration: piece.duration + 's',
+            transform: `rotate(${piece.tilt}deg)`,
+          }"
+        />
       </div>
     </div>
 
@@ -525,17 +557,6 @@ onUnmounted(() => {
   letter-spacing: 0;
   position: relative;
 }
-.project-title::after {
-  content: '';
-  position: absolute;
-  left: 0; bottom: -6px;
-  width: min(100%, 128px);
-  height: 2px;
-  background: var(--proj-color, var(--accent));
-  opacity: .35;
-  border-radius: 1px;
-}
-
 .header-right {
   display: flex;
   align-items: center;
@@ -545,19 +566,6 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-muted);
 }
-.toggle-completed {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 6px 10px;
-  border-radius: var(--radius);
-  border: 1px solid transparent;
-  transition: color .1s, background .1s, border-color .1s;
-}
-.toggle-completed:hover,
-.toggle-completed.active { color: var(--text-secondary); background: var(--bg-surface); border-color: var(--border); }
 
 .filter-bar {
   display: grid;
@@ -620,21 +628,7 @@ onUnmounted(() => {
   box-shadow: var(--shadow-soft);
 }
 
-/* Progress */
-.progress-track {
-  height: 2px;
-  background: var(--bg-elevated);
-  margin: 0 36px;
-  border-radius: 1px;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.progress-fill {
-  height: 100%;
-  border-radius: 1px;
-  transition: width .4s ease;
-  opacity: .7;
-}
+.progress-ring { flex-shrink: 0; }
 
 /* Add task */
 .add-task-bar {
@@ -759,6 +753,7 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 12px 28px 28px;
+  position: relative;
 }
 .task-items {
   display: flex;
@@ -809,6 +804,55 @@ onUnmounted(() => {
 :deep(.task-ghost)    { opacity: .3; }
 :deep(.task-chosen)   { cursor: grabbing; }
 
+/* 空状态快捷键提示 */
+.empty-hints {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 18px;
+  margin-top: 10px;
+}
+.hint-item {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.hint-item kbd {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+/* 全清彩带 */
+.confetti-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.confetti {
+  position: absolute;
+  top: -12px;
+  width: 7px;
+  height: 11px;
+  border-radius: 2px;
+  opacity: 0;
+  animation-name: confetti-fall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+@keyframes confetti-fall {
+  0%   { opacity: 0; transform: translateY(0) rotate(0deg); }
+  8%   { opacity: .95; }
+  100% { opacity: 0; transform: translateY(72vh) rotate(280deg); }
+}
+
 /* Empty state */
 .list-empty {
   display: flex;
@@ -837,9 +881,6 @@ onUnmounted(() => {
   }
   .filter-select {
     min-width: 0;
-  }
-  .progress-track {
-    margin: 0 24px;
   }
   .add-task-bar {
     padding: 12px 24px;
