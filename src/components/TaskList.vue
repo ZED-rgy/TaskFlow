@@ -199,6 +199,19 @@ function moveFocus(step) {
 }
 
 async function handleKeydown(event) {
+  // 中文输入法组词中不响应快捷键，避免误触发
+  if (event.isComposing) return
+  // 添加栏为空时，↑↓ 直接进入列表导航（添加栏默认聚焦，否则方向键会被输入框吞掉）
+  if (
+    (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+    event.target === addInput.value &&
+    !addingTitle.value
+  ) {
+    event.preventDefault()
+    addInput.value?.blur()
+    moveFocus(event.key === 'ArrowDown' ? 1 : -1)
+    return
+  }
   if (event.ctrlKey && event.key.toLowerCase() === 'f') {
     event.preventDefault()
     await nextTick()
@@ -404,7 +417,7 @@ onUnmounted(() => {
           class="add-input"
           :placeholder="addSubFor ? '添加子任务...' : '添加任务，试试「明天 交报告 #学校 !高」'"
           @keydown.enter="submitAdd"
-          @keydown.escape="addSubFor = null; addingTitle = ''"
+          @keydown.escape="addSubFor = null; addingTitle = ''; $event.target.blur()"
         />
         <span v-if="addSubFor" class="sub-hint" @click="addSubFor = null">
           子任务 ✕

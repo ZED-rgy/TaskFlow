@@ -366,9 +366,14 @@ function closeTaskDetail() {
 }
 
 function handleKeydown(event) {
+  // 中文输入法组词中不响应快捷键
+  if (event.isComposing) return
   if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
     const tag = event.target?.tagName
-    if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+    // 输入框里有文字时让浏览器做文本撤销；空输入框则执行全局撤销删除
+    const typingWithText =
+      (tag === 'INPUT' || tag === 'TEXTAREA') && event.target.value !== ''
+    if (!typingWithText) {
       event.preventDefault()
       undoLast()
     }
