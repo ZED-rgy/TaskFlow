@@ -87,6 +87,32 @@ const totalCount = computed(() =>
 
 const showCompleted = ref(true)
 
+// ── 今天视图分区：已逾期 / 今天 ─────────────────────────
+function isOverdueTask(task) {
+  return !task.completed && task.dueDate && task.dueDate < props.today
+}
+
+const todayGroups = computed(() => {
+  if (props.project.id !== 'today') return null
+  const overdue = visibleTasks.value.filter(isOverdueTask)
+  if (!overdue.length) return null
+  return { overdueCount: overdue.length }
+})
+
+const displayTasks = computed(() => {
+  if (!todayGroups.value) return visibleTasks.value
+  return [
+    ...visibleTasks.value.filter(isOverdueTask),
+    ...visibleTasks.value.filter(t => !isOverdueTask(t)),
+  ]
+})
+
+function postponeAllOverdue() {
+  for (const task of visibleTasks.value.filter(isOverdueTask)) {
+    emit('update', { id: task.id, dueDate: props.today })
+  }
+}
+
 const visibleTasks = computed(() =>
   showCompleted.value || statusFilter.value !== 'all'
     ? rootTasks.value
@@ -411,9 +437,23 @@ onUnmounted(() => {
     <!-- Task items -->
     <div class="task-scroll">
       <div ref="listEl" class="task-items" @mouseenter="ensureSortableReady">
-        <div
-          v-for="task in visibleTasks"
+        <template
+          v-for="(task, index) in displayTasks"
           :key="task.id"
+        >
+        <div v-if="todayGroups && index === 0" class="group-header overdue-header">
+          <span class="group-label">已逾期 · {{ todayGroups.overdueCount }}</span>
+          <button class="postpone-all-btn" @click="postponeAllOverdue">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+              <path d="M1.5 6h7M6 3l3 3-3 3M10.5 2.5v7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            全部顺延到今天
+          </button>
+        </div>
+        <div v-else-if="todayGroups && index === todayGroups.overdueCount" class="group-header">
+          <span class="group-label">今天</span>
+        </div>
+        <div
           :data-id="task.id"
           class="task-wrapper"
           :class="{ 'kb-focus': task.id === focusedId }"
@@ -431,6 +471,7 @@ onUnmounted(() => {
             @select="$emit('selectTask', $event)"
           />
         </div>
+        </template>
       </div>
 
       <!-- Empty state -->
@@ -734,6 +775,35 @@ onUnmounted(() => {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
+
+/* 今天视图分区标题 */
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 8px 5px;
+  user-select: none;
+}
+.group-label {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-muted);
+  letter-spacing: .04em;
+}
+.overdue-header .group-label { color: var(--danger); }
+.postpone-all-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--danger);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--danger-soft);
+  background: var(--danger-soft);
+  transition: filter .12s;
+}
+.postpone-all-btn:hover { filter: brightness(1.12); }
 
 /* Sortable ghost/chosen */
 :deep(.task-ghost)    { opacity: .3; }

@@ -210,7 +210,9 @@ function isWithinNextWeek(dateKey) {
 const projectTasks = computed(() =>
   tasks.value.filter(t => {
     if (currentView.value === 'today') {
-      return !t.completed && toDateKey(t.dueDate) === todayKey.value
+      // 含逾期未完成：逾期任务最需要「今天」处理
+      const dateKey = toDateKey(t.dueDate)
+      return !t.completed && dateKey && dateKey <= todayKey.value
     }
     if (currentView.value === 'upcoming') {
       return !t.completed && isWithinNextWeek(toDateKey(t.dueDate))
@@ -238,7 +240,7 @@ const activeScope = computed(() => {
 const smartCounts = computed(() =>
   tasks.value.reduce((counts, task) => {
     const dateKey = toDateKey(task.dueDate)
-    if (!task.completed && dateKey === todayKey.value) counts.today += 1
+    if (!task.completed && dateKey && dateKey <= todayKey.value) counts.today += 1
     if (!task.completed && isWithinNextWeek(dateKey)) counts.upcoming += 1
     if (task.completed) counts.completed += 1
     return counts
