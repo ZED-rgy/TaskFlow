@@ -2,6 +2,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import Sortable from 'sortablejs'
 import TaskItem from './TaskItem.vue'
+import { parseQuickInput, friendlyDate } from '../runtime/quickparse.js'
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -103,10 +104,21 @@ async function focusAdd() {
   addInput.value?.focus()
 }
 
+// 自然语言解析预览（「明天 交报告 #学校 !高」→ 日期/标签/优先级）
+const parsedAdd = computed(() => parseQuickInput(addingTitle.value, props.today))
+
 function submitAdd() {
-  const title = addingTitle.value.trim()
+  const parsed = parsedAdd.value
+  const title = (parsed.title || addingTitle.value).trim()
   if (!title) return
-  emit('create', { title, parentId: addSubFor.value, dueDate: newDueDate.value || null, priority: newPriority.value })
+  emit('create', {
+    title,
+    parentId: addSubFor.value,
+    // 手动选择优先，其次用解析结果
+    dueDate: newDueDate.value || parsed.dueDate || null,
+    priority: newPriority.value !== 'normal' ? newPriority.value : (parsed.priority || 'normal'),
+    tags: parsed.tags.length ? parsed.tags : undefined,
+  })
   addingTitle.value = ''
   addSubFor.value   = null
   newDueDate.value  = ''
@@ -357,7 +369,7 @@ onUnmounted(() => {
           ref="addInput"
           v-model="addingTitle"
           class="add-input"
-          :placeholder="addSubFor ? '添加子任务...' : '添加任务...'"
+          :placeholder="addSubFor ? '添加子任务...' : '添加任务，试试「明天 交报告 #学校 !高」'"
           @keydown.enter="submitAdd"
           @keydown.escape="addSubFor = null; addingTitle = ''"
         />
@@ -379,6 +391,20 @@ onUnmounted(() => {
           <span v-if="newDueDate" class="due-btn-text">{{ formatDueShort(newDueDate) }}</span>
           <input type="date" v-model="newDueDate" class="due-hidden" />
         </label>
+      </div>
+      <!-- 自然语言解析预览 -->
+      <div v-if="addingTitle && parsedAdd.hits.length" class="parse-preview">
+        <span class="parse-tip">已识别</span>
+        <span
+          v-for="hit in parsedAdd.hits"
+          :key="hit.type + hit.text"
+          class="parse-chip"
+          :class="hit.type"
+        >{{
+          hit.type === 'date' ? '📅 ' + friendlyDate(hit.value, today)
+          : hit.type === 'priority' ? (hit.value === 'high' ? '⚑ 高优先级' : hit.value === 'low' ? '⚑ 低优先级' : '⚑ 普通')
+          : '# ' + hit.value
+        }}</span>
       </div>
     </div>
 
@@ -657,6 +683,34 @@ onUnmounted(() => {
   cursor: pointer;
   width: 100%;
   height: 100%;
+}
+
+/* 自然语言解析预览 */
+.parse-preview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 7px 4px 0;
+}
+.parse-tip {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.parse-chip {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  animation: chip-in .16s ease;
+}
+.parse-chip.date     { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.parse-chip.priority { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+@keyframes chip-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: none; }
 }
 
 /* Task scroll */

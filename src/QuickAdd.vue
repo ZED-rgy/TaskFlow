@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from './runtime/api.js'
+import { parseQuickInput, friendlyDate } from './runtime/quickparse.js'
 
 const projects = ref([])
 const projectId = ref('')
@@ -23,6 +24,8 @@ const selectedProject = computed(() =>
   projects.value.find(item => item.id === projectId.value) || projects.value[0] || null
 )
 
+const parsed = computed(() => parseQuickInput(title.value, localDateKey()))
+
 async function load() {
   try {
     projects.value = await api.getProjects()
@@ -43,10 +46,13 @@ async function submit(keepOpen = false) {
   if (!text || !selectedProject.value || saving.value) return
   saving.value = true
   try {
+    const p = parsed.value
     await api.createTask({
       projectId: selectedProject.value.id,
-      title: text,
-      dueDate: dueToday.value ? localDateKey() : null,
+      title: (p.title || text).trim(),
+      dueDate: p.dueDate || (dueToday.value ? localDateKey() : null),
+      priority: p.priority || undefined,
+      tags: p.tags.length ? p.tags : undefined,
     })
     title.value = ''
     if (keepOpen) {
@@ -111,7 +117,7 @@ onUnmounted(() => {
           class="quickadd-input"
           type="text"
           maxlength="120"
-          placeholder="快速添加任务，回车确认..."
+          placeholder="快速添加，支持「明天 #标签 !高」，回车确认..."
         />
         <button class="quickadd-close" title="关闭 (Esc)" @click="close">×</button>
       </div>
@@ -126,6 +132,13 @@ onUnmounted(() => {
           :class="{ active: dueToday }"
           @click="dueToday = !dueToday"
         >☀️ 今天截止</button>
+        <span v-if="parsed.hits.length" class="quickadd-parsed">
+          <span v-for="hit in parsed.hits" :key="hit.type + hit.text" class="quickadd-parsed-chip" :class="hit.type">{{
+            hit.type === 'date' ? friendlyDate(hit.value, localDateKey())
+            : hit.type === 'priority' ? (hit.value === 'high' ? '高' : hit.value === 'low' ? '低' : '普') + '优先级'
+            : '#' + hit.value
+          }}</span>
+        </span>
         <span class="quickadd-hint">{{ flash || 'Enter 添加并关闭 · Ctrl+Enter 连续添加' }}</span>
       </div>
     </div>
@@ -213,6 +226,24 @@ onUnmounted(() => {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+.quickadd-parsed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+.quickadd-parsed-chip {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.quickadd-parsed-chip.date     { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.quickadd-parsed-chip.priority { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+
 .quickadd-hint {
   margin-left: auto;
   color: var(--text-muted);
