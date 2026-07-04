@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar.vue'
 import TaskList from './components/TaskList.vue'
 import TaskDetail from './components/TaskDetail.vue'
 import SettingsView from './components/SettingsView.vue'
+import CommandPalette from './components/CommandPalette.vue'
 import { api } from './runtime/api.js'
 import { normalizeTheme } from './runtime/themes.js'
 import {
@@ -30,6 +31,7 @@ function toggleSkipDelete(val) {
   localStorage.setItem('taskflow-skip-delete', String(val))
 }
 const selectedTaskId = ref(null)
+const paletteOpen = ref(false)
 const logs = ref([])
 const dueSummary = ref(null)
 const widgetConfig = ref(null)
@@ -373,6 +375,7 @@ function handleKeydown(event) {
   }
   if (event.key === 'Escape') {
     if (confirmState.value) closeConfirm()
+    else if (paletteOpen.value) paletteOpen.value = false
     else closeTaskDetail()
   }
   if (event.ctrlKey && event.key === '1') {
@@ -391,6 +394,17 @@ function handleKeydown(event) {
     event.preventDefault()
     selectView('settings')
   }
+  if (event.ctrlKey && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    paletteOpen.value = !paletteOpen.value
+  }
+}
+
+async function paletteJumpTask(id) {
+  const task = tasks.value.find(t => t.id === id)
+  if (!task) return
+  await selectProject(task.projectId)
+  selectTask(id)
 }
 
 function showToast(message, action = null) {
@@ -787,6 +801,17 @@ onUnmounted(() => {
         @close="closeTaskDetail"
       />
     </div>
+
+    <CommandPalette
+      :open="paletteOpen"
+      :tasks="tasks"
+      :projects="projects"
+      :today="todayKey"
+      @close="paletteOpen = false"
+      @jumpTask="paletteJumpTask"
+      @jumpProject="selectProject"
+      @jumpView="selectView"
+    />
 
     <Transition name="fade">
       <div v-if="confirmState" class="modal-overlay">
