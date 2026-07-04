@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from './runtime/api.js'
+import { parseQuickInput } from './runtime/quickparse.js'
 
 const projects = ref([])
 const tasks = ref([])
@@ -119,6 +120,73 @@ const filteredTasks = computed(() =>
 
 const pendingCount = computed(() => scopeTasks.value.filter(task => !task.completed).length)
 
+// ── 折叠条：下一个到期任务 ─────────────────────────────
+const nextDueTask = computed(() => {
+  const open = tasks.value.filter(t => !t.parentId && !t.completed && t.dueDate)
+  if (!open.length) return null
+  return [...open].sort((a, b) =>
+    String(a.dueDate).localeCompare(String(b.dueDate)) || (a.position || 0) - (b.position || 0)
+  )[0]
+})
+
+// ── 番茄钟（25 分钟专注 / 5 分钟休息）───────────────────
+const pomo = ref({ running: false, mode: 'focus', remaining: 0 })
+let pomoTimer = null
+
+function pomoLabel(seconds) {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function startPomo(mode) {
+  stopPomoTimer()
+  pomo.value = { running: true, mode, remaining: mode === 'focus' ? 25 * 60 : 5 * 60 }
+  pomoTimer = window.setInterval(() => {
+    if (!pomo.value.running) return
+    pomo.value.remaining -= 1
+    if (pomo.value.remaining <= 0) {
+      finishPomo()
+    }
+  }, 1000)
+}
+
+function togglePomoPause() {
+  pomo.value.running = !pomo.value.running
+}
+
+function resetPomo() {
+  stopPomoTimer()
+  pomo.value = { running: false, mode: 'focus', remaining: 0 }
+}
+
+function stopPomoTimer() {
+  if (pomoTimer) {
+    window.clearInterval(pomoTimer)
+    pomoTimer = null
+  }
+}
+
+async function finishPomo() {
+  const finishedMode = pomo.value.mode
+  resetPomo()
+  try {
+    const notification = window.__TAURI__?.notification
+    if (notification) {
+      let granted = await notification.isPermissionGranted()
+      if (!granted) granted = (await notification.requestPermission()) === 'granted'
+      if (granted) {
+        notification.sendNotification({
+          title: '小光任务',
+          body: finishedMode === 'focus' ? '25 分钟专注结束，休息一下吧 🍅' : '休息结束，继续加油！',
+        })
+      }
+    }
+  } catch (error) {
+    console.warn('[widget] pomo notify failed', error)
+  }
+}
+
 const shellStyle = computed(() => ({
   opacity: String(config.value?.opacity ?? 0.96),
 }))
@@ -220,10 +288,13 @@ async function createTask() {
   if (!targetProject) return
   creating.value = true
   try {
+    const parsed = parseQuickInput(title, todayKey.value)
     await withTimeout(api.createTask({
       projectId: targetProject.id,
-      title,
-      dueDate: isSmartView.value ? todayKey.value : null,
+      title: (parsed.title || title).trim(),
+      dueDate: parsed.dueDate || (isSmartView.value ? todayKey.value : null),
+      priority: parsed.priority || undefined,
+      tags: parsed.tags.length ? parsed.tags : undefined,
     }), 12000, 'create task')
     taskDraft.value = ''
     if (activeFilter.value === 'completed') {
@@ -464,6 +535,7 @@ onUnmounted(() => {
   for (const t of toggleTimers.values()) window.clearTimeout(t)
   toggleTimers.clear()
   if (healthTimer) clearInterval(healthTimer)
+  stopPomoTimer()
   if (loadTimer) window.clearTimeout(loadTimer)
   if (undoTimer) window.clearTimeout(undoTimer)
   if (unlistenConfig) unlistenConfig()
@@ -500,9 +572,17 @@ onUnmounted(() => {
     <header class="widget-titlebar" data-tauri-drag-region>
       <div class="widget-project" data-tauri-drag-region>
         <span class="widget-icon">{{ scope?.icon || '☀️' }}</span>
-        <strong>{{ scope?.name || '待办' }}</strong>
+        <strong v-if="!config?.collapsed || !nextDueTask">{{ scope?.name || '待办' }}</strong>
         <small>{{ pendingCount }}</small>
-        <em>{{ filterLabel }}</em>
+        <span
+          v-if="config?.collapsed && nextDueTask"
+          class="widget-next"
+          :class="dateState(nextDueTask.dueDate)"
+        >{{ formatDueShort(nextDueTask.dueDate) }} {{ nextDueTask.title }}</span>
+        <em v-if="!config?.collapsed">{{ filterLabel }}</em>
+        <span v-if="pomo.remaining > 0" class="widget-pomo-chip" :class="{ paused: !pomo.running }">
+          🍅 {{ pomoLabel(pomo.remaining) }}
+        </span>
       </div>
       <div class="widget-actions">
         <button :class="{ active: config?.collapsed }" title="折叠/展开" @click="toggleCollapsed">
@@ -546,6 +626,19 @@ onUnmounted(() => {
         />
         <button type="submit" :disabled="!taskDraft.trim() || creating">＋</button>
       </form>
+      <div class="widget-pomo-row">
+        <template v-if="pomo.remaining > 0">
+          <span class="pomo-time" :class="pomo.mode">{{ pomoLabel(pomo.remaining) }}</span>
+          <span class="pomo-mode">{{ pomo.mode === 'focus' ? '专注中' : '休息中' }}</span>
+          <button @click="togglePomoPause">{{ pomo.running ? '暂停' : '继续' }}</button>
+          <button @click="resetPomo">结束</button>
+        </template>
+        <template v-else>
+          <span class="pomo-mode">🍅 番茄钟</span>
+          <button @click="startPomo('focus')">专注 25 分</button>
+          <button @click="startPomo('break')">休息 5 分</button>
+        </template>
+      </div>
       <p v-if="errorText" class="widget-error">{{ errorText }}</p>
       <div v-if="undoState" class="widget-undo">
         <span>已删除「{{ undoState.title }}」</span>
@@ -870,6 +963,58 @@ onUnmounted(() => {
 .widget-create button:disabled {
   opacity: .45;
 }
+.widget-next {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.widget-next.overdue { color: var(--danger); }
+.widget-next.today   { color: var(--accent); }
+.widget-pomo-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  white-space: nowrap;
+}
+.widget-pomo-chip.paused { opacity: .55; }
+.widget-pomo-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  -webkit-app-region: no-drag;
+}
+.pomo-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--accent);
+}
+.pomo-time.break { color: var(--success, #5E9E72); }
+.pomo-mode { font-size: 10.5px; }
+.widget-pomo-row button {
+  height: 21px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+}
+.widget-pomo-row button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .widget-error {
   padding: 4px 11px 0;
   color: var(--danger);
@@ -1071,6 +1216,7 @@ onUnmounted(() => {
 .widget-shell.compact .widget-create { padding-top: 5px; }
 .widget-shell.compact .widget-create input,
 .widget-shell.compact .widget-create button { height: 25px; }
+.widget-shell.compact .widget-pomo-row { display: none; }
 .widget-shell.compact .widget-task { min-height: 28px; }
 .widget-shell.compact .widget-task-main { min-height: 28px; padding-block: 5px; }
 </style>
