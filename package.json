@@ -11,7 +11,7 @@
         "build": "npm run lite:exe && node scripts/copy-lite-release.js",
         "preview": "vite preview",
         "verify": "npm run test:views && npm run build:renderer && cargo check --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
-        "test:views": "node scripts/test-taskviews.mjs",
+        "test:views": "node scripts/test-taskviews.mjs && node scripts/test-widget-order.mjs",
         "test:rust": "npm run build:renderer && cargo test --manifest-path src-tauri/Cargo.toml",
         "lite:dev": "npx @tauri-apps/cli dev",
         "lite:exe": "npx @tauri-apps/cli build --bundles none",

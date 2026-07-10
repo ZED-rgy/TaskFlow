@@ -1,8 +1,10 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import Sortable from 'sortablejs'
 import { api } from './runtime/api.js'
 import { parseQuickInput } from './runtime/quickparse.js'
 import { dateState as getDateState, localDateKey, matchesSmartView } from './runtime/taskviews.mjs'
+import { applyWidgetOrder, mergeVisibleOrder } from './runtime/widget-order.mjs'
 
 const projects = ref([])
 const tasks = ref([])
@@ -26,6 +28,24 @@ let mounted = false
 let unlistenConfig = null
 let unlistenData = null
 
+const WIDGET_ORDER_STORAGE_KEY = 'taskflow-widget-orders-v1'
+
+function loadWidgetOrders() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(WIDGET_ORDER_STORAGE_KEY) || '{}')
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([, ids]) => Array.isArray(ids))
+        .map(([key, ids]) => [key, ids.filter(id => typeof id === 'string')])
+    )
+  } catch {
+    return {}
+  }
+}
+
+const widgetOrders = ref(loadWidgetOrders())
+
 const todayKey = ref(localDateKey())
 
 const SMART_VIEWS = [
@@ -45,6 +65,7 @@ const scope = computed(() => {
 })
 
 const activeFilter = computed(() => config.value?.statusFilter || 'open')
+const activeWidgetOrder = computed(() => widgetOrders.value[scopeId.value] || [])
 
 const filterLabel = computed(() => {
   if (activeFilter.value === 'all') return '全部'
@@ -65,8 +86,9 @@ function formatDueShort(dueDate) {
 
 const scopeTasks = computed(() => {
   const roots = tasks.value.filter(task => !task.parentId)
+  let scoped
   if (scopeId.value === 'view:today') {
-    return roots
+    scoped = roots
       .filter(task => matchesSmartView(task, 'today', todayKey.value))
       .sort((a, b) => {
         const sa = dateState(a.dueDate) === 'overdue' ? 0 : 1
@@ -74,17 +96,18 @@ const scopeTasks = computed(() => {
         if (sa !== sb) return sa - sb
         return String(a.dueDate || '').localeCompare(String(b.dueDate || '')) || (a.position || 0) - (b.position || 0)
       })
-  }
-  if (scopeId.value === 'view:upcoming') {
-    return roots
+  } else if (scopeId.value === 'view:upcoming') {
+    scoped = roots
       .filter(task => matchesSmartView(task, 'upcoming', todayKey.value))
       .sort((a, b) =>
         String(a.dueDate || '').localeCompare(String(b.dueDate || '')) || (a.position || 0) - (b.position || 0)
       )
+  } else {
+    scoped = roots
+      .filter(task => task.projectId === scope.value?.id)
+      .sort((a, b) => (a.position || 0) - (b.position || 0))
   }
-  return roots
-    .filter(task => task.projectId === scope.value?.id)
-    .sort((a, b) => (a.position || 0) - (b.position || 0))
+  return applyWidgetOrder(scoped, activeWidgetOrder.value)
 })
 
 const filteredTasks = computed(() =>
@@ -96,6 +119,82 @@ const filteredTasks = computed(() =>
     })
     .slice(0, config.value?.limit || 8)
 )
+
+const widgetListEl = ref(null)
+let taskSortable = null
+let sortableRefreshQueued = false
+
+function destroyTaskSortable() {
+  if (!taskSortable) return
+  taskSortable.destroy()
+  taskSortable = null
+}
+
+function saveVisibleTaskOrder(orderedIds) {
+  const key = scopeId.value
+  if (!key) return
+  const nextOrder = mergeVisibleOrder(
+    activeWidgetOrder.value,
+    orderedIds,
+    scopeTasks.value.map(task => task.id)
+  )
+  widgetOrders.value = { ...widgetOrders.value, [key]: nextOrder }
+  try {
+    localStorage.setItem(WIDGET_ORDER_STORAGE_KEY, JSON.stringify(widgetOrders.value))
+  } catch (error) {
+    errorText.value = '排序已生效，但保存失败'
+    console.warn('[widget] save task order failed', error)
+  }
+}
+
+function initTaskSortable() {
+  destroyTaskSortable()
+  if (!mounted || !widgetListEl.value || config.value?.collapsed || filteredTasks.value.length < 2) return
+  taskSortable = Sortable.create(widgetListEl.value, {
+    animation: 150,
+    draggable: '.widget-task',
+    handle: '.widget-drag-handle',
+    filter: '.busy',
+    preventOnFilter: false,
+    forceFallback: true,
+    fallbackOnBody: true,
+    fallbackTolerance: 4,
+    ghostClass: 'widget-task-ghost',
+    chosenClass: 'widget-task-chosen',
+    dragClass: 'widget-task-dragging',
+    onStart() {
+      closeMenu()
+    },
+    onEnd(event) {
+      if (event.oldIndex !== event.newIndex) {
+        const orderedIds = [...widgetListEl.value.querySelectorAll(':scope > .widget-task')]
+          .map(element => element.dataset.id)
+          .filter(Boolean)
+        saveVisibleTaskOrder(orderedIds)
+      }
+      scheduleTaskSortableRefresh()
+    },
+  })
+}
+
+function scheduleTaskSortableRefresh() {
+  if (sortableRefreshQueued) return
+  sortableRefreshQueued = true
+  nextTick(() => {
+    sortableRefreshQueued = false
+    initTaskSortable()
+  })
+}
+
+const sortableSignature = computed(() => [
+  scopeId.value,
+  activeFilter.value,
+  config.value?.limit || 8,
+  config.value?.collapsed ? 1 : 0,
+  ...filteredTasks.value.map(task => task.id),
+].join('|'))
+
+watch(sortableSignature, scheduleTaskSortableRefresh)
 
 const pendingCount = computed(() => scopeTasks.value.filter(task => !task.completed).length)
 
@@ -493,6 +592,7 @@ async function runHealthCheck() {
 onMounted(() => {
   mounted = true
   load()
+  scheduleTaskSortableRefresh()
   timer = setInterval(() => {
     todayKey.value = localDateKey()
     scheduleLoad(0)
@@ -510,6 +610,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   mounted = false
+  destroyTaskSortable()
   if (timer) clearInterval(timer)
   for (const t of toggleTimers.values()) window.clearTimeout(t)
   toggleTimers.clear()
@@ -624,12 +725,13 @@ onUnmounted(() => {
         <button @click="undoDelete">撤销</button>
       </div>
 
-      <main class="widget-list">
+      <main ref="widgetListEl" class="widget-list">
         <p v-if="loading" class="widget-empty">读取中...</p>
         <p v-else-if="!filteredTasks.length" class="widget-empty">这个筛选下暂时没有任务</p>
         <div
           v-for="task in filteredTasks"
           :key="task.id"
+          :data-id="task.id"
           class="widget-task"
           :class="{ completed: task.completed, busy: pendingIds.has(task.id) }"
           :title="task.title + '（双击在主窗口打开）'"
@@ -644,6 +746,16 @@ onUnmounted(() => {
             class="widget-due"
             :class="dateState(task.dueDate)"
           >{{ formatDueShort(task.dueDate) }}</span>
+          <button
+            type="button"
+            class="widget-drag-handle"
+            title="拖动调整组件内顺序"
+            :aria-label="`拖动调整「${task.title}」的顺序`"
+            @click.stop
+            @dblclick.stop
+          >
+            <span /><span /><span /><span /><span /><span />
+          </button>
           <button class="widget-delete" title="删除任务（可撤销）" @click.stop="deleteTask(task)">×</button>
         </div>
       </main>
@@ -1041,10 +1153,19 @@ onUnmounted(() => {
   width: 100%;
   min-height: 34px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 24px;
+  grid-template-columns: minmax(0, 1fr) auto 18px 24px;
   align-items: center;
   gap: 4px;
   border-radius: 6px;
+}
+.widget-task-ghost {
+  opacity: .35;
+  background: var(--accent-soft);
+  outline: 1px dashed var(--accent);
+}
+.widget-task-chosen,
+.widget-task-dragging {
+  background: var(--bg-elevated);
 }
 .widget-task:hover {
   background: var(--bg-elevated);
@@ -1054,6 +1175,7 @@ onUnmounted(() => {
   pointer-events: none;
 }
 .widget-task-main {
+  grid-column: 1;
   min-width: 0;
   min-height: 34px;
   display: flex;
@@ -1089,6 +1211,7 @@ onUnmounted(() => {
   border-color: var(--accent);
 }
 .widget-due {
+  grid-column: 2;
   flex-shrink: 0;
   font-size: 10px;
   color: var(--text-muted);
@@ -1105,7 +1228,36 @@ onUnmounted(() => {
   color: var(--danger);
   background: var(--danger-soft);
 }
+.widget-drag-handle {
+  grid-column: 3;
+  width: 18px;
+  height: 24px;
+  display: grid;
+  grid-template-columns: repeat(2, 3px);
+  grid-auto-rows: 3px;
+  place-content: center;
+  gap: 2px;
+  color: var(--text-muted);
+  opacity: .35;
+  cursor: grab;
+  border-radius: 4px;
+}
+.widget-drag-handle:hover {
+  opacity: 1;
+  color: var(--text-secondary);
+  background: var(--bg-base);
+}
+.widget-drag-handle:active {
+  cursor: grabbing;
+}
+.widget-drag-handle span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
 .widget-delete {
+  grid-column: 4;
   width: 22px;
   height: 22px;
   border-radius: 5px;
