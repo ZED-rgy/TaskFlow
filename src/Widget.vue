@@ -1,10 +1,14 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import Sortable from 'sortablejs'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from './runtime/api.js'
 import { parseQuickInput } from './runtime/quickparse.js'
 import { dateState as getDateState, localDateKey, matchesSmartView } from './runtime/taskviews.mjs'
-import { applyWidgetOrder, mergeVisibleOrder } from './runtime/widget-order.mjs'
+import {
+  applyWidgetOrder,
+  hasExceededDragThreshold,
+  mergeVisibleOrder,
+  moveVisibleId,
+} from './runtime/widget-order.mjs'
 
 const projects = ref([])
 const tasks = ref([])
@@ -121,16 +125,12 @@ const filteredTasks = computed(() =>
 )
 
 const widgetListEl = ref(null)
-let taskSortable = null
-let sortableRefreshQueued = false
+const pointerSortId = ref(null)
+let pointerSortSession = null
+let suppressTaskClickId = null
+let suppressTaskClickTimer = null
 
-function destroyTaskSortable() {
-  if (!taskSortable) return
-  taskSortable.destroy()
-  taskSortable = null
-}
-
-function saveVisibleTaskOrder(orderedIds) {
+function saveVisibleTaskOrder(orderedIds, persist = true) {
   const key = scopeId.value
   if (!key) return
   const nextOrder = mergeVisibleOrder(
@@ -139,6 +139,11 @@ function saveVisibleTaskOrder(orderedIds) {
     scopeTasks.value.map(task => task.id)
   )
   widgetOrders.value = { ...widgetOrders.value, [key]: nextOrder }
+  if (!persist) return
+  persistWidgetOrders()
+}
+
+function persistWidgetOrders() {
   try {
     localStorage.setItem(WIDGET_ORDER_STORAGE_KEY, JSON.stringify(widgetOrders.value))
   } catch (error) {
@@ -147,54 +152,74 @@ function saveVisibleTaskOrder(orderedIds) {
   }
 }
 
-function initTaskSortable() {
-  destroyTaskSortable()
-  if (!mounted || !widgetListEl.value || config.value?.collapsed || filteredTasks.value.length < 2) return
-  taskSortable = Sortable.create(widgetListEl.value, {
-    animation: 150,
-    draggable: '.widget-task',
-    handle: '.widget-drag-handle',
-    filter: '.busy',
-    preventOnFilter: false,
-    forceFallback: true,
-    fallbackOnBody: true,
-    fallbackTolerance: 4,
-    ghostClass: 'widget-task-ghost',
-    chosenClass: 'widget-task-chosen',
-    dragClass: 'widget-task-dragging',
-    onStart() {
-      closeMenu()
-    },
-    onEnd(event) {
-      if (event.oldIndex !== event.newIndex) {
-        const orderedIds = [...widgetListEl.value.querySelectorAll(':scope > .widget-task')]
-          .map(element => element.dataset.id)
-          .filter(Boolean)
-        saveVisibleTaskOrder(orderedIds)
-      }
-      scheduleTaskSortableRefresh()
-    },
-  })
+function beginTaskPointerSort(task, event) {
+  if (event.button !== 0 || pendingIds.value.has(task.id) || filteredTasks.value.length < 2) return
+  if (event.target.closest('.widget-check, .widget-delete, .widget-due')) return
+  pointerSortSession = {
+    id: task.id,
+    startX: event.clientX,
+    startY: event.clientY,
+    pointerId: event.pointerId,
+    captureTarget: event.currentTarget,
+    active: false,
+  }
+  closeMenu()
+  window.addEventListener('pointermove', moveTaskPointerSort)
+  window.addEventListener('pointerup', finishTaskPointerSort, { once: true })
+  window.addEventListener('pointercancel', finishTaskPointerSort, { once: true })
 }
 
-function scheduleTaskSortableRefresh() {
-  if (sortableRefreshQueued) return
-  sortableRefreshQueued = true
-  nextTick(() => {
-    sortableRefreshQueued = false
-    initTaskSortable()
-  })
+function moveTaskPointerSort(event) {
+  const session = pointerSortSession
+  if (!session || !widgetListEl.value) return
+  if (!session.active) {
+    if (!hasExceededDragThreshold(session.startX, session.startY, event.clientX, event.clientY)) return
+    session.active = true
+    pointerSortId.value = session.id
+    try { session.captureTarget?.setPointerCapture?.(session.pointerId) } catch {}
+  }
+  event.preventDefault()
+  const target = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.widget-task')
+  const targetId = target?.dataset?.id
+  if (!targetId || targetId === session.id || !widgetListEl.value.contains(target)) return
+  const visibleIds = filteredTasks.value.map(task => task.id)
+  const nextIds = moveVisibleId(visibleIds, session.id, targetId)
+  if (nextIds.every((id, index) => id === visibleIds[index])) return
+  saveVisibleTaskOrder(nextIds, false)
 }
 
-const sortableSignature = computed(() => [
-  scopeId.value,
-  activeFilter.value,
-  config.value?.limit || 8,
-  config.value?.collapsed ? 1 : 0,
-  ...filteredTasks.value.map(task => task.id),
-].join('|'))
+function finishTaskPointerSort() {
+  const session = pointerSortSession
+  if (session?.active) {
+    persistWidgetOrders()
+    suppressTaskClickId = session.id
+    if (suppressTaskClickTimer) window.clearTimeout(suppressTaskClickTimer)
+    suppressTaskClickTimer = window.setTimeout(() => {
+      suppressTaskClickId = null
+      suppressTaskClickTimer = null
+    }, 350)
+  }
+  try { session?.captureTarget?.releasePointerCapture?.(session.pointerId) } catch {}
+  pointerSortSession = null
+  pointerSortId.value = null
+  window.removeEventListener('pointermove', moveTaskPointerSort)
+  window.removeEventListener('pointerup', finishTaskPointerSort)
+  window.removeEventListener('pointercancel', finishTaskPointerSort)
+}
 
-watch(sortableSignature, scheduleTaskSortableRefresh)
+function consumeSuppressedTaskClick(taskId) {
+  if (suppressTaskClickId !== taskId) return false
+  suppressTaskClickId = null
+  if (suppressTaskClickTimer) window.clearTimeout(suppressTaskClickTimer)
+  suppressTaskClickTimer = null
+  return true
+}
+
+function captureTaskRowClick(taskId, event) {
+  if (!consumeSuppressedTaskClick(taskId)) return
+  event.preventDefault()
+  event.stopPropagation()
+}
 
 const pendingCount = computed(() => scopeTasks.value.filter(task => !task.completed).length)
 
@@ -446,6 +471,7 @@ async function undoDelete() {
 const toggleTimers = new Map()
 
 function onTitleClick(task) {
+  if (consumeSuppressedTaskClick(task.id)) return
   if (toggleTimers.has(task.id)) return
   const timer = window.setTimeout(() => {
     toggleTimers.delete(task.id)
@@ -455,6 +481,7 @@ function onTitleClick(task) {
 }
 
 function onRowDblclick(task) {
+  if (consumeSuppressedTaskClick(task.id)) return
   const timer = toggleTimers.get(task.id)
   if (timer) {
     window.clearTimeout(timer)
@@ -592,7 +619,6 @@ async function runHealthCheck() {
 onMounted(() => {
   mounted = true
   load()
-  scheduleTaskSortableRefresh()
   timer = setInterval(() => {
     todayKey.value = localDateKey()
     scheduleLoad(0)
@@ -610,7 +636,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   mounted = false
-  destroyTaskSortable()
+  finishTaskPointerSort()
   if (timer) clearInterval(timer)
   for (const t of toggleTimers.values()) window.clearTimeout(t)
   toggleTimers.clear()
@@ -618,6 +644,7 @@ onUnmounted(() => {
   stopPomoTimer()
   if (loadTimer) window.clearTimeout(loadTimer)
   if (undoTimer) window.clearTimeout(undoTimer)
+  if (suppressTaskClickTimer) window.clearTimeout(suppressTaskClickTimer)
   if (unlistenConfig) unlistenConfig()
   if (unlistenData) unlistenData()
 })
@@ -733,8 +760,14 @@ onUnmounted(() => {
           :key="task.id"
           :data-id="task.id"
           class="widget-task"
-          :class="{ completed: task.completed, busy: pendingIds.has(task.id) }"
-          :title="task.title + '（双击在主窗口打开）'"
+          :class="{
+            completed: task.completed,
+            busy: pendingIds.has(task.id),
+            sorting: pointerSortId === task.id,
+          }"
+          :title="task.title + '（按住拖动排序；双击在主窗口打开）'"
+          @pointerdown="beginTaskPointerSort(task, $event)"
+          @click.capture="captureTaskRowClick(task.id, $event)"
           @dblclick="onRowDblclick(task)"
         >
           <button class="widget-task-main" @click="onTitleClick(task)">
@@ -746,16 +779,6 @@ onUnmounted(() => {
             class="widget-due"
             :class="dateState(task.dueDate)"
           >{{ formatDueShort(task.dueDate) }}</span>
-          <button
-            type="button"
-            class="widget-drag-handle"
-            title="拖动调整组件内顺序"
-            :aria-label="`拖动调整「${task.title}」的顺序`"
-            @click.stop
-            @dblclick.stop
-          >
-            <span /><span /><span /><span /><span /><span />
-          </button>
           <button class="widget-delete" title="删除任务（可撤销）" @click.stop="deleteTask(task)">×</button>
         </div>
       </main>
@@ -1153,19 +1176,18 @@ onUnmounted(() => {
   width: 100%;
   min-height: 34px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 18px 24px;
+  grid-template-columns: minmax(0, 1fr) auto 24px;
   align-items: center;
   gap: 4px;
   border-radius: 6px;
+  cursor: grab;
+  user-select: none;
 }
-.widget-task-ghost {
-  opacity: .35;
-  background: var(--accent-soft);
-  outline: 1px dashed var(--accent);
-}
-.widget-task-chosen,
-.widget-task-dragging {
+.widget-task.sorting {
+  opacity: .55;
   background: var(--bg-elevated);
+  outline: 1px dashed var(--accent);
+  cursor: grabbing;
 }
 .widget-task:hover {
   background: var(--bg-elevated);
@@ -1184,6 +1206,8 @@ onUnmounted(() => {
   padding: 7px 6px 7px 8px;
   color: var(--text-secondary);
   text-align: left;
+  cursor: grab;
+  touch-action: none;
 }
 .widget-task-title {
   min-width: 0;
@@ -1205,6 +1229,7 @@ onUnmounted(() => {
   border: 2px solid var(--border-strong);
   border-radius: 4px;
   transition: background .12s, border-color .12s;
+  cursor: pointer;
 }
 .widget-task.completed .widget-check {
   background: var(--accent);
@@ -1228,36 +1253,8 @@ onUnmounted(() => {
   color: var(--danger);
   background: var(--danger-soft);
 }
-.widget-drag-handle {
-  grid-column: 3;
-  width: 18px;
-  height: 24px;
-  display: grid;
-  grid-template-columns: repeat(2, 3px);
-  grid-auto-rows: 3px;
-  place-content: center;
-  gap: 2px;
-  color: var(--text-muted);
-  opacity: .35;
-  cursor: grab;
-  border-radius: 4px;
-}
-.widget-drag-handle:hover {
-  opacity: 1;
-  color: var(--text-secondary);
-  background: var(--bg-base);
-}
-.widget-drag-handle:active {
-  cursor: grabbing;
-}
-.widget-drag-handle span {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: currentColor;
-}
 .widget-delete {
-  grid-column: 4;
+  grid-column: 3;
   width: 22px;
   height: 22px;
   border-radius: 5px;

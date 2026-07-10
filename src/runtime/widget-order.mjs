@@ -31,3 +31,17 @@ export function applyWidgetOrder(tasks, order) {
     })
     .map(item => item.task)
 }
+
+export function moveVisibleId(ids, draggedId, targetId) {
+  const fromIndex = ids.indexOf(draggedId)
+  const targetIndex = ids.indexOf(targetId)
+  if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) return [...ids]
+  const next = [...ids]
+  next.splice(fromIndex, 1)
+  next.splice(Math.min(targetIndex, next.length), 0, draggedId)
+  return next
+}
+
+export function hasExceededDragThreshold(startX, startY, currentX, currentY, threshold = 5) {
+  return Math.hypot(currentX - startX, currentY - startY) > threshold
+}
