@@ -73,7 +73,7 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
       </div>
       <div class="settings-card">
         <h2>自动备份</h2>
-        <p>启动和导入前会自动备份，保留最近 12 份。</p>
+        <p>启动和导入前会自动备份，保留最近 30 份。</p>
         <p class="path-text">{{ appInfo?.backupDir }}</p>
         <p>当前备份：{{ appInfo?.backup?.count || 0 }} 份</p>
       </div>
@@ -279,7 +279,7 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
       </div>
       <div class="settings-card">
         <h2>版本</h2>
-        <p>小光任务 {{ appInfo?.version || '1.0.0' }}</p>
+        <p>小光任务 {{ appInfo?.version || '0.2.0' }}</p>
         <p>数据版本：{{ appInfo?.schemaVersion || '-' }}</p>
       </div>
       <div class="settings-card logs-card">

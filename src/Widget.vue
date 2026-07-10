@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from './runtime/api.js'
 import { parseQuickInput } from './runtime/quickparse.js'
+import { dateState as getDateState, localDateKey, matchesSmartView } from './runtime/taskviews.mjs'
 
 const projects = ref([])
 const tasks = ref([])
@@ -24,13 +25,6 @@ let healthFailures = 0
 let mounted = false
 let unlistenConfig = null
 let unlistenData = null
-
-function localDateKey(date = new Date()) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
 
 const todayKey = ref(localDateKey())
 
@@ -59,20 +53,8 @@ const filterLabel = computed(() => {
 })
 
 function dateState(dueDate) {
-  if (!dueDate) return ''
-  const key = String(dueDate).slice(0, 10)
-  if (key < todayKey.value) return 'overdue'
-  if (key === todayKey.value) return 'today'
-  return 'future'
-}
-
-function withinNextWeek(dueDate) {
-  if (!dueDate) return false
-  const key = String(dueDate).slice(0, 10)
-  const date = new Date(`${key}T00:00:00`)
-  const today = new Date(`${todayKey.value}T00:00:00`)
-  const diff = (date - today) / 86400000
-  return diff >= 0 && diff <= 7
+  const state = getDateState(dueDate, todayKey.value)
+  return state === 'none' ? '' : state
 }
 
 function formatDueShort(dueDate) {
@@ -85,10 +67,7 @@ const scopeTasks = computed(() => {
   const roots = tasks.value.filter(task => !task.parentId)
   if (scopeId.value === 'view:today') {
     return roots
-      .filter(task => {
-        const state = dateState(task.dueDate)
-        return state === 'today' || (state === 'overdue' && !task.completed)
-      })
+      .filter(task => matchesSmartView(task, 'today', todayKey.value))
       .sort((a, b) => {
         const sa = dateState(a.dueDate) === 'overdue' ? 0 : 1
         const sb = dateState(b.dueDate) === 'overdue' ? 0 : 1
@@ -98,7 +77,7 @@ const scopeTasks = computed(() => {
   }
   if (scopeId.value === 'view:upcoming') {
     return roots
-      .filter(task => withinNextWeek(task.dueDate) || (dateState(task.dueDate) === 'overdue' && !task.completed))
+      .filter(task => matchesSmartView(task, 'upcoming', todayKey.value))
       .sort((a, b) =>
         String(a.dueDate || '').localeCompare(String(b.dueDate || '')) || (a.position || 0) - (b.position || 0)
       )

@@ -7,6 +7,7 @@ import SettingsView from './components/SettingsView.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import { api } from './runtime/api.js'
 import { normalizeTheme } from './runtime/themes.js'
+import { countSmartViews, localDateKey, matchesSmartView } from './runtime/taskviews.mjs'
 import {
   FONT_SIZES,
   FALLBACK_FONTS,
@@ -187,40 +188,12 @@ const selectedProject = computed(() =>
   projects.value.find(p => p.id === selectedId.value) || null
 )
 
-function toDateKey(value) {
-  if (!value) return null
-  return String(value).slice(0, 10)
-}
-
-function localDateKey(date = new Date()) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 const todayKey = computed(() => localDateKey())
-
-function isWithinNextWeek(dateKey) {
-  if (!dateKey) return false
-  const date = new Date(`${dateKey}T00:00:00`)
-  const today = new Date(`${todayKey.value}T00:00:00`)
-  const diff = (date - today) / 86400000
-  return diff >= 0 && diff <= 7
-}
 
 const projectTasks = computed(() =>
   tasks.value.filter(t => {
-    if (currentView.value === 'today') {
-      // 含逾期未完成：逾期任务最需要「今天」处理
-      const dateKey = toDateKey(t.dueDate)
-      return !t.completed && dateKey && dateKey <= todayKey.value
-    }
-    if (currentView.value === 'upcoming') {
-      return !t.completed && isWithinNextWeek(toDateKey(t.dueDate))
-    }
-    if (currentView.value === 'completed') {
-      return t.completed
+    if (currentView.value !== 'project') {
+      return matchesSmartView(t, currentView.value, todayKey.value)
     }
     return t.projectId === selectedId.value
   })
@@ -239,15 +212,7 @@ const activeScope = computed(() => {
   return selectedProject.value
 })
 
-const smartCounts = computed(() =>
-  tasks.value.reduce((counts, task) => {
-    const dateKey = toDateKey(task.dueDate)
-    if (!task.completed && dateKey && dateKey <= todayKey.value) counts.today += 1
-    if (!task.completed && isWithinNextWeek(dateKey)) counts.upcoming += 1
-    if (task.completed) counts.completed += 1
-    return counts
-  }, { today: 0, upcoming: 0, completed: 0 })
-)
+const smartCounts = computed(() => countSmartViews(tasks.value, todayKey.value))
 
 const selectedTask = computed(() =>
   tasks.value.find(task => task.id === selectedTaskId.value) || null

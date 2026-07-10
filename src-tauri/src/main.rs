@@ -242,7 +242,8 @@ struct TaskPayload {
     title: Option<String>,
     notes: Option<String>,
     completed: Option<bool>,
-    due_date: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    due_date: Option<Option<String>>,
     priority: Option<String>,
     tags: Option<Vec<String>>,
     repeat: Option<String>,
@@ -255,6 +256,14 @@ struct ReorderTaskPayload {
     project_id: String,
     ordered_ids: Vec<String>,
     parent_id: Option<String>,
+}
+
+fn deserialize_present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 fn now() -> String {
@@ -1864,7 +1873,7 @@ fn create_task(app: AppHandle, window: Window, data: TaskPayload) -> Result<Task
         title: clamp_chars(data.title.unwrap_or_default(), MAX_TITLE_LEN),
         notes: clamp_chars(data.notes.unwrap_or_default(), MAX_NOTES_LEN),
         completed: false,
-        due_date: data.due_date,
+        due_date: data.due_date.flatten(),
         priority: normalize_priority(data.priority),
         tags: normalize_tags(data.tags),
         repeat: normalize_repeat(data.repeat),
@@ -1896,8 +1905,8 @@ fn update_task(
     if let Some(notes) = data.notes {
         db.tasks[idx].notes = clamp_chars(notes, MAX_NOTES_LEN);
     }
-    if data.due_date.is_some() {
-        db.tasks[idx].due_date = data.due_date;
+    if let Some(due_date) = data.due_date {
+        db.tasks[idx].due_date = due_date;
     }
     if data.priority.is_some() {
         db.tasks[idx].priority = normalize_priority(data.priority);
@@ -2648,6 +2657,17 @@ mod tests {
     fn repeat_falls_back_to_none() {
         assert_eq!(normalize_repeat(None), "none");
         assert_eq!(normalize_repeat(Some("yearly".into())), "none");
+    }
+
+    #[test]
+    fn task_payload_distinguishes_missing_clear_and_value_due_date() {
+        let missing: TaskPayload = serde_json::from_str(r#"{}"#).unwrap();
+        let clear: TaskPayload = serde_json::from_str(r#"{"dueDate":null}"#).unwrap();
+        let value: TaskPayload = serde_json::from_str(r#"{"dueDate":"2026-07-10"}"#).unwrap();
+
+        assert_eq!(missing.due_date, None);
+        assert_eq!(clear.due_date, Some(None));
+        assert_eq!(value.due_date, Some(Some("2026-07-10".into())));
     }
 
     // ── clamp_chars ────────────────────────────────────────

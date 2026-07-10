@@ -3,6 +3,7 @@ import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import Sortable from 'sortablejs'
 import TaskItem from './TaskItem.vue'
 import { parseQuickInput, friendlyDate } from '../runtime/quickparse.js'
+import { dateState as getDateState } from '../runtime/taskviews.mjs'
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -36,10 +37,7 @@ function taskProjectName(projectId) {
 }
 
 function dateState(dateKey) {
-  if (!dateKey) return 'none'
-  if (dateKey < props.today) return 'overdue'
-  if (dateKey === props.today) return 'today'
-  return 'future'
+  return getDateState(dateKey, props.today)
 }
 
 const filteredRootSource = computed(() => {
