@@ -129,16 +129,6 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
           </select>
         </div>
         <div class="widget-setting-row">
-          <span>显示数量</span>
-          <input
-            type="number"
-            min="3"
-            max="20"
-            :value="widgetConfig?.limit || 8"
-            @change="updateWidgetConfig({ limit: Number($event.target.value) })"
-          />
-        </div>
-        <div class="widget-setting-row">
           <span>透明度</span>
           <input
             type="range"
