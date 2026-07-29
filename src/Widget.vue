@@ -9,6 +9,7 @@ import {
   mergeVisibleOrder,
   moveVisibleId,
 } from './runtime/widget-order.mjs'
+import { selectWidgetDisplayTasks } from './runtime/widget-visibility.mjs'
 
 const projects = ref([])
 const tasks = ref([])
@@ -115,13 +116,11 @@ const scopeTasks = computed(() => {
 })
 
 const filteredTasks = computed(() =>
-  scopeTasks.value
-    .filter(task => {
-      if (activeFilter.value === 'all') return true
-      if (activeFilter.value === 'completed') return task.completed
-      return !task.completed
-    })
-    .slice(0, config.value?.limit || 8)
+  selectWidgetDisplayTasks(scopeTasks.value.filter(task => {
+    if (activeFilter.value === 'all') return true
+    if (activeFilter.value === 'completed') return task.completed
+    return !task.completed
+  }))
 )
 
 const widgetListEl = ref(null)
@@ -585,7 +584,6 @@ function menuAction(action) {
 }
 
 const OPACITY_STEPS = [0.84, 0.96, 1.0]
-const LIMIT_STEPS = [5, 8, 12]
 
 function recoverWidget(reason) {
   console.warn('[widget] recovering', reason)
@@ -829,17 +827,6 @@ onUnmounted(() => {
             :class="{ active: Math.abs((config?.opacity ?? 0.96) - step) < 0.02 }"
             @click="menuAction(() => patchConfig({ opacity: step }))"
           >{{ Math.round(step * 100) }}</button>
-        </div>
-      </div>
-      <div class="menu-row">
-        <span>显示数量</span>
-        <div>
-          <button
-            v-for="step in LIMIT_STEPS"
-            :key="step"
-            :class="{ active: (config?.limit || 8) === step }"
-            @click="menuAction(() => patchConfig({ limit: step }))"
-          >{{ step }}</button>
         </div>
       </div>
       <div class="menu-sep" />
@@ -1168,6 +1155,7 @@ onUnmounted(() => {
 }
 .widget-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 6px 8px 10px;
   -webkit-app-region: no-drag;
