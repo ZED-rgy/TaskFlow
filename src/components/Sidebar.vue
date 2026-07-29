@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
   projects:   { type: Array, default: () => [] },
@@ -31,6 +31,9 @@ const dragIndex = ref(null)
 const dragChanged = ref(false)
 const suppressClick = ref(false)
 const pointerCandidate = ref(null)
+const visibleProjects = computed(() =>
+  dragIndex.value === null ? props.projects : orderedProjects.value
+)
 
 const showNewForm  = ref(false)
 const newName      = ref('')
@@ -46,14 +49,6 @@ onMounted(() => {
 onUnmounted(() => {
   removePointerDragListeners()
 })
-
-watch(
-  () => props.projects,
-  projects => {
-    if (dragIndex.value === null) orderedProjects.value = [...projects]
-  },
-  { immediate: true }
-)
 
 async function openNewForm() {
   showNewForm.value = true
@@ -258,7 +253,7 @@ function selectProject(p) {
       <div class="section-label">PROJECTS</div>
 
       <div
-        v-for="(p, i) in orderedProjects"
+        v-for="(p, i) in visibleProjects"
         :key="p.id"
         :data-project-index="i"
         class="project-row"

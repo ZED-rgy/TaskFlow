@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+const DEV_PORT = 5173
+
 export default defineConfig({
   plugins: [vue()],
   base: './',
@@ -14,5 +16,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
-    str
+    port: DEV_PORT,
+    strictPort: true,
+  }
+})

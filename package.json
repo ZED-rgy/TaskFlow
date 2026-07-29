@@ -1,22 +1,35 @@
 {
     "name": "taskflow",
     "version": "0.2.0",
-    "description": "轻量个人任务管理器",
+    "description": "本地优先的 Windows 桌面任务管理器",
     "author": "小光任务",
+    "license": "MIT",
+    "private": true,
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ZED-rgy/TaskFlow.git"
+    },
+    "homepage": "https://github.com/ZED-rgy/TaskFlow#readme",
+    "bugs": {
+        "url": "https://github.com/ZED-rgy/TaskFlow/issues"
+    },
+    "engines": {
+        "node": ">=18"
+    },
     "scripts": {
         "dev": "npx @tauri-apps/cli dev",
-        "dev:renderer": "vite",
-        "build:renderer": "vite build",
+        "dev:web": "vite",
+        "build:web": "vite build",
         "generate:icon": "node scripts/generate-icon.js",
-        "build": "npm run lite:exe && node scripts/copy-lite-release.js",
+        "build": "npm run build:portable",
+        "build:portable": "npx @tauri-apps/cli build --bundles none && node scripts/copy-portable-release.js",
+        "build:installer": "npx @tauri-apps/cli build",
         "preview": "vite preview",
-        "verify": "npm run test:views && npm run build:renderer && cargo check --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
-        "test:views": "node scripts/test-taskviews.mjs && node scripts/test-widget-order.mjs",
-        "test:rust": "npm run build:renderer && cargo test --manifest-path src-tauri/Cargo.toml",
-        "lite:dev": "npx @tauri-apps/cli dev",
-        "lite:exe": "npx @tauri-apps/cli build --bundles none",
-        "lite:build": "npx @tauri-apps/cli build",
-        "lite:check": "npm run build:renderer && cargo check --manifest-path src-tauri/Cargo.toml"
+        "test": "npm run test:unit && npm run test:rust",
+        "test:unit": "node scripts/test-taskviews.mjs && node scripts/test-widget-order.mjs",
+        "test:rust": "npm run build:web && cargo test --manifest-path src-tauri/Cargo.toml",
+        "check": "npm run test:unit && npm run build:web && cargo check --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
+        "verify": "npm run check"
     },
     "dependencies": {
         "sortablejs": "^1.15.2",

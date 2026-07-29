@@ -3,11 +3,22 @@ node_modules/
 dist/
 src-tauri/target/
 release/
+coverage/
 
 # 本地数据与备份
 备份/
 *.log
+*.tmp
+*.bak
 
-# 系统文件
+# 本地环境配置
+.env
+.env.*
+!.env.example
+
+# 编辑器与系统文件
+.idea/
+.vscode/
+*.swp
 .DS_Store
 Thumbs.db

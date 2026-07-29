@@ -1,4 +1,4 @@
-# TaskFlow 启动说明
+# TaskFlow 开发与构建
 
 ## 环境要求
 - Node.js 18+ （https://nodejs.org 下载）
@@ -14,7 +14,7 @@ cd TaskFlow
 # 安装依赖（仅需执行一次）
 npm install
 
-# 启动开发模式
+# 启动 Tauri 开发模式
 npm.cmd run dev
 ```
 
@@ -22,9 +22,9 @@ npm.cmd run dev
 
 ---
 
-## 当前正式版（轻量免安装版）
+## 本地便携版
 
-当前保留的正式版位于：
+执行构建后，便携版位于：
 
 `release/小光任务.exe`
 
@@ -32,7 +32,7 @@ npm.cmd run dev
 
 ---
 
-## 重新构建当前正式版
+## 构建便携版
 
 ```bash
 npm.cmd run build
@@ -102,20 +102,23 @@ npm.cmd run build
 | Ctrl + Alt + N（全局，可自定义） | 任意界面弹出快速添加窗口 |
 | Esc | 关闭确认框或任务详情 |
 
-## 验证命令
+## 常用命令
 
 ```bash
-# 发版前基础回归：渲染端构建 + Rust cargo check
+# 完整回归：规则测试 + 前端构建 + Rust 检查与单元测试
 npm.cmd run verify
 
 # 生成 Windows 图标
 npm.cmd run generate:icon
 
-# 渲染端构建
-npm.cmd run build:renderer
+# 仅构建前端
+npm.cmd run build:web
 
-# 生成当前 Tauri 轻量版 exe
+# 生成便携版 exe
 npm.cmd run build
+
+# 生成 NSIS 安装包
+npm.cmd run build:installer
 ```
 
 ## 数据存储位置
@@ -140,11 +143,11 @@ npm.cmd run build
 
 设置页会显示日志路径和最近诊断日志，便于排查导入、启动和数据恢复问题。
 
-## 发布说明
+## 发布注意事项
 
 - 应用图标资源位于 `assets/icon.svg` 和 `assets/icon.ico`。
 - `assets/icon.ico` 可通过 `npm.cmd run generate:icon` 重新生成。
-- 当前 Windows zip 便携包关闭了 exe 签名编辑流程，以便在普通权限环境稳定打包。
+- `release/`、`dist/` 和 `src-tauri/target/` 都是可重新生成的产物，不提交到 Git。
 - 正式公开分发前建议配置代码签名证书。
 
 
@@ -152,15 +155,6 @@ npm.cmd run build
 
 项目已于 2026-06-11 完成从 Electron 到 Tauri 1.x 的迁移并移除 Electron 代码（历史见 git 记录）。
 桌面组件窗口按需创建、隐藏 5 分钟自动释放；数据常驻内存、防抖落盘。
-
-备用命令：
-
-```bash
-npm.cmd run lite:check   # 等同 verify
-npm.cmd run lite:exe     # 等同 build 的第一步，仅生成 exe
-npm.cmd run lite:dev     # 等同 dev
-npm.cmd run lite:build   # 生成 NSIS 安装包（需要联网下载打包器）
-```
 
 注意：应用自身进程内存（任务管理器中的 小光任务.exe）通常仅 10-30 MB，完整占用需把 msedgewebview2.exe 子进程计入，整体约为同类 Electron 应用的 1/3。
 

@@ -747,17 +747,21 @@ fn open_quick_add(app: &AppHandle) -> Result<(), String> {
         let _ = window.set_focus();
         return Ok(());
     }
-    let window = WindowBuilder::new(app, "quickadd", WindowUrl::App("index.html?quickadd".into()))
-        .title("快速添加任务")
-        .decorations(false)
-        .transparent(true)
-        .resizable(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .inner_size(560.0, 120.0)
-        .center()
-        .build()
-        .map_err(|err| err.to_string())?;
+    let window = WindowBuilder::new(
+        app,
+        "quickadd",
+        WindowUrl::App("index.html?quickadd".into()),
+    )
+    .title("快速添加任务")
+    .decorations(false)
+    .transparent(true)
+    .resizable(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .inner_size(560.0, 120.0)
+    .center()
+    .build()
+    .map_err(|err| err.to_string())?;
     let _ = window.set_focus();
     Ok(())
 }
@@ -1212,8 +1216,10 @@ fn mini_position(app: &AppHandle, config: &WidgetConfig) -> (f64, f64) {
     } else {
         left + width - WIDGET_MINI_SIZE
     };
-    let y = (config.mini_y.unwrap_or(config.y) as f64)
-        .clamp(top + 8.0, (top + height - WIDGET_MINI_SIZE - 8.0).max(top + 8.0));
+    let y = (config.mini_y.unwrap_or(config.y) as f64).clamp(
+        top + 8.0,
+        (top + height - WIDGET_MINI_SIZE - 8.0).max(top + 8.0),
+    );
     (x, y)
 }
 
@@ -1275,10 +1281,6 @@ fn clamp_widget_xy_margin(
     let max_x = left + (width - widget_width - margin).max(margin);
     let max_y = top + (height - widget_height - margin).max(margin);
     (x.clamp(min_x, max_x), y.clamp(min_y, max_y))
-}
-
-fn clamp_widget_xy(app: &AppHandle, config: &WidgetConfig, x: f64, y: f64) -> (f64, f64) {
-    clamp_widget_xy_margin(app, config, x, y, WIDGET_SCREEN_MARGIN)
 }
 
 fn safe_widget_position(app: &AppHandle, config: &WidgetConfig) -> (f64, f64) {
@@ -1405,8 +1407,10 @@ fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<Widg
         config.height = height;
     }
     config = clamp_widget_config(config);
-    let size_changed =
-        patch.collapsed.is_some() || patch.mini.is_some() || patch.width.is_some() || patch.height.is_some();
+    let size_changed = patch.collapsed.is_some()
+        || patch.mini.is_some()
+        || patch.width.is_some()
+        || patch.height.is_some();
     if size_changed {
         let (old_w, old_h) = effective_widget_size(&previous);
         let (_, new_h) = effective_widget_size(&config);
@@ -1414,10 +1418,16 @@ fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<Widg
             // 进入悬浮球：吸附到最近的左右屏边，球心对齐原中心
             if let Some((left, top, width, height)) = active_monitor_bounds(app) {
                 let center_x = previous.x as f64 + old_w / 2.0;
-                let edge = if center_x < left + width / 2.0 { "left" } else { "right" };
+                let edge = if center_x < left + width / 2.0 {
+                    "left"
+                } else {
+                    "right"
+                };
                 config.mini_edge = Some(edge.to_string());
-                let ball_y = (previous.y as f64 + old_h / 2.0 - WIDGET_MINI_SIZE / 2.0)
-                    .clamp(top + 8.0, (top + height - WIDGET_MINI_SIZE - 8.0).max(top + 8.0));
+                let ball_y = (previous.y as f64 + old_h / 2.0 - WIDGET_MINI_SIZE / 2.0).clamp(
+                    top + 8.0,
+                    (top + height - WIDGET_MINI_SIZE - 8.0).max(top + 8.0),
+                );
                 config.mini_y = Some(ball_y.round() as i32);
             }
         } else if !config.mini {
@@ -1460,7 +1470,11 @@ fn save_widget_mini_position(app: &AppHandle, x: i32, y: i32) {
     }
     if let Some((left, _top, width, _height)) = active_monitor_bounds(app) {
         let center = x as f64 + WIDGET_MINI_SIZE / 2.0;
-        let edge = if center < left + width / 2.0 { "left" } else { "right" };
+        let edge = if center < left + width / 2.0 {
+            "left"
+        } else {
+            "right"
+        };
         config.mini_edge = Some(edge.to_string());
     }
     config.mini_y = Some(y);
@@ -2285,7 +2299,12 @@ fn win_maximize(window: Window) -> Result<(), String> {
 }
 #[tauri::command]
 fn win_close(window: Window) -> Result<(), String> {
-    window.close().map_err(|err| err.to_string())
+    if window.label() == "main" {
+        let _ = window.set_skip_taskbar(true);
+        window.hide().map_err(|err| err.to_string())
+    } else {
+        window.close().map_err(|err| err.to_string())
+    }
 }
 
 fn collect_task_tree(tasks: &[Task], id: &str) -> Vec<String> {
@@ -2409,7 +2428,12 @@ fn main() {
             }
             let settings = read_app_settings(&handle);
             if let Err(error) = apply_quick_add_shortcut(&handle, &settings.quick_add_shortcut) {
-                let _ = append_log(&handle, "warn", "quick add shortcut register failed", Some(error));
+                let _ = append_log(
+                    &handle,
+                    "warn",
+                    "quick add shortcut register failed",
+                    Some(error),
+                );
             }
             if let Some(listener) = instance_listener {
                 let single_handle = handle.clone();
@@ -2436,6 +2460,7 @@ fn main() {
             match event.event() {
                 WindowEvent::CloseRequested { api, .. } if label == "main" => {
                     api.prevent_close();
+                    let _ = event.window().set_skip_taskbar(true);
                     let _ = event.window().hide();
                 }
                 WindowEvent::CloseRequested { api, .. } if label == "widget" => {
@@ -2457,7 +2482,9 @@ fn main() {
                 }
                 WindowEvent::Moved(position) if label == "main" => {
                     let window = event.window();
-                    if window.is_maximized().unwrap_or(false) || window.is_minimized().unwrap_or(false) {
+                    if window.is_maximized().unwrap_or(false)
+                        || window.is_minimized().unwrap_or(false)
+                    {
                         return;
                     }
                     let app = window.app_handle();
@@ -2479,7 +2506,10 @@ fn main() {
                         });
                         return;
                     }
-                    if window.is_minimized().unwrap_or(false) || size.width < 200 || size.height < 200 {
+                    if window.is_minimized().unwrap_or(false)
+                        || size.width < 200
+                        || size.height < 200
+                    {
                         return;
                     }
                     let scale = window.scale_factor().unwrap_or(1.0).max(1.0);
@@ -2779,7 +2809,10 @@ mod tests {
     fn stored_data_fills_project_defaults_and_dedupes_ids() {
         let data = normalize_stored_data(StoredTaskFlowData {
             schema_version: Some(SCHEMA_VERSION),
-            projects: Some(vec![stored_project("p1", "  "), stored_project("p1", "重复ID")]),
+            projects: Some(vec![
+                stored_project("p1", "  "),
+                stored_project("p1", "重复ID"),
+            ]),
             tasks: None,
         });
         assert_eq!(data.projects.len(), 2);
@@ -2871,7 +2904,11 @@ mod tests {
         assert_eq!(result.projects[0].icon, "📋");
         assert_eq!(result.tasks.len(), 2);
         assert_eq!(
-            result.tasks.iter().map(|task| task.position).collect::<Vec<_>>(),
+            result
+                .tasks
+                .iter()
+                .map(|task| task.position)
+                .collect::<Vec<_>>(),
             vec![0, 1]
         );
     }

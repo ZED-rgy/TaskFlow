@@ -5,6 +5,7 @@ import TaskList from './components/TaskList.vue'
 import TaskDetail from './components/TaskDetail.vue'
 import SettingsView from './components/SettingsView.vue'
 import CommandPalette from './components/CommandPalette.vue'
+import appIconUrl from '../assets/icon.svg'
 import { api } from './runtime/api.js'
 import { normalizeTheme } from './runtime/themes.js'
 import { countSmartViews, localDateKey, matchesSmartView } from './runtime/taskviews.mjs'
@@ -397,7 +398,7 @@ function closeConfirm() {
 // ── Project handlers ──────────────────────────────────
 async function onCreateProject(data) {
   const p = await api.createProject(data)
-  projects.value.push(p)
+  projects.value = [...projects.value, p]
   await selectProject(p.id)
 }
 
@@ -407,8 +408,9 @@ async function onUpdateProject(data) {
     showToast('项目更新失败')
     return
   }
-  const i = projects.value.findIndex(p => p.id === data.id)
-  if (i !== -1) projects.value[i] = updated
+  projects.value = projects.value.map(project =>
+    project.id === data.id ? updated : project
+  )
 }
 
 async function onDeleteProject(id) {
@@ -451,11 +453,17 @@ async function onDeleteProject(id) {
 }
 
 async function onReorderProjects(ids) {
-  await api.reorderProjects(ids)
+  const previousProjects = projects.value
   const order = new Map(ids.map((id, index) => [id, index]))
   projects.value = [...projects.value]
     .map(project => ({ ...project, position: order.get(project.id) ?? project.position }))
     .sort((a, b) => a.position - b.position)
+  try {
+    await api.reorderProjects(ids)
+  } catch (error) {
+    projects.value = previousProjects
+    showToast(`项目排序失败：${error.message || '未知错误'}`)
+  }
 }
 
 // ── Task handlers ─────────────────────────────────────
@@ -662,7 +670,10 @@ onUnmounted(() => {
     <!-- Titlebar -->
     <div class="titlebar" data-tauri-drag-region>
       <div class="titlebar-drag" data-tauri-drag-region>
-        <span class="app-brand">⬡ 小光任务</span>
+        <span class="app-brand">
+          <img class="app-brand-icon" :src="appIconUrl" alt="" />
+          <span>小光任务</span>
+        </span>
       </div>
       <div class="titlebar-controls">
         <!-- Theme toggle -->
@@ -845,11 +856,21 @@ onUnmounted(() => {
   height: 100%;
 }
 .app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 650;
   color: var(--text-secondary);
   letter-spacing: 0;
+}
+.app-brand-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  object-fit: cover;
 }
 .titlebar-controls {
   display: flex;
@@ -976,8 +997,5 @@ onUnmounted(() => {
   font-size: 12px;
 }
 </style>
-
-
-
 
 
