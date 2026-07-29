@@ -147,6 +147,7 @@ npm.cmd run build:installer
 
 - 应用图标资源位于 `assets/icon.svg` 和 `assets/icon.ico`。
 - `assets/icon.ico` 可通过 `npm.cmd run generate:icon` 重新生成。
+- Tauri 构建统一经过 `scripts/build-tauri.ps1`，会将用户目录和工作区路径映射为通用占位符，避免发布包携带编译机路径。
 - `release/`、`dist/` 和 `src-tauri/target/` 都是可重新生成的产物，不提交到 Git。
 - 正式公开分发前建议配置代码签名证书。
 
