@@ -1,6 +1,6 @@
 {
     "name": "taskflow",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "description": "本地优先的 Windows 桌面任务管理器",
     "author": "小光任务",
     "license": "MIT",
@@ -24,6 +24,7 @@
         "build": "npm run build:portable",
         "build:portable": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-tauri.ps1 -Target portable",
         "build:installer": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-tauri.ps1 -Target installer",
+        "scan:release": "node scripts/scan-release-privacy.mjs",
         "preview": "vite preview",
         "test": "npm run test:unit && npm run test:rust",
         "test:unit": "node scripts/test-taskviews.mjs && node scripts/test-widget-order.mjs && node scripts/test-widget-visibility.mjs",
