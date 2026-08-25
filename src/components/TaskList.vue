@@ -558,6 +558,18 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   background: transparent;
+  position: relative;
+}
+.task-list-view::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 38%;
+  height: 160px;
+  pointer-events: none;
+  background: radial-gradient(circle at 100% 0%, rgba(255,255,255,.24), transparent 66%);
+  opacity: .75;
 }
 
 /* Header */
@@ -565,7 +577,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 34px 40px 20px;
+  padding: 38px 40px 18px;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -582,25 +594,25 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 15px;
+  border-radius: 17px;
   color: var(--proj-color, var(--accent));
   background: color-mix(in srgb, var(--proj-color, var(--accent)) 10%, var(--bg-surface));
   border: 1px solid color-mix(in srgb, var(--proj-color, var(--accent)) 30%, var(--border));
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--proj-color, var(--accent)) 8%, transparent);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--proj-color, var(--accent)) 10%, transparent), inset 0 1px rgba(255,255,255,.6);
 }
 .project-icon :deep(svg) { width: 23px; height: 23px; }
 .header-copy { min-width: 0; }
 .header-eyebrow {
   display: block;
   margin-bottom: 2px;
-  color: var(--text-muted);
-  font-size: 9px;
+  color: var(--accent);
+  font-size: 9.5px;
   font-weight: 750;
   letter-spacing: .14em;
 }
 .project-title {
   font-family: var(--font-display);
-  font-size: 29px;
+  font-size: 31px;
   font-weight: 760;
   color: var(--text-primary);
   letter-spacing: -.035em;
@@ -609,13 +621,13 @@ onUnmounted(() => {
 .header-subtitle {
   margin-top: 1px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 11.5px;
 }
 .header-right {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 0 7px 14px;
+  padding: 8px 0 8px 18px;
   border-left: 1px solid var(--border-soft);
   flex-shrink: 0;
 }
@@ -646,8 +658,8 @@ onUnmounted(() => {
 .filter-bar {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto auto;
-  gap: 12px;
-  padding: 0 40px 16px;
+  gap: 16px;
+  padding: 0 40px 19px;
   align-items: center;
   flex-shrink: 0;
   width: min(100%, 1180px);
@@ -659,10 +671,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
+  height: 40px;
   padding: 0 2px 0 1px;
   color: var(--text-muted);
-  border-bottom: 1px solid var(--border-strong);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-muted) 42%, var(--border));
   transition: border-color .16s var(--ease-standard), color .16s var(--ease-standard);
 }
 .search-box:focus-within {
@@ -679,11 +691,11 @@ onUnmounted(() => {
 .search-box input::placeholder { color: var(--text-muted); }
 .segmented {
   display: grid;
-  grid-template-columns: repeat(3, 56px);
-  height: 32px;
-  background: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
-  border: 1px solid var(--border-soft);
-  border-radius: 9px;
+  grid-template-columns: repeat(3, 62px);
+  height: 34px;
+  background: rgba(255,255,255,.26);
+  border: 1px solid var(--border);
+  border-radius: 999px;
   overflow: hidden;
 }
 .segmented button {
@@ -695,7 +707,8 @@ onUnmounted(() => {
 .segmented button.active {
   color: var(--text-primary);
   background: var(--bg-surface);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(67,58,44,.08), inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
 }
 .filter-pickers {
   display: flex;
@@ -709,8 +722,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   min-width: 0;
-  height: 32px;
-  padding-left: 10px;
+  height: 34px;
+  padding-left: 12px;
   border-left: 1px solid var(--border-soft);
   width: auto;
 }
@@ -744,7 +757,7 @@ onUnmounted(() => {
 
 /* Add task */
 .add-task-bar {
-  padding: 12px 40px 20px;
+  padding: 12px 40px 24px;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -753,17 +766,17 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 50px;
-  padding: 8px 12px;
-  background: color-mix(in srgb, var(--bg-surface) 52%, transparent);
-  border: 1px solid var(--border-soft);
-  border-radius: 11px;
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--bg-deep) 4%, transparent);
+  min-height: 52px;
+  padding: 8px 14px;
+  background: rgba(255,255,255,.42);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 52%, var(--border));
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(68,62,52,.06), inset 0 1px rgba(255,255,255,.55);
   transition: border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
 }
 .add-task-inner:focus-within {
   border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
-  box-shadow: var(--focus-ring), 0 1px 0 rgba(255,255,255,.24);
+  box-shadow: var(--focus-ring), 0 10px 26px rgba(68,62,52,.09), inset 0 1px rgba(255,255,255,.65);
   transform: translateY(-1px);
 }
 .add-task-inner.is-sub       { border-color: var(--accent); background: var(--accent-soft); }
@@ -883,16 +896,16 @@ onUnmounted(() => {
 .task-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 32px 36px;
+  padding: 18px 32px 42px;
   position: relative;
-  border-top: 1px solid color-mix(in srgb, var(--border-soft) 48%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--border-soft) 66%, transparent);
 }
 .task-items {
   display: flex;
   flex-direction: column;
   max-width: 1180px;
   margin: 0 auto;
-  gap: 5px;
+  gap: 1px;
 }
 .task-wrapper { position: relative; }
 

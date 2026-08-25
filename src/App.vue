@@ -928,9 +928,9 @@ onUnmounted(() => {
   flex-direction: column;
   min-width: 0;
   background:
-    radial-gradient(circle at 14% -10%, rgba(93,117,129,.08), transparent 34%),
-    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--accent-soft) 78%, transparent), transparent 30%),
-    linear-gradient(180deg, rgba(255,255,255,.035), transparent 260px),
+    radial-gradient(circle at 18% -14%, color-mix(in srgb, var(--accent-soft) 42%, transparent), transparent 34%),
+    radial-gradient(circle at 95% 0%, rgba(116, 105, 85, .06), transparent 28%),
+    linear-gradient(180deg, rgba(255,255,255,.22), transparent 230px),
     var(--bg-base);
 }
 

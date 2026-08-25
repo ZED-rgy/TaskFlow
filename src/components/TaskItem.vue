@@ -58,7 +58,7 @@ function cancelEdit() {
 <template>
   <div
     class="task-item"
-    :class="{ completed: task.completed, 'is-sub': depth > 0 }"
+    :class="{ completed: task.completed, 'is-sub': depth > 0, 'priority-high': task.priority === 'high' }"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
   >
@@ -213,22 +213,36 @@ function cancelEdit() {
   display: flex;
   flex-direction: column;
 }
+.task-item.priority-high > .task-row { position: relative; }
+.task-item.priority-high > .task-row::before {
+  content: '';
+  width: 3px;
+  height: 18px;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 0 3px 3px 0;
+  background: var(--danger);
+  opacity: .78;
+}
 
 .task-row {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 10px 13px 10px 10px;
-  border-radius: 12px;
+  gap: 12px;
+  padding: 11px 13px 11px 10px;
+  border-radius: 9px;
   border: 1px solid transparent;
+  border-bottom-color: color-mix(in srgb, var(--border) 58%, transparent);
   transition: background .16s var(--ease-standard), border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
-  min-height: 48px;
+  min-height: 52px;
 }
 .task-row:hover {
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
-  border-color: color-mix(in srgb, var(--border-strong) 42%, transparent);
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--bg-deep) 8%, transparent);
-  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--bg-surface) 76%, transparent);
+  border-color: color-mix(in srgb, var(--border-strong) 45%, transparent);
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--bg-deep) 7%, transparent);
+  transform: translateX(2px);
 }
 .task-row:focus-within {
   background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
@@ -291,7 +305,7 @@ function cancelEdit() {
 /* Title */
 .task-title {
   flex: 1;
-  font-size: 14px;
+  font-size: 14.5px;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -399,7 +413,7 @@ function cancelEdit() {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  opacity: .48;
+  opacity: .34;
   cursor: grab;
   transition: opacity .15s;
   margin-left: -2px;

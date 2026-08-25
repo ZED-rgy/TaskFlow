@@ -870,32 +870,33 @@ onUnmounted(() => {
 }
 .widget-ball {
   position: relative;
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 30% 22%, rgba(255,255,255,.16), transparent 34%),
-    linear-gradient(145deg, color-mix(in srgb, var(--bg-elevated) 90%, #0A0F14), var(--bg-surface));
-  border: 1px solid color-mix(in srgb, var(--border-strong) 64%, white 20%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-  transition: transform .18s ease;
+  background: #202B31;
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow: 0 10px 24px rgba(15, 22, 27, .24), inset 0 1px 0 rgba(255,255,255,.12);
+  transition: transform .18s var(--ease-standard), box-shadow .18s var(--ease-standard);
 }
 .edge-right .widget-ball { transform: translateX(14px); }
 .edge-left .widget-ball { transform: translateX(-14px); }
-.widget-ball-wrap:hover .widget-ball { transform: translateX(0); }
+.widget-ball-wrap:hover .widget-ball {
+  transform: translateX(0) scale(1.03);
+  box-shadow: 0 12px 28px rgba(15, 22, 27, .3), inset 0 1px 0 rgba(255,255,255,.16);
+}
 .widget-ball-wrap:focus-visible .widget-ball {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
   transform: translateX(0);
 }
 .ball-brand-icon {
-  width: 24px;
-  height: 24px;
+  width: 27px;
+  height: 27px;
   display: block;
-  border-radius: 7px;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,.22));
+  border-radius: 8px;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,.28));
 }
 .ball-badge {
   position: absolute;
