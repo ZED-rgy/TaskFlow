@@ -393,7 +393,7 @@ function selectProject(p) {
 }
 
 /* Morning theme uses a quiet graphite rail to give the product a distinct silhouette. */
-:global(.theme-morning) .sidebar {
+:global(.theme-morning .sidebar) {
   --rail-bg: #202B31;
   --rail-bg-soft: #27343B;
   --rail-hover: #2D3B42;
@@ -406,7 +406,7 @@ function selectProject(p) {
   border-right-color: var(--rail-border);
   box-shadow: inset -1px 0 rgba(255,255,255,.025);
 }
-:global(.theme-morning) .sidebar::before {
+:global(.theme-morning .sidebar::before) {
   content: '';
   position: absolute;
   inset: 0 0 auto;
@@ -431,7 +431,7 @@ function selectProject(p) {
   color: var(--text-muted);
   padding: 13px 10px 8px;
 }
-:global(.theme-morning) .section-label { color: var(--rail-muted); }
+:global(.theme-morning .section-label) { color: var(--rail-muted); }
 
 .smart-row,
 .project-row {
@@ -457,15 +457,15 @@ function selectProject(p) {
   background: color-mix(in srgb, var(--bg-hover) 66%, transparent);
   transform: translateX(1px);
 }
-:global(.theme-morning) .smart-row:hover,
-:global(.theme-morning) .project-row:hover { background: var(--rail-hover); }
+:global(.theme-morning .smart-row:hover),
+:global(.theme-morning .project-row:hover) { background: var(--rail-hover); }
 .smart-row.active,
 .project-row.active {
   background: color-mix(in srgb, var(--accent-soft) 82%, var(--bg-surface));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
 }
-:global(.theme-morning) .smart-row.active,
-:global(.theme-morning) .project-row.active {
+:global(.theme-morning .smart-row.active),
+:global(.theme-morning .project-row.active) {
   background: var(--rail-bg-soft);
   box-shadow: inset 2px 0 var(--accent), inset 0 0 0 1px rgba(255,255,255,.07);
 }
@@ -487,8 +487,8 @@ function selectProject(p) {
   text-align: center;
   flex-shrink: 0;
 }
-:global(.theme-morning) .smart-icon,
-:global(.theme-morning) .proj-icon {
+:global(.theme-morning .smart-icon),
+:global(.theme-morning .proj-icon) {
   background: rgba(255,255,255,.075);
   color: var(--rail-secondary);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.035);
@@ -499,14 +499,14 @@ function selectProject(p) {
   color: var(--text-secondary);
   font-size: 13px;
 }
-:global(.theme-morning) .smart-name,
-:global(.theme-morning) .proj-name { color: var(--rail-secondary); }
-:global(.theme-morning) .smart-row.active .smart-name,
-:global(.theme-morning) .project-row.active .proj-name { color: var(--rail-text); }
+:global(.theme-morning .smart-name),
+:global(.theme-morning .proj-name) { color: var(--rail-secondary); }
+:global(.theme-morning .smart-row.active .smart-name),
+:global(.theme-morning .project-row.active .proj-name) { color: var(--rail-text); }
 .smart-row.active .smart-name { color: var(--text-primary); }
 .smart-row.active .smart-icon { color: var(--accent); background: var(--accent-soft); }
-:global(.theme-morning) .smart-row.active .smart-icon,
-:global(.theme-morning) .project-row.active .proj-icon { color: var(--accent-strong); background: var(--rail-accent-soft); }
+:global(.theme-morning .smart-row.active .smart-icon),
+:global(.theme-morning .project-row.active .proj-icon) { color: var(--accent-strong); background: var(--rail-accent-soft); }
 
 .proj-stripe {
   width: 2px;
@@ -568,12 +568,12 @@ function selectProject(p) {
   background: color-mix(in srgb, var(--bg-elevated) 56%, transparent);
   opacity: .95;
 }
-:global(.theme-morning) .proj-count {
+:global(.theme-morning .proj-count) {
   color: var(--rail-muted);
   background: rgba(255,255,255,.075);
 }
-:global(.theme-morning) .project-row.active .proj-count,
-:global(.theme-morning) .smart-row.active .proj-count { color: var(--accent-strong); background: var(--rail-accent-soft); }
+:global(.theme-morning .project-row.active .proj-count),
+:global(.theme-morning .smart-row.active .proj-count) { color: var(--accent-strong); background: var(--rail-accent-soft); }
 .project-row.active .proj-count,
 .smart-row.active .proj-count { color: var(--accent); background: var(--accent-soft); }
 
@@ -668,11 +668,11 @@ function selectProject(p) {
   transition: color .16s var(--ease-standard), background .16s var(--ease-standard);
   flex-shrink: 0;
 }
-:global(.theme-morning) .add-project-btn,
-:global(.theme-morning) .utility-btn { color: var(--rail-muted); border-color: var(--rail-border); }
-:global(.theme-morning) .add-project-btn:hover,
-:global(.theme-morning) .utility-btn:hover,
-:global(.theme-morning) .utility-btn.active { color: var(--accent-strong); background: var(--rail-accent-soft); }
+:global(.theme-morning .add-project-btn),
+:global(.theme-morning .utility-btn) { color: var(--rail-muted); border-color: var(--rail-border); }
+:global(.theme-morning .add-project-btn:hover),
+:global(.theme-morning .utility-btn:hover),
+:global(.theme-morning .utility-btn.active) { color: var(--accent-strong); background: var(--rail-accent-soft); }
 .add-project-btn:hover { color: var(--accent); background: var(--accent-soft); }
 
 .utility-bar {
