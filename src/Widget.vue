@@ -654,6 +654,7 @@ onUnmounted(() => {
   <div
     v-if="config?.mini"
     class="widget-ball-wrap"
+    @dragstart.prevent
     :class="`edge-${miniEdge}`"
     role="button"
     tabindex="0"
@@ -667,7 +668,7 @@ onUnmounted(() => {
     @contextmenu.prevent
   >
     <div class="widget-ball" :style="shellStyle">
-      <img class="ball-brand-icon" :src="appIconUrl" alt="" />
+      <img draggable="false" class="ball-brand-icon" :src="appIconUrl" alt="" />
       <span v-if="pendingCount" class="ball-badge">{{ pendingCount > 99 ? '99' : pendingCount }}</span>
     </div>
   </div>
@@ -675,6 +676,7 @@ onUnmounted(() => {
   <div
     v-else
     class="widget-shell"
+    @dragstart.prevent
     :class="{ compact: config?.compact, collapsed: config?.collapsed }"
     :style="shellStyle"
     @contextmenu.prevent="openMenu"

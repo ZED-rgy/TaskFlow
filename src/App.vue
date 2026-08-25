@@ -668,10 +668,10 @@ onUnmounted(() => {
 <template>
   <div class="app-shell" :class="`theme-${theme}`" :style="fontStyles">
     <!-- Titlebar -->
-    <div class="titlebar" data-tauri-drag-region>
+    <div class="titlebar" data-tauri-drag-region @dragstart.prevent>
       <div class="titlebar-drag" data-tauri-drag-region>
         <span class="app-brand">
-          <img class="app-brand-icon" :src="appIconUrl" alt="" />
+          <img draggable="false" class="app-brand-icon" :src="appIconUrl" alt="" />
           <span>小光任务</span>
         </span>
       </div>
@@ -1000,4 +1000,3 @@ onUnmounted(() => {
   font-size: 12px;
 }
 </style>
-
