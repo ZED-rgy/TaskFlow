@@ -1256,6 +1256,10 @@ fn effective_widget_size(config: &WidgetConfig) -> (f64, f64) {
 
 fn apply_widget_bounds(window: &WebviewWindow, config: &WidgetConfig) {
     let _ = window.set_resizable(false);
+    // The mini ball is rendered as a circle inside a transparent window. Disable
+    // the native undecorated-window shadow in that mode; otherwise Windows draws
+    // a rounded rectangular shadow around the whole 48px host window.
+    let _ = window.set_shadow(!config.mini);
     let (width, height) = effective_widget_size(config);
     let _ = window.set_size(LogicalSize::new(width, height));
 }
@@ -1636,6 +1640,7 @@ fn ensure_widget_window(app: &AppHandle) -> Result<WebviewWindow, String> {
         .title("小光任务组件")
         .decorations(false)
         .transparent(true)
+        .shadow(!config.mini)
         .resizable(false)
         .visible(false)
         .always_on_top(config.always_on_top)
