@@ -383,14 +383,13 @@ function selectProject(p) {
 .sidebar {
   width: var(--sidebar-w);
   flex-shrink: 0;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 94%, white 6%), var(--bg-surface));
+  background: color-mix(in srgb, var(--bg-surface) 88%, var(--bg-base));
   border-right: 1px solid var(--border-soft);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  box-shadow: 1px 0 0 rgba(255,255,255,.52);
+  box-shadow: 1px 0 0 rgba(255,255,255,.38);
 }
 
 /* Project list */
@@ -416,12 +415,12 @@ function selectProject(p) {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 40px;
-  padding: 8px 11px;
+  min-height: 38px;
+  padding: 7px 10px;
   cursor: pointer;
   transition: background .16s var(--ease-standard), color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
-  border-radius: 11px;
-  margin: 3px 0;
+  border-radius: 9px;
+  margin: 2px 0;
   width: 100%;
   text-align: left;
 }
@@ -436,8 +435,8 @@ function selectProject(p) {
 }
 .smart-row.active,
 .project-row.active {
-  background: linear-gradient(100deg, color-mix(in srgb, var(--accent-soft) 92%, transparent), color-mix(in srgb, var(--bg-hover) 62%, transparent));
-  box-shadow: inset 2px 0 0 var(--accent), inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 82%, var(--bg-surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
 }
 .project-row.dragging {
   cursor: grabbing;
@@ -467,12 +466,12 @@ function selectProject(p) {
 .smart-row.active .smart-icon { color: var(--accent); background: var(--accent-soft); }
 
 .proj-stripe {
-  width: 3px;
-  height: 26px;
+  width: 2px;
+  height: 22px;
   border-radius: 3px;
   flex-shrink: 0;
-  margin-left: -4px;
-  opacity: .38;
+  margin-left: -3px;
+  opacity: .48;
   transition: opacity .15s;
 }
 .project-row.active .proj-stripe,
@@ -515,17 +514,19 @@ function selectProject(p) {
 }
 
 .proj-count {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 750;
-  min-width: 24px;
-  height: 22px;
-  line-height: 22px;
+  min-width: 22px;
+  height: 20px;
+  line-height: 20px;
   text-align: center;
   border-radius: 999px;
   color: var(--text-secondary);
-  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 56%, transparent);
   opacity: .95;
 }
+.project-row.active .proj-count,
+.smart-row.active .proj-count { color: var(--accent); background: var(--accent-soft); }
 
 /* New project form */
 .new-form {

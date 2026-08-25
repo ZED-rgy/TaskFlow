@@ -101,6 +101,14 @@ const openRootCount = computed(() =>
   props.tasks.filter(t => !t.parentId && !t.completed).length
 )
 
+const completionPercent = computed(() =>
+  totalCount.value ? Math.round((completedCount.value / totalCount.value) * 100) : 0
+)
+
+const completionSummary = computed(() =>
+  openRootCount.value ? `${openRootCount.value} 个待完成` : '全部完成'
+)
+
 watch(openRootCount, (now, prev) => {
   if (prev > 0 && now === 0 && totalCount.value > 0) {
     celebrating.value = true
@@ -357,9 +365,11 @@ onUnmounted(() => {
     <div class="list-header">
       <div class="header-left">
         <span class="project-icon"><ProjectIcon :icon="project.icon" /></span>
-        <h1 class="project-title" :style="{ '--proj-color': project.color }">
-          {{ project.name }}
-        </h1>
+        <div class="header-copy">
+          <span class="header-eyebrow">{{ project.readonlyProject ? 'SMART VIEW' : 'FOCUS / PROJECT' }}</span>
+          <h1 class="project-title" :style="{ '--proj-color': project.color }">{{ project.name }}</h1>
+          <p class="header-subtitle">{{ totalCount ? completionSummary : '把今天最重要的事放在这里' }}</p>
+        </div>
       </div>
       <div class="header-right" v-if="totalCount > 0">
         <svg class="progress-ring" width="26" height="26" viewBox="0 0 26 26" :title="`已完成 ${completedCount}/${totalCount}`">
@@ -373,7 +383,11 @@ onUnmounted(() => {
             style="transition: stroke-dashoffset .45s ease"
           />
         </svg>
-        <span class="task-stat">{{ completedCount }}/{{ totalCount }} 已完成</span>
+        <div class="progress-copy">
+          <span>今日进度</span>
+          <strong>{{ completionPercent }}%</strong>
+          <small>{{ completedCount }}/{{ totalCount }} 已完成</small>
+        </div>
       </div>
     </div>
 
@@ -390,18 +404,26 @@ onUnmounted(() => {
         <button :class="{ active: statusFilter === 'all' }" @click="statusFilter = 'all'">全部</button>
         <button :class="{ active: statusFilter === 'done' }" @click="statusFilter = 'done'">已完成</button>
       </div>
-      <select v-model="dueFilter" class="filter-select">
-        <option value="all">所有日期</option>
-        <option value="today">今天</option>
-        <option value="overdue">已逾期</option>
-        <option value="none">无日期</option>
-      </select>
-      <select v-model="priorityFilter" class="filter-select">
-        <option value="all">所有优先级</option>
-        <option value="high">高优先级</option>
-        <option value="normal">普通</option>
-        <option value="low">低优先级</option>
-      </select>
+      <div class="filter-pickers">
+        <label class="filter-control" aria-label="按日期筛选">
+          <span>日期</span>
+          <select v-model="dueFilter" class="filter-select">
+            <option value="all">所有日期</option>
+            <option value="today">今天</option>
+            <option value="overdue">已逾期</option>
+            <option value="none">无日期</option>
+          </select>
+        </label>
+        <label class="filter-control" aria-label="按优先级筛选">
+          <span>优先级</span>
+          <select v-model="priorityFilter" class="filter-select">
+            <option value="all">所有优先级</option>
+            <option value="high">高优先级</option>
+            <option value="normal">普通</option>
+            <option value="low">低优先级</option>
+          </select>
+        </label>
+      </div>
     </div>
 
     <!-- Add task input -->
@@ -418,6 +440,7 @@ onUnmounted(() => {
           @keydown.enter="submitAdd"
           @keydown.escape="addSubFor = null; addingTitle = ''; $event.target.blur()"
         />
+        <span v-if="!addingTitle && !addSubFor" class="add-hint"><kbd>Enter</kbd> 添加</span>
         <span v-if="addSubFor" class="sub-hint" @click="addSubFor = null">
           子任务 ✕
         </span>
@@ -542,7 +565,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 32px 40px 18px;
+  padding: 34px 40px 20px;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -550,66 +573,102 @@ onUnmounted(() => {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  min-width: 0;
 }
 .project-icon  {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 21px;
-  border-radius: 14px;
+  border-radius: 15px;
   color: var(--proj-color, var(--accent));
-  background: linear-gradient(145deg, color-mix(in srgb, var(--proj-color, var(--accent)) 18%, var(--bg-surface)), color-mix(in srgb, var(--accent-soft) 80%, transparent));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--proj-color, var(--accent)) 32%, transparent), 0 8px 18px color-mix(in srgb, var(--proj-color, var(--accent)) 8%, transparent);
+  background: color-mix(in srgb, var(--proj-color, var(--accent)) 10%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--proj-color, var(--accent)) 30%, var(--border));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--proj-color, var(--accent)) 8%, transparent);
+}
+.project-icon :deep(svg) { width: 23px; height: 23px; }
+.header-copy { min-width: 0; }
+.header-eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .14em;
 }
 .project-title {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 29px;
   font-weight: 760;
   color: var(--text-primary);
   letter-spacing: -.035em;
   position: relative;
 }
+.header-subtitle {
+  margin-top: 1px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
 .header-right {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 7px 0 7px 14px;
+  border-left: 1px solid var(--border-soft);
+  flex-shrink: 0;
 }
-.task-stat {
-  font-size: 12px;
+.progress-copy {
+  min-width: 78px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 8px;
+}
+.progress-copy span,
+.progress-copy small {
   color: var(--text-muted);
-  letter-spacing: .01em;
+  font-size: 10px;
 }
+.progress-copy span { grid-column: 1; }
+.progress-copy strong {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -.03em;
+}
+.progress-copy small { grid-column: 1; }
+.progress-ring { flex-shrink: 0; }
 
 .filter-bar {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) auto 112px 112px;
+  grid-template-columns: minmax(160px, 1fr) auto auto;
   gap: 12px;
-  padding: 0 40px 14px;
+  padding: 0 40px 16px;
   align-items: center;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
+  min-width: 0;
 }
 .search-box {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 42px;
-  padding: 0 13px;
+  height: 38px;
+  padding: 0 2px 0 1px;
   color: var(--text-muted);
-  background: var(--surface-glass);
-  border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  box-shadow: 0 1px 0 rgba(255,255,255,.22);
-  transition: border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), background .16s var(--ease-standard);
+  border-bottom: 1px solid var(--border-strong);
+  transition: border-color .16s var(--ease-standard), color .16s var(--ease-standard);
 }
 .search-box:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
-  box-shadow: var(--focus-ring), 0 1px 0 rgba(255,255,255,.24);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 1px 0 var(--accent);
 }
 .search-box input {
   width: 100%;
@@ -620,34 +679,59 @@ onUnmounted(() => {
 .search-box input::placeholder { color: var(--text-muted); }
 .segmented {
   display: grid;
-  grid-template-columns: repeat(3, 58px);
-  height: 42px;
-  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  grid-template-columns: repeat(3, 56px);
+  height: 32px;
+  background: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
   border: 1px solid var(--border-soft);
-  border-radius: 12px;
+  border-radius: 9px;
   overflow: hidden;
-  box-shadow: 0 1px 0 rgba(255,255,255,.2);
 }
 .segmented button {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 10.5px;
   border-right: 1px solid var(--border);
 }
 .segmented button:last-child { border-right: 0; }
 .segmented button.active {
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+  background: var(--bg-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.filter-pickers {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+.filter-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 32px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border-soft);
+  width: auto;
+}
+.filter-control > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 .filter-select {
-  height: 42px;
+  width: auto;
+  min-width: 0;
   color: var(--text-secondary);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 12px;
+  border: 0;
+  border-radius: 7px;
   font: inherit;
   font-size: 11px;
-  padding: 0 8px;
+  padding: 0 4px;
   outline: none;
   box-shadow: none;
   transition: background .12s, border-color .12s, color .12s, box-shadow .12s;
@@ -655,16 +739,12 @@ onUnmounted(() => {
 .filter-select:hover,
 .filter-select:focus-visible {
   color: var(--text-primary);
-  background: var(--bg-surface);
-  border-color: var(--border);
-  box-shadow: 0 1px 0 rgba(255,255,255,.22);
+  background: var(--bg-elevated);
 }
-
-.progress-ring { flex-shrink: 0; }
 
 /* Add task */
 .add-task-bar {
-  padding: 18px 40px 20px;
+  padding: 12px 40px 20px;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -673,12 +753,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 54px;
-  padding: 10px 15px;
-  background: var(--surface-glass);
+  min-height: 50px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--bg-surface) 52%, transparent);
   border: 1px solid var(--border-soft);
-  border-radius: 14px;
-  box-shadow: 0 1px 0 rgba(255,255,255,.24), 0 10px 24px color-mix(in srgb, var(--bg-deep) 5%, transparent);
+  border-radius: 11px;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--bg-deep) 4%, transparent);
   transition: border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
 }
 .add-task-inner:focus-within {
@@ -689,6 +769,23 @@ onUnmounted(() => {
 .add-task-inner.is-sub       { border-color: var(--accent); background: var(--accent-soft); }
 
 .add-icon { color: var(--text-muted); flex-shrink: 0; }
+.add-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.add-hint kbd {
+  padding: 1px 5px;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
 .add-input {
   flex: 1;
   font-size: 13.5px;
@@ -786,9 +883,9 @@ onUnmounted(() => {
 .task-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 18px 32px 36px;
+  padding: 16px 32px 36px;
   position: relative;
-  border-top: 1px solid var(--border-soft);
+  border-top: 1px solid color-mix(in srgb, var(--border-soft) 48%, transparent);
 }
 .task-items {
   display: flex;
@@ -904,6 +1001,31 @@ onUnmounted(() => {
 }
 .list-empty p {
   font-size: 12.5px;
+}
+
+@media (max-width: 1600px) {
+  .list-header,
+  .filter-bar,
+  .add-task-bar {
+    width: min(100%, 1040px);
+  }
+  .filter-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "search status"
+      "pickers pickers";
+    row-gap: 6px;
+  }
+  .search-box { grid-area: search; }
+  .segmented { grid-area: status; }
+  .filter-pickers {
+    grid-area: pickers;
+    justify-self: end;
+  }
+  .header-right {
+    padding-left: 10px;
+    gap: 7px;
+  }
 }
 
 @media (max-width: 980px) {

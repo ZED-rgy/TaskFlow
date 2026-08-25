@@ -185,11 +185,11 @@ body.widget-mode #app {
 
 /* ── Light Theme ─────────────────────────────────────── */
 .theme-morning {
-  --bg-deep:       #DCE6ED;
-  --bg-base:       #EEF3F7;
-  --bg-surface:    #FCFDFE;
-  --bg-elevated:   #E8F0F5;
-  --bg-hover:      #DFEAF1;
+  --bg-deep:       #DDE4E7;
+  --bg-base:       #F1F4F4;
+  --bg-surface:    #FCFDFD;
+  --bg-elevated:   #E7ECEC;
+  --bg-hover:      #E0E7E7;
   --surface-glass: color-mix(in srgb, var(--bg-surface) 92%, transparent);
   --border-soft:   color-mix(in srgb, var(--border) 72%, transparent);
 
