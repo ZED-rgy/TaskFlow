@@ -28,6 +28,7 @@ const SCHEMA_VERSION: u32 = 3;
 const WIDGET_COLLAPSED_HEIGHT: f64 = 46.0;
 const WIDGET_MINI_SIZE: f64 = 48.0;
 const WIDGET_SCREEN_MARGIN: f64 = 24.0;
+const WIDGET_MINI_SNAP_DELAY: Duration = Duration::from_millis(120);
 const LOG_MAX_BYTES: u64 = 1024 * 1024;
 const SINGLE_INSTANCE_PORT: u16 = 38917;
 const WIDGET_IDLE_DESTROY: Duration = Duration::from_secs(300);
@@ -1281,6 +1282,15 @@ fn mini_position(app: &AppHandle, config: &WidgetConfig) -> (f64, f64) {
     (x, y)
 }
 
+fn mini_edge_for_position(left: f64, width: f64, x: i32) -> &'static str {
+    let center = x as f64 + WIDGET_MINI_SIZE / 2.0;
+    if center < left + width / 2.0 {
+        "left"
+    } else {
+        "right"
+    }
+}
+
 fn stored_to_widget_config(app: &AppHandle, stored: StoredWidgetConfig) -> WidgetConfig {
     let defaults = default_widget_config(app);
     WidgetConfig {
@@ -1526,17 +1536,23 @@ fn save_widget_mini_position(app: &AppHandle, x: i32, y: i32) {
     if !config.mini {
         return;
     }
+    let previous_edge = config.mini_edge.clone();
+    let mut edge_changed = false;
     if let Some((left, _top, width, _height)) = active_monitor_bounds(app) {
-        let center = x as f64 + WIDGET_MINI_SIZE / 2.0;
-        let edge = if center < left + width / 2.0 {
-            "left"
-        } else {
-            "right"
-        };
+        let edge = mini_edge_for_position(left, width, x);
+        edge_changed = previous_edge.as_deref() != Some(edge);
         config.mini_edge = Some(edge.to_string());
     }
     config.mini_y = Some(y);
     let _ = write_widget_config(app, &config);
+    if let Some(window) = app.get_webview_window("widget") {
+        // Windows may restore a native shadow while the transparent window is
+        // being dragged; keep the mini host shadow-free for the whole gesture.
+        let _ = window.set_shadow(false);
+        if edge_changed {
+            let _ = window.emit("widget-config-updated", &config);
+        }
+    }
     if let Some(state) = app.try_state::<WidgetConfigState>() {
         if let Ok(mut pending) = state.mini_snap_at.lock() {
             *pending = Some(Instant::now());
@@ -1578,7 +1594,7 @@ fn maybe_snap_mini(app: &AppHandle) {
         };
         let pending = state.mini_snap_at.lock().ok().map(|guard| *guard);
         match pending {
-            Some(Some(at)) if at.elapsed() >= Duration::from_millis(400) => true,
+            Some(Some(at)) if at.elapsed() >= WIDGET_MINI_SNAP_DELAY => true,
             _ => false,
         }
     };
@@ -2800,6 +2816,14 @@ mod tests {
             position: 0,
             created_at: now(),
         }
+    }
+
+    #[test]
+    fn mini_edge_switches_at_monitor_midpoint() {
+        assert_eq!(mini_edge_for_position(0.0, 1920.0, 0), "left");
+        assert_eq!(mini_edge_for_position(0.0, 1920.0, 900), "left");
+        assert_eq!(mini_edge_for_position(0.0, 1920.0, 960), "right");
+        assert_eq!(mini_edge_for_position(0.0, 1920.0, 1872), "right");
     }
 
     fn stored_project(id: &str, name: &str) -> StoredProject {

@@ -878,7 +878,7 @@ onUnmounted(() => {
     radial-gradient(circle at 30% 22%, rgba(255,255,255,.16), transparent 34%),
     linear-gradient(145deg, color-mix(in srgb, var(--bg-elevated) 90%, #0A0F14), var(--bg-surface));
   border: 1px solid color-mix(in srgb, var(--border-strong) 80%, white 20%);
-  box-shadow: 0 9px 24px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
   transition: transform .18s ease;
 }
 .edge-right .widget-ball { transform: translateX(14px); }
