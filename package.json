@@ -14,7 +14,7 @@
         "url": "https://github.com/ZED-rgy/TaskFlow/issues"
     },
     "engines": {
-        "node": ">=18"
+        "node": ">=20.19"
     },
     "scripts": {
         "dev": "npx @tauri-apps/cli dev",
@@ -33,12 +33,12 @@
         "verify": "npm run check"
     },
     "dependencies": {
-        "sortablejs": "^1.15.2",
-        "vue": "^3.4.21"
+        "sortablejs": "^1.15.7",
+        "vue": "^3.5.41"
     },
     "devDependencies": {
         "@tauri-apps/cli": "^1.6.3",
-        "@vitejs/plugin-vue": "^5.0.4",
-        "vite": "^5.1.6"
+        "@vitejs/plugin-vue": "^6.0.8",
+        "vite": "^8.2.2"
     }
 }

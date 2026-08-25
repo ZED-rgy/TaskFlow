@@ -3,7 +3,7 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     path::PathBuf,
     sync::Mutex,
@@ -31,6 +31,9 @@ const MAX_TITLE_LEN: usize = 200;
 const MAX_NOTES_LEN: usize = 5000;
 const MAX_TAG_COUNT: usize = 16;
 const MAX_TAG_LEN: usize = 40;
+const MAX_PROJECT_NAME_LEN: usize = 80;
+const MAX_PROJECT_ICON_LEN: usize = 8;
+const MAX_PROJECT_COLOR_LEN: usize = 32;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -410,6 +413,115 @@ fn normalize_tags(tags: Option<Vec<String>>) -> Vec<String> {
         .collect()
 }
 
+fn normalize_task_relationships(tasks: &mut [Task]) {
+    let relationships: HashMap<String, (String, Option<String>)> = tasks
+        .iter()
+        .map(|task| {
+            (
+                task.id.clone(),
+                (task.project_id.clone(), task.parent_id.clone()),
+            )
+        })
+        .collect();
+
+    for task in tasks {
+        let Some(mut current_id) = task.parent_id.clone() else {
+            continue;
+        };
+        let mut seen = HashSet::from([task.id.clone()]);
+        let root_parent = loop {
+            if !seen.insert(current_id.clone()) {
+                break None;
+            }
+            let Some((project_id, parent_id)) = relationships.get(&current_id) else {
+                break None;
+            };
+            if project_id != &task.project_id {
+                break None;
+            }
+            let Some(next_id) = parent_id.clone() else {
+                break Some(current_id);
+            };
+            current_id = next_id;
+        };
+        task.parent_id = root_parent;
+    }
+}
+
+fn normalize_due_date(value: Option<String>) -> Option<String> {
+    let value = value?.trim().chars().take(10).collect::<String>();
+    chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d")
+        .ok()
+        .map(|date| date.to_string())
+}
+
+fn normalize_runtime_data(mut data: TaskFlowData) -> Result<TaskFlowData, String> {
+    if data.projects.is_empty() {
+        return Err("数据缺少项目".into());
+    }
+
+    data.schema_version = SCHEMA_VERSION;
+    let mut project_ids = HashSet::new();
+    for (index, project) in data.projects.iter_mut().enumerate() {
+        project.id = project.id.trim().to_string();
+        if project.id.is_empty() || !project_ids.insert(project.id.clone()) {
+            project.id = new_id();
+            project_ids.insert(project.id.clone());
+        }
+        project.name = clamp_chars(project.name.trim().to_string(), MAX_PROJECT_NAME_LEN);
+        if project.name.is_empty() {
+            project.name = "未命名项目".into();
+        }
+        project.icon = clamp_chars(project.icon.trim().to_string(), MAX_PROJECT_ICON_LEN);
+        if project.icon.is_empty() {
+            project.icon = "📋".into();
+        }
+        project.color = clamp_chars(project.color.trim().to_string(), MAX_PROJECT_COLOR_LEN);
+        if project.color.is_empty() {
+            project.color = "#D4922A".into();
+        }
+        if project.created_at.trim().is_empty() {
+            project.created_at = now();
+        }
+        if project.position < 0 {
+            project.position = index as i32;
+        }
+    }
+
+    let valid_project_ids: HashSet<String> =
+        data.projects.iter().map(|project| project.id.clone()).collect();
+    data.tasks.retain(|task| {
+        valid_project_ids.contains(&task.project_id) && !task.title.trim().is_empty()
+    });
+    let mut task_ids = HashSet::new();
+    for (index, task) in data.tasks.iter_mut().enumerate() {
+        task.id = task.id.trim().to_string();
+        if task.id.is_empty() || !task_ids.insert(task.id.clone()) {
+            task.id = new_id();
+            task_ids.insert(task.id.clone());
+        }
+        task.title = clamp_chars(task.title.trim().to_string(), MAX_TITLE_LEN);
+        task.notes = clamp_chars(task.notes.clone(), MAX_NOTES_LEN);
+        task.due_date = normalize_due_date(task.due_date.clone());
+        task.priority = normalize_priority(Some(task.priority.clone()));
+        task.tags = normalize_tags(Some(task.tags.clone()));
+        task.repeat = normalize_repeat(Some(task.repeat.clone()));
+        if task.created_at.trim().is_empty() {
+            task.created_at = now();
+        }
+        task.completed_at = if task.completed {
+            task.completed_at.clone().or_else(|| Some(now()))
+        } else {
+            None
+        };
+        if task.position < 0 {
+            task.position = index as i32;
+        }
+    }
+    normalize_task_relationships(&mut data.tasks);
+    Ok(data)
+}
+
 fn normalize_stored_data(stored: StoredTaskFlowData) -> TaskFlowData {
     let projects_raw = stored.projects.unwrap_or_default();
     let mut projects = Vec::new();
@@ -493,10 +605,14 @@ fn normalize_stored_data(stored: StoredTaskFlowData) -> TaskFlowData {
         });
     }
 
-    TaskFlowData {
+    let data = TaskFlowData {
         schema_version: SCHEMA_VERSION,
         projects,
         tasks,
+    };
+    match normalize_runtime_data(data) {
+        Ok(data) => data,
+        Err(_) => default_data(),
     }
 }
 
@@ -508,11 +624,29 @@ fn parse_stored_data(raw: &str) -> Result<(StoredTaskFlowData, bool), String> {
     Ok((stored, needs_migration))
 }
 
+fn recover_local_data_file(path: &std::path::Path) -> Option<(PathBuf, TaskFlowData)> {
+    let candidates = [
+        path.with_extension("json.tmp"),
+        path.with_extension("json.prev"),
+    ];
+    for candidate in candidates {
+        let Ok(raw) = fs::read_to_string(&candidate) else {
+            continue;
+        };
+        let Ok((stored, _)) = parse_stored_data(&raw) else {
+            continue;
+        };
+        return Some((candidate, normalize_stored_data(stored)));
+    }
+    None
+}
+
 fn write_data_file(app: &AppHandle, data: &TaskFlowData, emit_change: bool) -> Result<(), String> {
     let path = data_path(app)?;
     let tmp = path.with_extension("json.tmp");
     let prev = path.with_extension("json.prev");
-    let raw = serde_json::to_string_pretty(data).map_err(|err| err.to_string())?;
+    let normalized = normalize_runtime_data(data.clone())?;
+    let raw = serde_json::to_string_pretty(&normalized).map_err(|err| err.to_string())?;
     fs::write(&tmp, raw).map_err(|err| err.to_string())?;
 
     let mut last_error = None;
@@ -614,6 +748,26 @@ fn create_startup_backup(app: &AppHandle) -> Result<(), String> {
 fn read_data(app: &AppHandle) -> Result<TaskFlowData, String> {
     let path = data_path(app)?;
     if !path.exists() {
+        if let Some((recovery_path, data)) = recover_local_data_file(&path) {
+            write_data_file(app, &data, true)?;
+            let _ = append_log(
+                app,
+                "warn",
+                "data restored from local recovery file",
+                Some(recovery_path.to_string_lossy().to_string()),
+            );
+            return Ok(data);
+        }
+        if let Some((backup_path, data)) = latest_valid_backup(app)? {
+            write_data_file(app, &data, true)?;
+            let _ = append_log(
+                app,
+                "warn",
+                "data restored from backup after missing primary",
+                Some(backup_path.to_string_lossy().to_string()),
+            );
+            return Ok(data);
+        }
         let data = default_data();
         write_data_file(app, &data, false)?;
         return Ok(data);
@@ -811,6 +965,7 @@ fn emit_data_changed(app: &AppHandle, origin: Option<&str>) {
 }
 
 fn write_state(app: &AppHandle, data: &TaskFlowData, origin: Option<&str>) -> Result<(), String> {
+    let data = normalize_runtime_data(data.clone())?;
     match app.try_state::<AppState>() {
         Some(state) => {
             {
@@ -830,7 +985,7 @@ fn write_state(app: &AppHandle, data: &TaskFlowData, origin: Option<&str>) -> Re
             emit_data_changed(app, origin);
             Ok(())
         }
-        None => write_data_file(app, data, true),
+        None => write_data_file(app, &data, true),
     }
 }
 
@@ -1100,7 +1255,7 @@ fn normalize_import_data(mut data: TaskFlowData) -> Result<TaskFlowData, String>
         }
         task.position = index as i32;
     }
-    Ok(data)
+    normalize_runtime_data(data)
 }
 
 fn append_log(
@@ -1778,11 +1933,12 @@ fn get_tasks(app: AppHandle, project_id: Option<String>) -> Result<Vec<Task>, St
 #[tauri::command]
 fn create_project(app: AppHandle, window: Window, data: ProjectPayload) -> Result<Project, String> {
     let mut db = read_state(&app)?;
+    let name = clamp_chars(data.name.unwrap_or_else(|| "新项目".into()).trim().to_string(), MAX_PROJECT_NAME_LEN);
     let project = Project {
         id: new_id(),
-        name: data.name.unwrap_or_else(|| "新项目".into()),
-        icon: data.icon.unwrap_or_else(|| "📋".into()),
-        color: data.color.unwrap_or_else(|| "#D4922A".into()),
+        name: if name.is_empty() { "新项目".into() } else { name },
+        icon: clamp_chars(data.icon.unwrap_or_else(|| "📋".into()).trim().to_string(), MAX_PROJECT_ICON_LEN),
+        color: clamp_chars(data.color.unwrap_or_else(|| "#D4922A".into()).trim().to_string(), MAX_PROJECT_COLOR_LEN),
         position: db.projects.len() as i32,
         created_at: now(),
     };
@@ -1803,13 +1959,22 @@ fn update_project(
     for project in &mut db.projects {
         if project.id == id {
             if let Some(name) = data.name.clone() {
-                project.name = name;
+                let name = clamp_chars(name.trim().to_string(), MAX_PROJECT_NAME_LEN);
+                if !name.is_empty() {
+                    project.name = name;
+                }
             }
             if let Some(icon) = data.icon.clone() {
-                project.icon = icon;
+                let icon = clamp_chars(icon.trim().to_string(), MAX_PROJECT_ICON_LEN);
+                if !icon.is_empty() {
+                    project.icon = icon;
+                }
             }
             if let Some(color) = data.color.clone() {
-                project.color = color;
+                let color = clamp_chars(color.trim().to_string(), MAX_PROJECT_COLOR_LEN);
+                if !color.is_empty() {
+                    project.color = color;
+                }
             }
             updated = Some(project.clone());
             break;
@@ -1853,6 +2018,7 @@ fn restore_project(
             db.tasks.push(task);
         }
     }
+    db = normalize_runtime_data(db)?;
     write_state(&app, &db, Some(window.label()))?;
     Ok(db)
 }
@@ -1873,7 +2039,24 @@ fn reorder_projects(app: AppHandle, window: Window, ids: Vec<String>) -> Result<
 fn create_task(app: AppHandle, window: Window, data: TaskPayload) -> Result<Task, String> {
     let mut db = read_state(&app)?;
     let project_id = data.project_id.ok_or("缺少项目 ID")?;
+    if !db.projects.iter().any(|project| project.id == project_id) {
+        return Err("项目不存在".into());
+    }
     let parent_id = data.parent_id.filter(|item| !item.is_empty());
+    if let Some(parent_id) = &parent_id {
+        let parent = db
+            .tasks
+            .iter()
+            .find(|task| &task.id == parent_id)
+            .ok_or("父任务不存在")?;
+        if parent.project_id != project_id || parent.parent_id.is_some() {
+            return Err("父任务必须是同一项目中的根任务".into());
+        }
+    }
+    let title = clamp_chars(data.title.unwrap_or_default().trim().to_string(), MAX_TITLE_LEN);
+    if title.is_empty() {
+        return Err("任务标题不能为空".into());
+    }
     let position = data.position.unwrap_or_else(|| {
         db.tasks
             .iter()
@@ -1884,7 +2067,7 @@ fn create_task(app: AppHandle, window: Window, data: TaskPayload) -> Result<Task
         id: new_id(),
         project_id,
         parent_id,
-        title: clamp_chars(data.title.unwrap_or_default(), MAX_TITLE_LEN),
+        title,
         notes: clamp_chars(data.notes.unwrap_or_default(), MAX_NOTES_LEN),
         completed: false,
         due_date: data.due_date.flatten(),
@@ -1914,7 +2097,11 @@ fn update_task(
     };
     let was_completed = db.tasks[idx].completed;
     if let Some(title) = data.title {
-        db.tasks[idx].title = clamp_chars(title, MAX_TITLE_LEN);
+        let title = clamp_chars(title.trim().to_string(), MAX_TITLE_LEN);
+        if title.is_empty() {
+            return Err("任务标题不能为空".into());
+        }
+        db.tasks[idx].title = title;
     }
     if let Some(notes) = data.notes {
         db.tasks[idx].notes = clamp_chars(notes, MAX_NOTES_LEN);
@@ -1935,7 +2122,21 @@ fn update_task(
         db.tasks[idx].position = position;
     }
     if data.parent_id.is_some() {
-        db.tasks[idx].parent_id = data.parent_id;
+        let parent_id = data.parent_id.filter(|item| !item.is_empty());
+        if let Some(parent_id) = &parent_id {
+            if parent_id == &id {
+                return Err("任务不能成为自己的子任务".into());
+            }
+            let parent = db
+                .tasks
+                .iter()
+                .find(|task| &task.id == parent_id)
+                .ok_or("父任务不存在")?;
+            if parent.project_id != db.tasks[idx].project_id || parent.parent_id.is_some() {
+                return Err("父任务必须是同一项目中的根任务".into());
+            }
+        }
+        db.tasks[idx].parent_id = parent_id;
     }
     if let Some(completed) = data.completed {
         db.tasks[idx].completed = completed;
@@ -1995,6 +2196,7 @@ fn restore_tasks(app: AppHandle, window: Window, tasks: Vec<Task>) -> Result<Vec
             db.tasks.push(task);
         }
     }
+    db = normalize_runtime_data(db)?;
     write_state(&app, &db, Some(window.label()))?;
     Ok(db.tasks)
 }
@@ -2834,6 +3036,72 @@ mod tests {
         });
         assert_eq!(data.tasks.len(), 1);
         assert_eq!(data.tasks[0].id, "t1");
+    }
+
+    #[test]
+    fn missing_primary_recovers_previous_data_file() {
+        let dir = std::env::temp_dir().join(format!("taskflow-recovery-{}", new_id()));
+        fs::create_dir_all(&dir).expect("应能创建测试目录");
+        let primary = dir.join("taskflow-data.json");
+        let previous = primary.with_extension("json.prev");
+        let expected = default_data();
+        fs::write(
+            &previous,
+            serde_json::to_string_pretty(&expected).expect("应能序列化测试数据"),
+        )
+        .expect("应能写入恢复副本");
+
+        let recovered = recover_local_data_file(&primary).expect("应能从 .prev 恢复");
+
+        assert_eq!(recovered.0, previous);
+        assert_eq!(recovered.1.projects.len(), expected.projects.len());
+        assert_eq!(recovered.1.tasks.len(), expected.tasks.len());
+        fs::remove_dir_all(&dir).expect("应能清理测试目录");
+    }
+
+    #[test]
+    fn stored_data_makes_orphan_subtasks_visible_as_roots() {
+        let raw = r#"{
+            "schemaVersion": 3,
+            "projects": [{"id":"p1","name":"项目"}],
+            "tasks": [{"id":"t1","projectId":"p1","parentId":"missing","title":"孤儿任务"}]
+        }"#;
+        let (stored, _) = parse_stored_data(raw).expect("测试数据应能解析");
+
+        let data = normalize_stored_data(stored);
+
+        assert_eq!(data.tasks.len(), 1);
+        assert_eq!(data.tasks[0].parent_id, None);
+    }
+
+    #[test]
+    fn runtime_normalization_repairs_cross_project_cycles_and_deep_nesting() {
+        let mut data = default_data();
+        let project_a = data.projects[0].id.clone();
+        let project_b = data.projects[1].id.clone();
+        data.tasks = vec![
+            make_task("root", &project_a, None, "根任务"),
+            make_task("child", &project_a, Some("root"), "子任务"),
+            make_task("deep", &project_a, Some("child"), "多层子任务"),
+            make_task("foreign", &project_b, Some("root"), "跨项目任务"),
+            make_task("cycle-a", &project_a, Some("cycle-b"), "循环 A"),
+            make_task("cycle-b", &project_a, Some("cycle-a"), "循环 B"),
+        ];
+
+        let normalized = normalize_runtime_data(data).expect("运行时数据应能规范化");
+        let parent_of = |id: &str| {
+            normalized
+                .tasks
+                .iter()
+                .find(|task| task.id == id)
+                .and_then(|task| task.parent_id.clone())
+        };
+
+        assert_eq!(parent_of("child").as_deref(), Some("root"));
+        assert_eq!(parent_of("deep").as_deref(), Some("root"));
+        assert_eq!(parent_of("foreign"), None);
+        assert_eq!(parent_of("cycle-a"), None);
+        assert_eq!(parent_of("cycle-b"), None);
     }
 
     #[test]
