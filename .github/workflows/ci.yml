@@ -40,3 +40,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: src-tauri
+          # notify-rust still pins tauri-winrt-notification 0.7.x. That crate only
+          # uses quick-xml escaping, not the vulnerable parser APIs; see docs/security.md.
+          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195

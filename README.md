@@ -51,6 +51,7 @@ npm.cmd run dev
 | `npm.cmd run generate:icon` | 重新生成 Windows 图标与网页 favicon |
 
 更完整的开发、构建和桌面验收步骤见 [docs/development.md](docs/development.md)。
+依赖审计的例外与可达性判断见 [docs/security.md](docs/security.md)。
 
 ## 项目结构
 
