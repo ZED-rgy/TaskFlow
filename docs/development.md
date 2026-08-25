@@ -1,7 +1,7 @@
 # TaskFlow 开发与构建
 
 ## 环境要求
-- Node.js 18+ （https://nodejs.org 下载）
+- Node.js 20.19+ （https://nodejs.org 下载）
 - Rust / Cargo（https://www.rust-lang.org/tools/install ，开发和构建需要）
 
 ## 第一次启动（开发模式）
@@ -42,7 +42,7 @@ npm.cmd run build
 
 `release/小光任务.exe`
 
-> 说明：项目已完全迁移到 Tauri，Electron 版已于 2026-06-11 移除（git 历史中可找回）。
+> 说明：项目已完全迁移到 Tauri，Electron 版已于 2026-06-11 移除；桌面运行时已于 2026-08-25 升级到 Tauri 2（历史均可在 git 中找回）。
 
 ---
 
@@ -154,7 +154,7 @@ npm.cmd run build:installer
 
 ## 架构说明
 
-项目已于 2026-06-11 完成从 Electron 到 Tauri 1.x 的迁移并移除 Electron 代码（历史见 git 记录）。
+项目已于 2026-06-11 完成从 Electron 到 Tauri 的迁移并移除 Electron 代码，2026-08-25 升级到 Tauri 2（历史见 git 记录）。
 桌面组件窗口按需创建、隐藏 5 分钟自动释放；数据常驻内存、防抖落盘。
 
 注意：应用自身进程内存（任务管理器中的 小光任务.exe）通常仅 10-30 MB，完整占用需把 msedgewebview2.exe 子进程计入，整体约为同类 Electron 应用的 1/3。

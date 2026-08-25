@@ -19,7 +19,7 @@
 ## 技术栈
 
 - Vue 3 + Vite：界面与交互
-- Tauri 1 + Rust：桌面窗口、本地存储、系统托盘和通知
+- Tauri 2 + Rust：桌面窗口、本地存储、系统托盘和通知
 - SortableJS：任务拖拽排序
 
 当前主要面向 Windows。Rust 后端使用了 Windows 注册表读取能力，其他平台尚未完成适配与验证。
@@ -28,9 +28,9 @@
 
 ### 环境要求
 
-- Node.js 18+
+- Node.js 20.19+
 - Rust stable 与 Cargo
-- Windows WebView2 和 Tauri 1 所需的系统构建环境
+- Windows WebView2 和 Tauri 2 所需的系统构建环境
 
 ```powershell
 git clone https://github.com/ZED-rgy/TaskFlow.git
@@ -67,8 +67,10 @@ TaskFlow/
 │  ├─ QuickAdd.vue         全局快速添加窗口
 │  └─ Widget.vue           桌面组件窗口
 └─ src-tauri/
-   ├─ src/main.rs          Rust 后端、数据层与系统能力
-   └─ tauri.conf.json      Tauri 构建和权限配置
+   ├─ capabilities/        Tauri 2 窗口能力与插件权限
+   ├─ src/domain.rs        数据不变量与关系修复
+   ├─ src/main.rs          Rust 命令、持久化与系统能力
+   └─ tauri.conf.json      Tauri 2 构建和窗口配置
 ```
 
 模块关系和数据流见 [docs/architecture.md](docs/architecture.md)。
@@ -90,7 +92,8 @@ TaskFlow/
 - 智能视图和桌面组件排序规则测试
 - Vite 生产构建
 - `cargo check`
-- 21 个 Rust 数据规范化、导入、重复任务和任务树单元测试
+- 24 个 Rust 数据恢复、规范化、导入、重复任务和任务树单元测试
+- GitHub Actions 的 Windows 全链路构建与 RustSec 依赖审计
 
 提交改动前请运行：
 

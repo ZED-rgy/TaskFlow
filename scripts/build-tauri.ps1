@@ -30,7 +30,7 @@ Push-Location $projectRoot
 try {
     $tauriArgs = @('@tauri-apps/cli', 'build')
     if ($Target -eq 'portable') {
-        $tauriArgs += @('--bundles', 'none')
+        $tauriArgs += '--no-bundle'
     }
 
     & npx.cmd @tauriArgs

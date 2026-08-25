@@ -1,5 +1,5 @@
 function getTauriInvoke() {
-  return window.__TAURI__?.tauri?.invoke || window.__TAURI__?.invoke || null
+  return window.__TAURI__?.core?.invoke || window.__TAURI__?.tauri?.invoke || window.__TAURI__?.invoke || null
 }
 
 async function invoke(command, payload = {}) {

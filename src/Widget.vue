@@ -537,7 +537,7 @@ function ballMouseMove(event) {
   if (!ballPress || ballPress.dragged) return
   if (Math.abs(event.screenX - ballPress.x) + Math.abs(event.screenY - ballPress.y) > 4) {
     ballPress.dragged = true
-    window.__TAURI__?.window?.appWindow?.startDragging?.()
+    window.__TAURI__?.window?.getCurrentWindow?.()?.startDragging?.()
   }
 }
 

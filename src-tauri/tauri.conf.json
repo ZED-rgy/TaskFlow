@@ -1,67 +1,46 @@
 {
-    "build": {
-        "beforeDevCommand": "npm.cmd run dev:web",
-        "beforeBuildCommand": "npm.cmd run build:web",
-        "devPath": "http://localhost:5173",
-        "distDir": "../dist",
-        "withGlobalTauri": true
+  "build": {
+    "beforeDevCommand": "npm.cmd run dev:web",
+    "beforeBuildCommand": "npm.cmd run build:web",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
     },
-    "package": {
-        "productName": "小光任务",
-        "version": "0.2.1"
+    "icon": [
+      "../assets/icon.ico"
+    ]
+  },
+  "productName": "小光任务",
+  "mainBinaryName": "小光任务",
+  "version": "0.2.1",
+  "identifier": "com.personal.taskflow-lite",
+  "plugins": {},
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; connect-src ipc: http://ipc.localhost"
     },
-    "tauri": {
-        "allowlist": {
-            "all": false,
-            "dialog": {
-                "all": true
-            },
-            "fs": {
-                "all": false
-            },
-            "notification": {
-                "all": true
-            },
-            "window": {
-                "all": true
-            },
-            "globalShortcut": {
-                "all": true
-            }
-        },
-        "bundle": {
-            "active": true,
-            "targets": [
-                "nsis"
-            ],
-            "identifier": "com.personal.taskflow-lite",
-            "icon": [
-                "../assets/icon.ico"
-            ],
-            "windows": {
-                "webviewInstallMode": {
-                    "type": "embedBootstrapper"
-                }
-            }
-        },
-        "security": {
-            "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'"
-        },
-        "systemTray": {
-            "iconPath": "../assets/icon.ico",
-            "iconAsTemplate": false
-        },
-        "windows": [
-            {
-                "title": "小光任务",
-                "width": 1100,
-                "height": 720,
-                "minWidth": 680,
-                "minHeight": 480,
-                "decorations": false,
-                "transparent": false,
-                "resizable": true
-            }
-        ]
-    }
+    "windows": [
+      {
+        "title": "小光任务",
+        "width": 1100,
+        "height": 720,
+        "minWidth": 680,
+        "minHeight": 480,
+        "decorations": false,
+        "transparent": false,
+        "resizable": true,
+        "useHttpsScheme": true
+      }
+    ]
+  }
 }

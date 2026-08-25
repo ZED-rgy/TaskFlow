@@ -3,7 +3,7 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     fs,
     path::PathBuf,
     sync::Mutex,
@@ -11,10 +11,16 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{
-    AppHandle, CustomMenuItem, GlobalShortcutManager, LogicalPosition, LogicalSize, Manager,
-    SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, Window, WindowBuilder,
-    WindowEvent, WindowUrl,
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
 };
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+mod domain;
+
+use domain::normalize_runtime_data;
 use uuid::Uuid;
 use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
 
@@ -275,9 +281,9 @@ fn now() -> String {
 
 fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
-        .path_resolver()
+        .path()
         .app_data_dir()
-        .ok_or("无法获取应用数据目录")?;
+        .map_err(|err| format!("无法获取应用数据目录：{err}"))?;
     fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     Ok(dir)
 }
@@ -411,115 +417,6 @@ fn normalize_tags(tags: Option<Vec<String>>) -> Vec<String> {
         .filter(|tag| !tag.is_empty() && seen.insert(tag.clone()))
         .take(MAX_TAG_COUNT)
         .collect()
-}
-
-fn normalize_task_relationships(tasks: &mut [Task]) {
-    let relationships: HashMap<String, (String, Option<String>)> = tasks
-        .iter()
-        .map(|task| {
-            (
-                task.id.clone(),
-                (task.project_id.clone(), task.parent_id.clone()),
-            )
-        })
-        .collect();
-
-    for task in tasks {
-        let Some(mut current_id) = task.parent_id.clone() else {
-            continue;
-        };
-        let mut seen = HashSet::from([task.id.clone()]);
-        let root_parent = loop {
-            if !seen.insert(current_id.clone()) {
-                break None;
-            }
-            let Some((project_id, parent_id)) = relationships.get(&current_id) else {
-                break None;
-            };
-            if project_id != &task.project_id {
-                break None;
-            }
-            let Some(next_id) = parent_id.clone() else {
-                break Some(current_id);
-            };
-            current_id = next_id;
-        };
-        task.parent_id = root_parent;
-    }
-}
-
-fn normalize_due_date(value: Option<String>) -> Option<String> {
-    let value = value?.trim().chars().take(10).collect::<String>();
-    chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d")
-        .ok()
-        .map(|date| date.to_string())
-}
-
-fn normalize_runtime_data(mut data: TaskFlowData) -> Result<TaskFlowData, String> {
-    if data.projects.is_empty() {
-        return Err("数据缺少项目".into());
-    }
-
-    data.schema_version = SCHEMA_VERSION;
-    let mut project_ids = HashSet::new();
-    for (index, project) in data.projects.iter_mut().enumerate() {
-        project.id = project.id.trim().to_string();
-        if project.id.is_empty() || !project_ids.insert(project.id.clone()) {
-            project.id = new_id();
-            project_ids.insert(project.id.clone());
-        }
-        project.name = clamp_chars(project.name.trim().to_string(), MAX_PROJECT_NAME_LEN);
-        if project.name.is_empty() {
-            project.name = "未命名项目".into();
-        }
-        project.icon = clamp_chars(project.icon.trim().to_string(), MAX_PROJECT_ICON_LEN);
-        if project.icon.is_empty() {
-            project.icon = "📋".into();
-        }
-        project.color = clamp_chars(project.color.trim().to_string(), MAX_PROJECT_COLOR_LEN);
-        if project.color.is_empty() {
-            project.color = "#D4922A".into();
-        }
-        if project.created_at.trim().is_empty() {
-            project.created_at = now();
-        }
-        if project.position < 0 {
-            project.position = index as i32;
-        }
-    }
-
-    let valid_project_ids: HashSet<String> =
-        data.projects.iter().map(|project| project.id.clone()).collect();
-    data.tasks.retain(|task| {
-        valid_project_ids.contains(&task.project_id) && !task.title.trim().is_empty()
-    });
-    let mut task_ids = HashSet::new();
-    for (index, task) in data.tasks.iter_mut().enumerate() {
-        task.id = task.id.trim().to_string();
-        if task.id.is_empty() || !task_ids.insert(task.id.clone()) {
-            task.id = new_id();
-            task_ids.insert(task.id.clone());
-        }
-        task.title = clamp_chars(task.title.trim().to_string(), MAX_TITLE_LEN);
-        task.notes = clamp_chars(task.notes.clone(), MAX_NOTES_LEN);
-        task.due_date = normalize_due_date(task.due_date.clone());
-        task.priority = normalize_priority(Some(task.priority.clone()));
-        task.tags = normalize_tags(Some(task.tags.clone()));
-        task.repeat = normalize_repeat(Some(task.repeat.clone()));
-        if task.created_at.trim().is_empty() {
-            task.created_at = now();
-        }
-        task.completed_at = if task.completed {
-            task.completed_at.clone().or_else(|| Some(now()))
-        } else {
-            None
-        };
-        if task.position < 0 {
-            task.position = index as i32;
-        }
-    }
-    normalize_task_relationships(&mut data.tasks);
-    Ok(data)
 }
 
 fn normalize_stored_data(stored: StoredTaskFlowData) -> TaskFlowData {
@@ -662,7 +559,7 @@ fn write_data_file(app: &AppHandle, data: &TaskFlowData, emit_change: bool) -> R
         match fs::rename(&tmp, &path) {
             Ok(_) => {
                 if emit_change {
-                    let _ = app.emit_all("taskflow-data-changed", ());
+                    let _ = app.emit("taskflow-data-changed", ());
                 }
                 return Ok(());
             }
@@ -680,7 +577,7 @@ fn write_data_file(app: &AppHandle, data: &TaskFlowData, emit_change: bool) -> R
         if fs::copy(&tmp, &path).is_ok() {
             let _ = fs::remove_file(&tmp);
             if emit_change {
-                let _ = app.emit_all("taskflow-data-changed", ());
+                let _ = app.emit("taskflow-data-changed", ());
             }
             return Ok(());
         }
@@ -896,15 +793,15 @@ fn write_app_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), Str
 }
 
 fn open_quick_add(app: &AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_window("quickadd") {
+    if let Some(window) = app.get_webview_window("quickadd") {
         let _ = window.show();
         let _ = window.set_focus();
         return Ok(());
     }
-    let window = WindowBuilder::new(
+    let window = WebviewWindowBuilder::new(
         app,
         "quickadd",
-        WindowUrl::App("index.html?quickadd".into()),
+        WebviewUrl::App("index.html?quickadd".into()),
     )
     .title("快速添加任务")
     .decorations(false)
@@ -921,7 +818,7 @@ fn open_quick_add(app: &AppHandle) -> Result<(), String> {
 }
 
 fn apply_quick_add_shortcut(app: &AppHandle, accelerator: &str) -> Result<(), String> {
-    let mut manager = app.global_shortcut_manager();
+    let manager = app.global_shortcut();
     let _ = manager.unregister_all();
     let accelerator = accelerator.trim();
     if accelerator.is_empty() {
@@ -929,9 +826,11 @@ fn apply_quick_add_shortcut(app: &AppHandle, accelerator: &str) -> Result<(), St
     }
     let handle = app.clone();
     manager
-        .register(accelerator, move || {
-            if let Err(error) = open_quick_add(&handle) {
-                let _ = append_log(&handle, "error", "quick add open failed", Some(error));
+        .on_shortcut(accelerator, move |_app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                if let Err(error) = open_quick_add(&handle) {
+                    let _ = append_log(&handle, "error", "quick add open failed", Some(error));
+                }
             }
         })
         .map_err(|err| err.to_string())
@@ -956,7 +855,7 @@ fn read_state(app: &AppHandle) -> Result<TaskFlowData, String> {
 /// 发起窗口（origin）通常已经做过乐观更新，再收到自己触发的事件只会引发一次
 /// 多余的全量重载，因此跳过它。其它窗口（如桌面组件、快速添加）仍需同步刷新。
 fn emit_data_changed(app: &AppHandle, origin: Option<&str>) {
-    for (label, window) in app.windows() {
+    for (label, window) in app.webview_windows() {
         if origin == Some(label.as_str()) {
             continue;
         }
@@ -1355,7 +1254,7 @@ fn effective_widget_size(config: &WidgetConfig) -> (f64, f64) {
     }
 }
 
-fn apply_widget_bounds(window: &Window, config: &WidgetConfig) {
+fn apply_widget_bounds(window: &WebviewWindow, config: &WidgetConfig) {
     let _ = window.set_resizable(false);
     let (width, height) = effective_widget_size(config);
     let _ = window.set_size(LogicalSize::new(width, height));
@@ -1401,8 +1300,8 @@ fn stored_to_widget_config(app: &AppHandle, stored: StoredWidgetConfig) -> Widge
 
 fn active_monitor_bounds(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     let window = app
-        .get_window("main")
-        .or_else(|| app.get_window("widget"))?;
+        .get_webview_window("main")
+        .or_else(|| app.get_webview_window("widget"))?;
     let monitor = window
         .current_monitor()
         .ok()
@@ -1602,7 +1501,7 @@ fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<Widg
         }
     }
     write_widget_config(app, &config)?;
-    if let Some(window) = app.get_window("widget") {
+    if let Some(window) = app.get_webview_window("widget") {
         let _ = window.set_always_on_top(config.always_on_top);
         if size_changed {
             apply_widget_bounds(&window, &config);
@@ -1642,7 +1541,7 @@ fn save_widget_mini_position(app: &AppHandle, x: i32, y: i32) {
 }
 
 fn maybe_destroy_widget(app: &AppHandle) {
-    let Some(window) = app.get_window("widget") else {
+    let Some(window) = app.get_webview_window("widget") else {
         return;
     };
     let Some(state) = app.try_state::<WidgetConfigState>() else {
@@ -1691,7 +1590,7 @@ fn maybe_snap_mini(app: &AppHandle) {
     if !config.mini {
         return;
     }
-    if let Some(window) = app.get_window("widget") {
+    if let Some(window) = app.get_webview_window("widget") {
         let (x, y) = mini_position(app, &config);
         let _ = window.set_position(LogicalPosition::new(x, y));
     };
@@ -1721,8 +1620,8 @@ fn save_widget_position(
     let _ = write_widget_config(app, &config);
 }
 
-fn ensure_widget_window(app: &AppHandle) -> Result<Window, String> {
-    if let Some(window) = app.get_window("widget") {
+fn ensure_widget_window(app: &AppHandle) -> Result<WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window("widget") {
         return Ok(window);
     }
     let mut config = clamp_widget_config(read_widget_config(app));
@@ -1733,7 +1632,7 @@ fn ensure_widget_window(app: &AppHandle) -> Result<Window, String> {
     }
     write_widget_config(app, &config)?;
     let (width, height) = effective_widget_size(&config);
-    WindowBuilder::new(app, "widget", WindowUrl::App("index.html?widget".into()))
+    WebviewWindowBuilder::new(app, "widget", WebviewUrl::App("index.html?widget".into()))
         .title("小光任务组件")
         .decorations(false)
         .transparent(true)
@@ -1749,12 +1648,12 @@ fn ensure_widget_window(app: &AppHandle) -> Result<Window, String> {
         .map_err(|err| err.to_string())
 }
 
-fn ensure_main_window(app: &AppHandle) -> Result<Window, String> {
-    if let Some(window) = app.get_window("main") {
+fn ensure_main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window("main") {
         return Ok(window);
     }
 
-    WindowBuilder::new(app, "main", WindowUrl::App("index.html".into()))
+    WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("小光任务")
         .decorations(false)
         .transparent(false)
@@ -1816,52 +1715,74 @@ fn hide_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
     let mut config = read_widget_config(app);
     config.visible = false;
     write_widget_config(app, &config)?;
-    if let Some(window) = app.get_window("widget") {
+    if let Some(window) = app.get_webview_window("widget") {
         window.hide().map_err(|err| err.to_string())?;
     }
     Ok(config)
 }
 
-fn build_system_tray() -> SystemTray {
-    let show_main = CustomMenuItem::new("show_main".to_string(), "显示主窗口");
-    let toggle_widget = CustomMenuItem::new("toggle_widget".to_string(), "显示/隐藏桌面组件");
-    let quit = CustomMenuItem::new("quit".to_string(), "退出小光任务");
-    let menu = SystemTrayMenu::new()
-        .add_item(show_main)
-        .add_item(toggle_widget)
-        .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(quit);
-    SystemTray::new().with_menu(menu)
-}
-
-fn handle_system_tray_event(app: &AppHandle, event: SystemTrayEvent) {
-    match event {
-        SystemTrayEvent::LeftClick { .. } => {
-            let _ = append_log(app, "info", "tray left click show main", None);
+fn handle_tray_menu(app: &AppHandle, id: &str) {
+    match id {
+        "show_main" => {
+            let _ = append_log(app, "info", "tray menu show main", None);
             let _ = show_main(app);
         }
-        SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
-            "show_main" => {
-                let _ = append_log(app, "info", "tray menu show main", None);
-                let _ = show_main(app);
+        "toggle_widget" => {
+            let _ = append_log(app, "info", "tray menu toggle widget", None);
+            if read_widget_config(app).visible {
+                let _ = hide_widget_window(app);
+            } else {
+                let _ = show_widget_window(app);
             }
-            "toggle_widget" => {
-                let _ = append_log(app, "info", "tray menu toggle widget", None);
-                if read_widget_config(app).visible {
-                    let _ = hide_widget_window(app);
-                } else {
-                    let _ = show_widget_window(app);
-                }
-            }
-            "quit" => {
-                let _ = append_log(app, "info", "tray menu quit", None);
-                flush_all(app, true);
-                app.exit(0);
-            }
-            _ => {}
-        },
+        }
+        "quit" => {
+            let _ = append_log(app, "info", "tray menu quit", None);
+            flush_all(app, true);
+            app.exit(0);
+        }
         _ => {}
     }
+}
+
+fn build_system_tray(app: &AppHandle) -> Result<(), String> {
+    let show_main_item = MenuItem::with_id(app, "show_main", "显示主窗口", true, None::<&str>)
+        .map_err(|err| err.to_string())?;
+    let toggle_widget = MenuItem::with_id(
+        app,
+        "toggle_widget",
+        "显示/隐藏桌面组件",
+        true,
+        None::<&str>,
+    )
+    .map_err(|err| err.to_string())?;
+    let separator = PredefinedMenuItem::separator(app).map_err(|err| err.to_string())?;
+    let quit = MenuItem::with_id(app, "quit", "退出小光任务", true, None::<&str>)
+        .map_err(|err| err.to_string())?;
+    let menu = Menu::with_items(app, &[&show_main_item, &toggle_widget, &separator, &quit])
+        .map_err(|err| err.to_string())?;
+    let icon = app.default_window_icon().cloned().ok_or("应用图标不可用")?;
+    TrayIconBuilder::new()
+        .icon(icon)
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| handle_tray_menu(app, event.id().as_ref()))
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+            ) {
+                let app = tray.app_handle();
+                let _ = append_log(app, "info", "tray left click show main", None);
+                let _ = show_main(app);
+            }
+        })
+        .build(app)
+        .map(|_| ())
+        .map_err(|err| err.to_string())
 }
 
 #[tauri::command]
@@ -1931,14 +1852,37 @@ fn get_tasks(app: AppHandle, project_id: Option<String>) -> Result<Vec<Task>, St
 }
 
 #[tauri::command]
-fn create_project(app: AppHandle, window: Window, data: ProjectPayload) -> Result<Project, String> {
+fn create_project(
+    app: AppHandle,
+    window: WebviewWindow,
+    data: ProjectPayload,
+) -> Result<Project, String> {
     let mut db = read_state(&app)?;
-    let name = clamp_chars(data.name.unwrap_or_else(|| "新项目".into()).trim().to_string(), MAX_PROJECT_NAME_LEN);
+    let name = clamp_chars(
+        data.name
+            .unwrap_or_else(|| "新项目".into())
+            .trim()
+            .to_string(),
+        MAX_PROJECT_NAME_LEN,
+    );
     let project = Project {
         id: new_id(),
-        name: if name.is_empty() { "新项目".into() } else { name },
-        icon: clamp_chars(data.icon.unwrap_or_else(|| "📋".into()).trim().to_string(), MAX_PROJECT_ICON_LEN),
-        color: clamp_chars(data.color.unwrap_or_else(|| "#D4922A".into()).trim().to_string(), MAX_PROJECT_COLOR_LEN),
+        name: if name.is_empty() {
+            "新项目".into()
+        } else {
+            name
+        },
+        icon: clamp_chars(
+            data.icon.unwrap_or_else(|| "📋".into()).trim().to_string(),
+            MAX_PROJECT_ICON_LEN,
+        ),
+        color: clamp_chars(
+            data.color
+                .unwrap_or_else(|| "#D4922A".into())
+                .trim()
+                .to_string(),
+            MAX_PROJECT_COLOR_LEN,
+        ),
         position: db.projects.len() as i32,
         created_at: now(),
     };
@@ -1950,7 +1894,7 @@ fn create_project(app: AppHandle, window: Window, data: ProjectPayload) -> Resul
 #[tauri::command]
 fn update_project(
     app: AppHandle,
-    window: Window,
+    window: WebviewWindow,
     data: ProjectPayload,
 ) -> Result<Option<Project>, String> {
     let mut db = read_state(&app)?;
@@ -1985,7 +1929,11 @@ fn update_project(
 }
 
 #[tauri::command]
-fn delete_project(app: AppHandle, window: Window, id: String) -> Result<serde_json::Value, String> {
+fn delete_project(
+    app: AppHandle,
+    window: WebviewWindow,
+    id: String,
+) -> Result<serde_json::Value, String> {
     let mut db = read_state(&app)?;
     let project = db.projects.iter().find(|item| item.id == id).cloned();
     let tasks: Vec<Task> = db
@@ -2003,7 +1951,7 @@ fn delete_project(app: AppHandle, window: Window, id: String) -> Result<serde_js
 #[tauri::command]
 fn restore_project(
     app: AppHandle,
-    window: Window,
+    window: WebviewWindow,
     project: Option<Project>,
     tasks: Vec<Task>,
 ) -> Result<TaskFlowData, String> {
@@ -2024,7 +1972,11 @@ fn restore_project(
 }
 
 #[tauri::command]
-fn reorder_projects(app: AppHandle, window: Window, ids: Vec<String>) -> Result<bool, String> {
+fn reorder_projects(
+    app: AppHandle,
+    window: WebviewWindow,
+    ids: Vec<String>,
+) -> Result<bool, String> {
     let mut db = read_state(&app)?;
     for (index, id) in ids.iter().enumerate() {
         if let Some(project) = db.projects.iter_mut().find(|item| &item.id == id) {
@@ -2036,7 +1988,7 @@ fn reorder_projects(app: AppHandle, window: Window, ids: Vec<String>) -> Result<
 }
 
 #[tauri::command]
-fn create_task(app: AppHandle, window: Window, data: TaskPayload) -> Result<Task, String> {
+fn create_task(app: AppHandle, window: WebviewWindow, data: TaskPayload) -> Result<Task, String> {
     let mut db = read_state(&app)?;
     let project_id = data.project_id.ok_or("缺少项目 ID")?;
     if !db.projects.iter().any(|project| project.id == project_id) {
@@ -2053,7 +2005,10 @@ fn create_task(app: AppHandle, window: Window, data: TaskPayload) -> Result<Task
             return Err("父任务必须是同一项目中的根任务".into());
         }
     }
-    let title = clamp_chars(data.title.unwrap_or_default().trim().to_string(), MAX_TITLE_LEN);
+    let title = clamp_chars(
+        data.title.unwrap_or_default().trim().to_string(),
+        MAX_TITLE_LEN,
+    );
     if title.is_empty() {
         return Err("任务标题不能为空".into());
     }
@@ -2086,7 +2041,7 @@ fn create_task(app: AppHandle, window: Window, data: TaskPayload) -> Result<Task
 #[tauri::command]
 fn update_task(
     app: AppHandle,
-    window: Window,
+    window: WebviewWindow,
     id: String,
     data: TaskPayload,
 ) -> Result<serde_json::Value, String> {
@@ -2174,7 +2129,11 @@ fn update_task(
 }
 
 #[tauri::command]
-fn delete_task(app: AppHandle, window: Window, id: String) -> Result<serde_json::Value, String> {
+fn delete_task(
+    app: AppHandle,
+    window: WebviewWindow,
+    id: String,
+) -> Result<serde_json::Value, String> {
     let mut db = read_state(&app)?;
     let ids = collect_task_tree(&db.tasks, &id);
     let deleted: Vec<Task> = db
@@ -2189,7 +2148,11 @@ fn delete_task(app: AppHandle, window: Window, id: String) -> Result<serde_json:
 }
 
 #[tauri::command]
-fn restore_tasks(app: AppHandle, window: Window, tasks: Vec<Task>) -> Result<Vec<Task>, String> {
+fn restore_tasks(
+    app: AppHandle,
+    window: WebviewWindow,
+    tasks: Vec<Task>,
+) -> Result<Vec<Task>, String> {
     let mut db = read_state(&app)?;
     for task in tasks {
         if !db.tasks.iter().any(|item| item.id == task.id) {
@@ -2202,7 +2165,11 @@ fn restore_tasks(app: AppHandle, window: Window, tasks: Vec<Task>) -> Result<Vec
 }
 
 #[tauri::command]
-fn reorder_tasks(app: AppHandle, window: Window, data: ReorderTaskPayload) -> Result<bool, String> {
+fn reorder_tasks(
+    app: AppHandle,
+    window: WebviewWindow,
+    data: ReorderTaskPayload,
+) -> Result<bool, String> {
     let mut db = read_state(&app)?;
     for (index, id) in data.ordered_ids.iter().enumerate() {
         if let Some(task) = db
@@ -2325,7 +2292,7 @@ fn export_data(app: AppHandle) -> Result<ExportResult, String> {
 }
 
 #[tauri::command]
-fn import_data(app: AppHandle, window: Window) -> Result<ImportResult, String> {
+fn import_data(app: AppHandle, window: WebviewWindow) -> Result<ImportResult, String> {
     let Some(path) = rfd::FileDialog::new()
         .set_title("导入小光任务备份")
         .add_filter("JSON", &["json"])
@@ -2488,11 +2455,11 @@ fn open_quick_add_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn win_minimize(window: Window) -> Result<(), String> {
+fn win_minimize(window: WebviewWindow) -> Result<(), String> {
     window.minimize().map_err(|err| err.to_string())
 }
 #[tauri::command]
-fn win_maximize(window: Window) -> Result<(), String> {
+fn win_maximize(window: WebviewWindow) -> Result<(), String> {
     if window.is_maximized().map_err(|err| err.to_string())? {
         window.unmaximize().map_err(|err| err.to_string())
     } else {
@@ -2500,7 +2467,7 @@ fn win_maximize(window: Window) -> Result<(), String> {
     }
 }
 #[tauri::command]
-fn win_close(window: Window) -> Result<(), String> {
+fn win_close(window: WebviewWindow) -> Result<(), String> {
     if window.label() == "main" {
         let _ = window.set_skip_taskbar(true);
         window.hide().map_err(|err| err.to_string())
@@ -2573,9 +2540,11 @@ fn main() {
         }
     };
     tauri::Builder::default()
-        .system_tray(build_system_tray())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(move |app| {
             let handle = app.handle();
+            build_system_tray(&handle)?;
             let _ = append_log(&handle, "info", "小光任务 started", None);
             let initial = match read_data(&handle) {
                 Ok(data) => data,
@@ -2602,7 +2571,7 @@ fn main() {
                 config: Mutex::new(None),
                 dirty_since: Mutex::new(None),
             });
-            if let Some(window) = app.get_window("main") {
+            if let Some(window) = app.get_webview_window("main") {
                 if let Some(config) = read_main_window_config(&handle) {
                     let _ = window.set_size(LogicalSize::new(config.width, config.height));
                     if let (Some(x), Some(y)) = (config.x, config.y) {
@@ -2657,16 +2626,16 @@ fn main() {
             }
             Ok(())
         })
-        .on_window_event(|event| {
-            let label = event.window().label().to_string();
-            match event.event() {
+        .on_window_event(|window, event| {
+            let label = window.label().to_string();
+            match event {
                 WindowEvent::CloseRequested { api, .. } if label == "main" => {
                     api.prevent_close();
-                    let _ = event.window().set_skip_taskbar(true);
-                    let _ = event.window().hide();
+                    let _ = window.set_skip_taskbar(true);
+                    let _ = window.hide();
                 }
                 WindowEvent::CloseRequested { api, .. } if label == "widget" => {
-                    let app = event.window().app_handle();
+                    let app = window.app_handle();
                     let allow = app
                         .try_state::<WidgetConfigState>()
                         .and_then(|state| state.allow_destroy.lock().ok().map(|guard| *guard))
@@ -2683,7 +2652,6 @@ fn main() {
                     let _ = hide_widget_window(&app);
                 }
                 WindowEvent::Moved(position) if label == "main" => {
-                    let window = event.window();
                     if window.is_maximized().unwrap_or(false)
                         || window.is_minimized().unwrap_or(false)
                     {
@@ -2699,7 +2667,6 @@ fn main() {
                     });
                 }
                 WindowEvent::Resized(size) if label == "main" => {
-                    let window = event.window();
                     let app = window.app_handle();
                     let maximized = window.is_maximized().unwrap_or(false);
                     if maximized {
@@ -2724,8 +2691,8 @@ fn main() {
                     });
                 }
                 WindowEvent::Moved(position) if label == "widget" => {
-                    let app = event.window().app_handle();
-                    let scale = event.window().scale_factor().unwrap_or(1.0).max(1.0);
+                    let app = window.app_handle();
+                    let scale = window.scale_factor().unwrap_or(1.0).max(1.0);
                     let x = (position.x as f64 / scale).round() as i32;
                     let y = (position.y as f64 / scale).round() as i32;
                     let config = read_widget_config(&app);
@@ -2736,8 +2703,8 @@ fn main() {
                     }
                 }
                 WindowEvent::Resized(size) if label == "widget" => {
-                    let app = event.window().app_handle();
-                    let scale = event.window().scale_factor().unwrap_or(1.0).max(1.0);
+                    let app = window.app_handle();
+                    let scale = window.scale_factor().unwrap_or(1.0).max(1.0);
                     let config = read_widget_config(&app);
                     if config.collapsed || config.mini {
                         return;
@@ -2752,9 +2719,6 @@ fn main() {
                 }
                 _ => {}
             }
-        })
-        .on_system_tray_event(|app, event| {
-            handle_system_tray_event(&app.app_handle(), event);
         })
         .invoke_handler(tauri::generate_handler![
             get_widget_config,

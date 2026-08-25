@@ -2,7 +2,7 @@
 
 ## 总览
 
-TaskFlow 是一个 Vue 3 + Tauri 1 桌面应用。前端负责界面状态和交互，Rust 后端负责持久化、备份、窗口生命周期、系统托盘、通知、全局快捷键与系统字体读取。
+TaskFlow 是一个 Vue 3 + Tauri 2 桌面应用。前端负责界面状态和交互，Rust 后端负责持久化、备份、窗口生命周期、系统托盘、通知、全局快捷键与系统字体读取。
 
 ```text
 App / Widget / QuickAdd
@@ -12,10 +12,12 @@ App / Widget / QuickAdd
           │  Tauri invoke
           ▼
 src-tauri/src/main.rs
-   ├─ 内存状态与防抖落盘
-   ├─ JSON 规范化、迁移和备份
+   ├─ 内存状态、原子落盘与备份
    ├─ 主窗口 / 桌面组件 / 快速添加窗口
    └─ 托盘、通知、快捷键和系统字体
+          │
+          └─ src-tauri/src/domain.rs
+                数据规范化与任务关系不变量
 ```
 
 ## 前端
@@ -45,16 +47,17 @@ src-tauri/src/main.rs
 
 ## Rust 后端
 
-`src-tauri/src/main.rs` 当前包含以下职责：
+Rust 后端已开始按领域渐进拆分：
 
-- 数据模型、旧版本兼容和字段规范化
+- `src-tauri/src/domain.rs`：统一字段规范化、项目引用校验、父子任务关系修复
+- `src-tauri/src/main.rs`：数据模型、旧版本兼容和 Tauri 命令注册
 - 内存状态、原子落盘、损坏恢复与备份轮换
 - 项目和任务命令
 - 主窗口、桌面组件与快速添加窗口管理
 - 系统托盘、通知、全局快捷键和单实例控制
 - 日志、导入导出和系统字体读取
 
-这个文件是当前最大的维护热点。后续重构时，适合按 `model`、`storage`、`commands`、`windows`、`settings` 拆成内部 Rust 模块，但应保持现有 Tauri 命令名称和 `src/runtime/api.js` 接口稳定，避免把复杂度扩散到三个前端入口。
+`main.rs` 仍是当前最大的维护热点。后续可继续按 `model`、`storage`、`commands`、`windows`、`settings` 拆分，但应保持现有 Tauri 命令名称和 `src/runtime/api.js` 接口稳定，避免把复杂度扩散到三个前端入口。
 
 ## 数据流
 
@@ -68,6 +71,6 @@ src-tauri/src/main.rs
 
 - `scripts/test-taskviews.mjs`：智能视图日期规则
 - `scripts/test-widget-order.mjs`：桌面组件可见任务排序
-- `src-tauri/src/main.rs` 的 `tests` 模块：数据规范化、导入、重复日期和任务树
+- `src-tauri/src/main.rs` 的 `tests` 模块：数据恢复、规范化、导入、重复日期和任务树
 
 完整验证入口是 `npm.cmd run verify`。
