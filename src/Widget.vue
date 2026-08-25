@@ -950,12 +950,12 @@ onUnmounted(() => {
     radial-gradient(circle at 100% 0%, var(--accent-soft), transparent 36%),
     linear-gradient(180deg, rgba(255,255,255,.10), transparent 120px),
     color-mix(in srgb, var(--bg-surface) 94%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
+  border: 0;
   border-radius: 14px;
-  box-shadow: var(--shadow-float);
+  box-shadow: none;
 }
 .widget-shell.collapsed {
-  box-shadow: 0 14px 32px rgba(0,0,0,.24);
+  box-shadow: none;
 }
 .widget-titlebar {
   height: 42px;

@@ -29,9 +29,21 @@ assert.match(
 )
 
 assert.match(
+  rust,
+  /fn apply_widget_bounds[\s\S]*?set_shadow\(false\)/,
+  '桌面组件窗口不应启用会形成外框的原生阴影'
+)
+
+assert.match(
+  rust,
+  /\.shadow\(false\)/,
+  '桌面组件首次创建时也必须关闭原生阴影'
+)
+
+assert.match(
   widget,
-  /\.widget-ball \{[\s\S]*?box-shadow: inset 0 1px 0 rgba\(255,255,255,\.08\);/,
-  '悬浮球不应使用会在透明窗口中形成矩形黑边的外层阴影'
+  /\.widget-shell \{[\s\S]*?border: 0;[\s\S]*?box-shadow: none;/,
+  '组件外层不应使用边框和阴影叠成底框'
 )
 
 console.log('widget snap and shadow rules: ok')
