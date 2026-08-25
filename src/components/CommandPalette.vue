@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
+import ProjectIcon from './ProjectIcon.vue'
 
 const props = defineProps({
   open:     { type: Boolean, default: false },
@@ -15,11 +16,21 @@ const inputEl = ref(null)
 const listEl = ref(null)
 
 const VIEWS = [
-  { kind: 'view', id: 'today',     icon: '☀️', label: '今天' },
-  { kind: 'view', id: 'upcoming',  icon: '⌁',  label: '近 7 天' },
-  { kind: 'view', id: 'completed', icon: '✓',  label: '已完成' },
-  { kind: 'view', id: 'settings',  icon: '⚙',  label: '设置' },
+  { kind: 'view', group: 'view', id: 'today',     icon: '☀️', label: '今天' },
+  { kind: 'view', group: 'view', id: 'upcoming',  icon: '⌁',  label: '近 7 天' },
+  { kind: 'view', group: 'view', id: 'completed', icon: '✓',  label: '已完成' },
+  { kind: 'view', group: 'view', id: 'settings',  icon: '⚙',  label: '设置' },
 ]
+
+const GROUP_LABELS = {
+  view: '快捷视图',
+  project: '项目',
+  task: '任务',
+}
+
+function groupLabel(group) {
+  return GROUP_LABELS[group] || ''
+}
 
 function projectOf(id) {
   return props.projects.find(p => p.id === id) || null
@@ -37,7 +48,7 @@ const results = computed(() => {
   }
   for (const project of props.projects) {
     if (!q || project.name.toLowerCase().includes(q)) {
-      items.push({ kind: 'project', id: project.id, icon: project.icon, label: project.name, key: `proj:${project.id}` })
+      items.push({ kind: 'project', group: 'project', id: project.id, icon: project.icon, label: project.name, key: `proj:${project.id}` })
     }
   }
 
@@ -53,6 +64,7 @@ const results = computed(() => {
     const project = projectOf(t.projectId)
     items.push({
       kind: 'task',
+      group: 'task',
       id: t.id,
       icon: t.completed ? '✓' : (t.dueDate && t.dueDate < props.today ? '⚠' : '·'),
       label: t.title,
@@ -111,7 +123,7 @@ function onKeydown(event) {
 <template>
   <Transition name="palette-fade">
     <div v-if="open" class="palette-overlay" @mousedown.self="$emit('close')">
-      <div class="palette-panel" @keydown="onKeydown">
+      <div class="palette-panel" role="dialog" aria-modal="true" aria-label="命令面板" @keydown="onKeydown">
         <div class="palette-input-row">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <circle cx="6.2" cy="6.2" r="4.2" stroke="currentColor" stroke-width="1.4"/>
@@ -120,25 +132,38 @@ function onKeydown(event) {
           <input
             ref="inputEl"
             v-model="query"
+            aria-label="搜索任务、项目或视图"
+            aria-controls="palette-results"
+            :aria-activedescendant="results[activeIndex] ? `palette-option-${results[activeIndex].key}` : undefined"
             placeholder="搜索任务、项目，或跳转视图..."
           />
           <kbd>Esc</kbd>
         </div>
-        <div ref="listEl" class="palette-list">
-          <button
-            v-for="(item, index) in results"
-            :key="item.key"
-            class="palette-item"
-            :class="{ active: index === activeIndex, done: item.completed }"
-            @mouseenter="activeIndex = index"
-            @click="choose(item)"
-          >
-            <span class="item-icon" :class="{ overdue: item.overdue }">{{ item.icon }}</span>
-            <span class="item-label">{{ item.label }}</span>
-            <span v-if="item.meta" class="item-meta">{{ item.meta }}</span>
-            <span v-if="item.due" class="item-due" :class="{ overdue: item.overdue }">{{ item.due }}</span>
-            <span v-if="item.kind !== 'task'" class="item-kind">{{ item.kind === 'project' ? '项目' : '视图' }}</span>
-          </button>
+        <div id="palette-results" ref="listEl" class="palette-list" role="listbox" aria-label="搜索结果">
+          <template v-for="(item, index) in results" :key="item.key">
+            <div
+              v-if="index === 0 || item.group !== results[index - 1].group"
+              class="palette-group-label"
+            >{{ groupLabel(item.group) }}</div>
+            <button
+              :id="`palette-option-${item.key}`"
+              role="option"
+              :aria-selected="index === activeIndex"
+              class="palette-item"
+              :class="{ active: index === activeIndex, done: item.completed }"
+              @mouseenter="activeIndex = index"
+              @click="choose(item)"
+            >
+              <span class="item-icon" :class="{ overdue: item.overdue, 'project-mark': item.kind === 'project' }">
+                <ProjectIcon v-if="item.kind === 'project'" :icon="item.icon" />
+                <span v-else>{{ item.icon }}</span>
+              </span>
+              <span class="item-label">{{ item.label }}</span>
+              <span v-if="item.meta" class="item-meta">· {{ item.meta }}</span>
+              <span v-if="item.due" class="item-due" :class="{ overdue: item.overdue }">{{ item.due }}</span>
+              <span v-if="item.kind !== 'task'" class="item-kind">{{ item.kind === 'project' ? '项目' : '视图' }}</span>
+            </button>
+          </template>
           <div v-if="!results.length" class="palette-empty">没有匹配结果</div>
         </div>
         <div class="palette-foot">
@@ -202,6 +227,14 @@ function onKeydown(event) {
   overflow-y: auto;
   padding: 6px;
 }
+.palette-group-label {
+  padding: 8px 10px 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
 .palette-item {
   width: 100%;
   display: flex;
@@ -221,6 +254,8 @@ function onKeydown(event) {
   text-align: center;
   color: var(--text-muted);
 }
+.item-icon.project-mark { color: var(--accent); }
+.item-icon.project-mark :deep(svg) { width: 15px; height: 15px; }
 .item-icon.overdue { color: var(--danger); }
 .item-label {
   flex: 1;

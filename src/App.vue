@@ -769,8 +769,14 @@ onUnmounted(() => {
           :toggleSkipDelete="toggleSkipDelete"
         />
         <div v-else class="empty-screen">
-          <div class="empty-icon">⬡</div>
-          <p>选择或创建一个项目</p>
+          <div class="empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none">
+              <path d="M24 6l15 9v18l-15 9-15-9V15l15-9Z" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M15 18.5l9 5.5 9-5.5M24 24v12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <strong>先创建一个项目</strong>
+          <p>从左侧新建项目，或按 <kbd>Ctrl</kbd><span>+</span><kbd>K</kbd> 快速跳转。</p>
         </div>
       </main>
       <TaskDetail
@@ -796,8 +802,8 @@ onUnmounted(() => {
 
     <Transition name="fade">
       <div v-if="confirmState" class="modal-overlay">
-        <div class="confirm-dialog">
-          <h2>{{ confirmState.title }}</h2>
+        <div class="confirm-dialog" role="dialog" aria-modal="true" :aria-labelledby="`confirm-title-${confirmState.title}`">
+          <h2 :id="`confirm-title-${confirmState.title}`">{{ confirmState.title }}</h2>
           <p>{{ confirmState.body }}</p>
           <label v-if="confirmState.showSkipOption" class="skip-label">
             <input type="checkbox" v-model="confirmSkipChecked" />
@@ -818,9 +824,14 @@ onUnmounted(() => {
     </Transition>
 
     <Transition name="slide">
-      <div v-if="toast" class="toast">
+      <div v-if="toast" class="toast" role="status" aria-live="polite">
+        <span class="toast-mark" aria-hidden="true">
+          <svg viewBox="0 0 14 14" fill="none">
+            <path d="M3 7.2l2.4 2.3L11 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
         <span>{{ toast.message }}</span>
-        <button v-if="toast.action" @click="toast.action.run">{{ toast.action.label }}</button>
+        <button v-if="toast.action" aria-label="执行撤销操作" @click="toast.action.run">{{ toast.action.label }}</button>
       </div>
     </Transition>
   </div>
@@ -930,13 +941,46 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   color: var(--text-muted);
 }
 .empty-icon {
-  font-size: 36px;
-  opacity: 0.3;
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 16px;
+  box-shadow: 0 12px 26px var(--accent-glow);
+  opacity: .8;
 }
+.empty-icon svg { width: 28px; height: 28px; }
+.empty-screen strong {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 700;
+}
+.empty-screen p {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.empty-screen kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 5px;
+  margin: 0 2px;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: center;
+}
+.empty-screen p > span { margin: 0 1px; }
 
 .modal-overlay {
   position: fixed;
@@ -996,6 +1040,17 @@ onUnmounted(() => {
   border-radius: var(--radius);
   box-shadow: 0 12px 28px rgba(0,0,0,.36);
 }
+.toast-mark {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  border-radius: 50%;
+}
+.toast-mark svg { width: 12px; height: 12px; }
 .toast button {
   color: var(--accent);
   font-size: 12px;

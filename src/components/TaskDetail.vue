@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import ProjectIcon from './ProjectIcon.vue'
 
 const props = defineProps({
   task: { type: Object, default: null },
@@ -15,6 +16,8 @@ const priorityLabel = computed(() => ({
   normal: '普通',
   high: '高',
 }[props.task?.priority || 'normal']))
+
+const statusLabel = computed(() => props.task?.completed ? '已完成' : '进行中')
 
 watch(() => props.task?.id, () => {
   tagDraft.value = (props.task?.tags || []).join(', ')
@@ -56,16 +59,28 @@ function formatDateTime(value) {
   <aside class="detail-panel" :class="{ open: task }">
     <template v-if="task">
       <div class="detail-head">
-        <div>
-          <span class="detail-kicker">{{ project?.name || '任务' }}</span>
-          <h2>任务详情</h2>
+        <div class="detail-heading">
+          <div class="detail-context">
+            <span class="detail-project-icon" aria-hidden="true">
+              <ProjectIcon :icon="project?.icon || '☀️'" />
+            </span>
+            <div>
+              <span class="detail-kicker">{{ project?.name || '任务' }}</span>
+              <span class="detail-status" :class="{ done: task.completed }">
+                <i aria-hidden="true"></i>{{ statusLabel }}
+              </span>
+            </div>
+          </div>
+          <h2 class="detail-title">{{ task.title }}</h2>
         </div>
-        <button class="icon-btn" title="关闭" @click="$emit('close')">
+        <button class="icon-btn" title="关闭详情" aria-label="关闭任务详情" @click="$emit('close')">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
           </svg>
         </button>
       </div>
+
+      <div class="detail-section-label">任务属性</div>
 
       <label class="field">
         <span>标题</span>
@@ -187,7 +202,7 @@ function formatDateTime(value) {
         </div>
       </div>
 
-      <button class="delete-btn" @click="$emit('delete', task.id)">删除任务</button>
+      <button class="delete-btn" aria-label="删除当前任务" @click="$emit('delete', task.id)">删除任务</button>
     </template>
     <div v-else class="detail-empty">
       <div>◇</div>
@@ -218,16 +233,77 @@ function formatDateTime(value) {
   align-items: flex-start;
   margin-bottom: 18px;
 }
+.detail-heading {
+  min-width: 0;
+  flex: 1;
+}
+.detail-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.detail-project-icon {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 8px;
+}
+.detail-project-icon :deep(svg) { width: 15px; height: 15px; }
 .detail-kicker {
   display: block;
   color: var(--text-muted);
   font-size: 10px;
-  margin-bottom: 2px;
+  line-height: 1.2;
 }
-.detail-head h2 {
+.detail-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  color: var(--accent);
+  font-size: 10px;
+}
+.detail-status i {
+  width: 5px;
+  height: 5px;
+  display: inline-block;
+  border-radius: 50%;
+  background: currentColor;
+}
+.detail-status.done { color: var(--success); }
+.detail-title {
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 750;
+  letter-spacing: -.02em;
+}
+.detail-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 12px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.detail-section-label::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--border);
 }
 .icon-btn {
   width: 28px;
