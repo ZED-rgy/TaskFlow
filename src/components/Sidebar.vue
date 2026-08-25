@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import ProjectIcon from './ProjectIcon.vue'
 
 const props = defineProps({
   projects:   { type: Array, default: () => [] },
@@ -272,7 +273,7 @@ function selectProject(p) {
         <span class="proj-stripe" :style="{ background: p.color }" />
 
         <!-- Icon -->
-        <span class="proj-icon">{{ p.icon }}</span>
+        <span class="proj-icon"><ProjectIcon :icon="p.icon" /></span>
 
         <!-- Name (normal / edit) -->
         <span v-if="editingId !== p.id" class="proj-name">{{ p.name }}</span>
@@ -299,7 +300,7 @@ function selectProject(p) {
       <Transition name="slide">
         <div v-if="showNewForm" class="new-form" @click.stop>
           <div class="new-form-row">
-            <button class="icon-cycle-btn" type="button" @click.stop="cycleIcon" title="点击切换图标">{{ newIcon }}</button>
+            <button class="icon-cycle-btn" type="button" @click.stop="cycleIcon" title="点击切换图标"><ProjectIcon :icon="newIcon" /></button>
             <input
               ref="newInput"
               v-model="newName"
@@ -488,6 +489,7 @@ function selectProject(p) {
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+  color: var(--text-secondary);
 }
 
 .proj-name  {
@@ -500,7 +502,7 @@ function selectProject(p) {
   transition: color .1s;
 }
 .project-row.active .proj-name { color: var(--text-primary); }
-.project-row.active .proj-icon { background: var(--accent-soft); }
+.project-row.active .proj-icon { background: var(--accent-soft); color: var(--accent); }
 
 .proj-name-input {
   flex: 1;

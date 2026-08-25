@@ -2,6 +2,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import Sortable from 'sortablejs'
 import TaskItem from './TaskItem.vue'
+import ProjectIcon from './ProjectIcon.vue'
 import { parseQuickInput, friendlyDate } from '../runtime/quickparse.js'
 import { dateState as getDateState } from '../runtime/taskviews.mjs'
 
@@ -355,7 +356,7 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="list-header">
       <div class="header-left">
-        <span class="project-icon">{{ project.icon }}</span>
+        <span class="project-icon"><ProjectIcon :icon="project.icon" /></span>
         <h1 class="project-title" :style="{ '--proj-color': project.color }">
           {{ project.name }}
         </h1>
@@ -559,6 +560,7 @@ onUnmounted(() => {
   justify-content: center;
   font-size: 21px;
   border-radius: 14px;
+  color: var(--proj-color, var(--accent));
   background: linear-gradient(145deg, color-mix(in srgb, var(--proj-color, var(--accent)) 18%, var(--bg-surface)), color-mix(in srgb, var(--accent-soft) 80%, transparent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--proj-color, var(--accent)) 32%, transparent), 0 8px 18px color-mix(in srgb, var(--proj-color, var(--accent)) 8%, transparent);
 }

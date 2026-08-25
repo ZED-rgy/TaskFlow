@@ -10,6 +10,7 @@ import {
   moveVisibleId,
 } from './runtime/widget-order.mjs'
 import { selectWidgetDisplayTasks } from './runtime/widget-visibility.mjs'
+import ProjectIcon from './components/ProjectIcon.vue'
 import appIconUrl from '../assets/icon.svg'
 
 const projects = ref([])
@@ -684,7 +685,7 @@ onUnmounted(() => {
   >
     <header class="widget-titlebar" data-tauri-drag-region>
       <div class="widget-project" data-tauri-drag-region>
-        <span class="widget-icon">{{ scope?.icon || '☀️' }}</span>
+        <span class="widget-icon"><ProjectIcon :icon="scope?.icon || '☀️'" /></span>
         <strong v-if="!config?.collapsed || !nextDueTask">{{ scope?.name || '待办' }}</strong>
         <small>{{ pendingCount }}</small>
         <span
@@ -988,6 +989,7 @@ onUnmounted(() => {
   place-items: center;
   border-radius: 8px;
   background: var(--accent-soft);
+  color: var(--accent);
 }
 .widget-project > * {
   pointer-events: none;

@@ -61,6 +61,10 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
     </div>
 
     <div class="settings-grid">
+      <div class="settings-section-heading">
+        <span>数据与安全</span>
+        <small>任务、备份和运行状态</small>
+      </div>
       <div class="settings-card">
         <h2>数据备份</h2>
         <p>导出当前所有项目和任务，或从备份文件恢复。</p>
@@ -84,6 +88,10 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
         <p>应用启动后会提醒今天截止和已逾期的未完成任务。</p>
         <p>今天截止：{{ dueSummary?.todayCount || 0 }} 个</p>
         <p>已逾期：{{ dueSummary?.overdueCount || 0 }} 个</p>
+      </div>
+      <div class="settings-section-heading">
+        <span>工作流</span>
+        <small>让添加和整理更顺手</small>
       </div>
       <div class="settings-card">
         <h2>全局快速添加</h2>
@@ -201,6 +209,10 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
           >不再提醒</button>
         </div>
       </div>
+      <div class="settings-section-heading">
+        <span>外观</span>
+        <small>让小光任务更像你的工作台</small>
+      </div>
       <div class="settings-card theme-settings-card">
         <h2>主题配色</h2>
         <div class="theme-choice-grid">
@@ -209,6 +221,7 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
             :key="item.id"
             class="theme-choice"
             :class="{ active: theme === item.id }"
+            :aria-label="`选择${item.name}主题`"
             @click="setTheme(item.id)"
           >
             <span class="theme-swatch-row">
@@ -218,6 +231,9 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
                 class="theme-swatch"
                 :style="{ background: color }"
               />
+            </span>
+            <span class="theme-mini-preview" aria-hidden="true">
+              <i></i><b></b><em></em>
             </span>
             <strong>{{ item.name }}</strong>
             <small>{{ item.desc }}</small>
@@ -268,6 +284,10 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
             @click="setFontSize(opt.val)"
           >{{ opt.label }}</button>
         </div>
+      </div>
+      <div class="settings-section-heading">
+        <span>诊断</span>
+        <small>版本信息与问题排查</small>
       </div>
       <div class="settings-card">
         <h2>版本</h2>
