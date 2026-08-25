@@ -227,7 +227,9 @@ function selectProject(p) {
         :class="{ active: currentView === 'today' }"
         @click="$emit('selectView', 'today')"
       >
-        <span class="smart-icon">☀️</span>
+        <span class="smart-icon" aria-hidden="true">
+          <svg viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="3.2" fill="currentColor"/><path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg>
+        </span>
         <span class="smart-name">今天</span>
         <span v-if="smartCounts.today" class="proj-count">{{ smartCounts.today }}</span>
       </button>
@@ -236,7 +238,9 @@ function selectProject(p) {
         :class="{ active: currentView === 'upcoming' }"
         @click="$emit('selectView', 'upcoming')"
       >
-        <span class="smart-icon">⌁</span>
+        <span class="smart-icon" aria-hidden="true">
+          <svg viewBox="0 0 18 18" fill="none"><path d="M3 5.5h6.2a2.8 2.8 0 1 1-2.8 2.8H5.2A2.2 2.2 0 1 0 7.4 10.5H15" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/><path d="m12.8 3.4 2.2 2.1-2.2 2.1" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
         <span class="smart-name">近 7 天</span>
         <span v-if="smartCounts.upcoming" class="proj-count">{{ smartCounts.upcoming }}</span>
       </button>
@@ -245,7 +249,9 @@ function selectProject(p) {
         :class="{ active: currentView === 'completed' }"
         @click="$emit('selectView', 'completed')"
       >
-        <span class="smart-icon">✓</span>
+        <span class="smart-icon" aria-hidden="true">
+          <svg viewBox="0 0 18 18" fill="none"><path d="m4 9.2 3.1 3.1L14 5.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
         <span class="smart-name">已完成</span>
         <span v-if="smartCounts.completed" class="proj-count">{{ smartCounts.completed }}</span>
       </button>
@@ -383,7 +389,7 @@ function selectProject(p) {
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  box-shadow: 1px 0 0 rgba(255,255,255,.35);
+  box-shadow: 1px 0 0 rgba(255,255,255,.42);
 }
 
 /* Project list */
@@ -391,15 +397,15 @@ function selectProject(p) {
   flex: 1;
   overflow-y: auto;
   overflow-x: clip;   /* clip 不创建 BFC，避免影响 section-label 布局 */
-  padding: 18px 10px 10px;
+  padding: 20px 10px 12px;
 }
 
 .section-label {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 750;
-  letter-spacing: .08em;
+  letter-spacing: .04em;
   color: var(--text-muted);
-  padding: 12px 8px 7px;
+  padding: 13px 10px 8px;
 }
 
 .smart-row,
@@ -408,12 +414,12 @@ function selectProject(p) {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 36px;
-  padding: 8px 10px;
+  min-height: 40px;
+  padding: 8px 11px;
   cursor: pointer;
   transition: background .12s, color .12s, box-shadow .12s, transform .12s;
-  border-radius: var(--radius);
-  margin: 2px 0;
+  border-radius: 11px;
+  margin: 3px 0;
   width: 100%;
   text-align: left;
 }
@@ -423,13 +429,13 @@ function selectProject(p) {
 }
 .smart-row:hover,
 .project-row:hover  {
-  background: var(--bg-hover);
-  transform: translateX(1px);
+  background: color-mix(in srgb, var(--bg-hover) 78%, transparent);
+  transform: translateX(2px);
 }
 .smart-row.active,
 .project-row.active {
-  background: linear-gradient(90deg, var(--accent-soft), color-mix(in srgb, var(--bg-hover) 76%, transparent));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+  background: linear-gradient(100deg, var(--accent-soft), color-mix(in srgb, var(--bg-hover) 66%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent), 0 7px 18px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .project-row.dragging {
   cursor: grabbing;
@@ -438,26 +444,28 @@ function selectProject(p) {
 }
 
 .smart-icon {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--bg-elevated);
+  color: var(--text-muted);
   text-align: center;
   flex-shrink: 0;
 }
+.smart-icon svg { width: 16px; height: 16px; display: block; }
 .smart-name {
   flex: 1;
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .smart-row.active .smart-name { color: var(--text-primary); }
 
 .proj-stripe {
   width: 3px;
-  height: 24px;
+  height: 26px;
   border-radius: 3px;
   flex-shrink: 0;
   margin-left: -4px;
@@ -468,20 +476,20 @@ function selectProject(p) {
 .project-row:hover  .proj-stripe { opacity: 1; }
 
 .proj-icon  {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
   flex-shrink: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--bg-elevated);
 }
 
 .proj-name  {
   flex: 1;
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -503,12 +511,13 @@ function selectProject(p) {
 .proj-count {
   font-size: 11px;
   font-weight: 750;
-  min-width: 22px;
-  height: 20px;
-  line-height: 20px;
+  min-width: 24px;
+  height: 22px;
+  line-height: 22px;
   text-align: center;
-  border-radius: 10px;
-  background: var(--bg-elevated);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
   opacity: .95;
 }
 

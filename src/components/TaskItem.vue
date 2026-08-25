@@ -217,17 +217,18 @@ function cancelEdit() {
 .task-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px 8px 8px;
-  border-radius: var(--radius);
+  gap: 10px;
+  padding: 10px 12px 10px 9px;
+  border-radius: 11px;
   border: 1px solid transparent;
-  transition: background .08s, border-color .08s, box-shadow .12s, transform .12s;
-  min-height: 42px;
+  transition: background .14s, border-color .14s, box-shadow .16s, transform .16s;
+  min-height: 48px;
 }
 .task-row:hover {
-  background: var(--bg-surface);
-  border-color: var(--border);
-  box-shadow: var(--shadow-soft);
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  border-color: color-mix(in srgb, var(--border-strong) 55%, transparent);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--bg-deep) 10%, transparent);
+  transform: translateY(-1px);
 }
 .task-row:focus-within {
   background: var(--bg-surface);
@@ -243,7 +244,7 @@ function cancelEdit() {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  border-radius: 3px;
+  border-radius: 5px;
   flex-shrink: 0;
   transition: color .1s, transform .15s;
   transform: rotate(-90deg);
@@ -254,14 +255,14 @@ function cancelEdit() {
 
 /* Checkbox */
 .checkbox {
-  width: 20px;
-  height: 20px;
+  width: 21px;
+  height: 21px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.checkbox-svg { width: 20px; height: 20px; overflow: visible; }
+.checkbox-svg { width: 21px; height: 21px; overflow: visible; }
 
 .cb-box {
   stroke: var(--border-strong);
@@ -289,7 +290,7 @@ function cancelEdit() {
 /* Title */
 .task-title {
   flex: 1;
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -320,7 +321,7 @@ function cancelEdit() {
   font-size: 10px;
   color: var(--text-muted);
   background: var(--bg-elevated);
-  border-radius: 6px;
+  border-radius: 999px;
   padding: 2px 6px;
   flex-shrink: 0;
 }
@@ -333,7 +334,7 @@ function cancelEdit() {
   font-size: 10px;
   color: var(--text-muted);
   background: var(--bg-elevated);
-  border-radius: 3px;
+  border-radius: 999px;
   padding: 1px 5px;
   flex-shrink: 0;
   max-width: 92px;
@@ -380,7 +381,7 @@ function cancelEdit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   color: var(--text-muted);
   transition: color .1s, background .1s;
 }
@@ -436,6 +437,6 @@ function cancelEdit() {
 }
 
 /* Subtask sizing */
-.is-sub .task-title { font-size: 12.5px; }
-.is-sub .task-row   { min-height: 34px; padding-top: 4px; padding-bottom: 4px; }
+.is-sub .task-title { font-size: 13px; }
+.is-sub .task-row   { min-height: 38px; padding-top: 6px; padding-bottom: 6px; }
 </style>

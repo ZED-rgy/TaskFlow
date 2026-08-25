@@ -541,7 +541,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 28px 36px 16px;
+  padding: 30px 36px 18px;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -549,41 +549,42 @@ onUnmounted(() => {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 .project-icon  {
-  width: 34px;
-  height: 34px;
+  width: 42px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
-  border-radius: var(--radius);
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--proj-color, var(--accent)) 28%, transparent);
+  font-size: 21px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--proj-color, var(--accent)) 18%, var(--bg-surface)), var(--accent-soft));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--proj-color, var(--accent)) 32%, transparent), 0 8px 18px color-mix(in srgb, var(--proj-color, var(--accent)) 10%, transparent);
 }
 .project-title {
   font-family: var(--font-display);
-  font-size: 25px;
+  font-size: 27px;
   font-weight: 750;
   color: var(--text-primary);
-  letter-spacing: 0;
+  letter-spacing: -.035em;
   position: relative;
 }
 .header-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 .task-stat {
   font-size: 12px;
   color: var(--text-muted);
+  letter-spacing: .01em;
 }
 
 .filter-bar {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto 112px 112px;
-  gap: 10px;
+  gap: 12px;
   padding: 0 36px 14px;
   align-items: center;
   flex-shrink: 0;
@@ -595,13 +596,18 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
-  padding: 0 12px;
+  height: 40px;
+  padding: 0 13px;
   color: var(--text-muted);
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 11px;
   box-shadow: var(--shadow-soft);
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.search-box:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-soft);
 }
 .search-box input {
   width: 100%;
@@ -613,10 +619,10 @@ onUnmounted(() => {
 .segmented {
   display: grid;
   grid-template-columns: repeat(3, 58px);
-  height: 36px;
-  background: var(--bg-surface);
+  height: 40px;
+  background: color-mix(in srgb, var(--bg-surface) 86%, transparent);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 11px;
   overflow: hidden;
   box-shadow: var(--shadow-soft);
 }
@@ -629,13 +635,14 @@ onUnmounted(() => {
 .segmented button.active {
   color: var(--text-primary);
   background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
 }
 .filter-select {
-  height: 36px;
+  height: 40px;
   color: var(--text-secondary);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius);
+  border-radius: 11px;
   font: inherit;
   font-size: 11px;
   padding: 0 8px;
@@ -655,7 +662,7 @@ onUnmounted(() => {
 
 /* Add task */
 .add-task-bar {
-  padding: 14px 36px;
+  padding: 16px 36px 18px;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -663,12 +670,12 @@ onUnmounted(() => {
 .add-task-inner {
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 46px;
-  padding: 9px 12px;
-  background: var(--bg-surface);
+  gap: 10px;
+  min-height: 52px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 13px;
   box-shadow: var(--shadow-panel);
   transition: border-color .15s, box-shadow .15s;
 }
@@ -776,7 +783,7 @@ onUnmounted(() => {
 .task-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 28px 28px;
+  padding: 16px 28px 32px;
   position: relative;
   border-top: 1px solid var(--border);
 }
@@ -785,7 +792,7 @@ onUnmounted(() => {
   flex-direction: column;
   max-width: 1180px;
   margin: 0 auto;
-  gap: 3px;
+  gap: 4px;
 }
 .task-wrapper { position: relative; }
 

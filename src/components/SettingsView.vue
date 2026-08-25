@@ -51,7 +51,9 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
 <template>
   <section class="settings-view">
     <div class="settings-header">
-      <span class="settings-icon">⚙</span>
+      <span class="settings-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M8.1 2.4h3.8l.5 2a6.4 6.4 0 0 1 1.3.8l1.9-.8 1.9 3.3-1.5 1.3a6.5 6.5 0 0 1 0 1.6l1.5 1.3-1.9 3.3-1.9-.8a6.4 6.4 0 0 1-1.3.8l-.5 2H8.1l-.5-2a6.4 6.4 0 0 1-1.3-.8l-1.9.8-1.9-3.3L4 10.6a6.5 6.5 0 0 1 0-1.6L2.5 7.7l1.9-3.3 1.9.8a6.4 6.4 0 0 1 1.3-.8l.5-2Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" stroke="currentColor" stroke-width="1.25"/></svg>
+      </span>
       <div>
         <h1>设置</h1>
         <p>数据、备份和应用信息</p>

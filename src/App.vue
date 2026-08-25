@@ -832,7 +832,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   background:
-    linear-gradient(180deg, rgba(255,255,255,.04), transparent 180px),
+    radial-gradient(circle at 82% -20%, var(--accent-soft), transparent 28%),
+    linear-gradient(180deg, rgba(255,255,255,.05), transparent 180px),
     var(--bg-base);
   overflow: hidden;
 }
@@ -842,7 +843,7 @@ onUnmounted(() => {
   height: var(--titlebar-h);
   display: flex;
   align-items: center;
-  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   -webkit-app-region: drag;
@@ -858,19 +859,20 @@ onUnmounted(() => {
 .app-brand {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 650;
-  color: var(--text-secondary);
-  letter-spacing: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -.01em;
 }
 .app-brand-icon {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
   flex-shrink: 0;
   object-fit: cover;
+  box-shadow: 0 2px 5px rgba(19, 30, 40, .16);
 }
 .titlebar-controls {
   display: flex;
@@ -880,8 +882,8 @@ onUnmounted(() => {
   -webkit-app-region: no-drag;
 }
 .ctrl-btn {
-  width: 32px;
-  height: 28px;
+  width: 34px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -915,7 +917,8 @@ onUnmounted(() => {
   flex-direction: column;
   min-width: 0;
   background:
-    radial-gradient(circle at 30% 0%, rgba(78,134,184,.08), transparent 34%),
+    radial-gradient(circle at 18% -8%, rgba(78,134,184,.10), transparent 34%),
+    radial-gradient(circle at 88% 12%, var(--accent-soft), transparent 28%),
     var(--bg-base);
 }
 
@@ -947,9 +950,9 @@ onUnmounted(() => {
   width: min(360px, calc(100vw - 32px));
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  box-shadow: 0 18px 45px rgba(0,0,0,.48);
-  padding: 18px;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.42);
+  padding: 22px;
 }
 .confirm-dialog h2 {
   font-size: 15px;
@@ -997,5 +1000,4 @@ onUnmounted(() => {
   font-size: 12px;
 }
 </style>
-
 

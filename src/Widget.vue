@@ -873,10 +873,10 @@ onUnmounted(() => {
   place-items: center;
   border-radius: 50%;
   background:
-    linear-gradient(180deg, rgba(255,255,255,.12), transparent 70%),
-    var(--bg-surface);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 6px 18px rgba(0,0,0,.3);
+    radial-gradient(circle at 30% 22%, rgba(255,255,255,.16), transparent 34%),
+    linear-gradient(145deg, color-mix(in srgb, var(--bg-elevated) 90%, #0A0F14), var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--border-strong) 80%, white 20%);
+  box-shadow: 0 9px 24px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);
   transition: transform .18s ease;
 }
 .edge-right .widget-ball { transform: translateX(14px); }
@@ -888,18 +888,18 @@ onUnmounted(() => {
   transform: translateX(0);
 }
 .ball-brand-icon {
-  width: 23px;
-  height: 23px;
+  width: 24px;
+  height: 24px;
   display: block;
-  border-radius: 6px;
+  border-radius: 7px;
   filter: drop-shadow(0 1px 2px rgba(0,0,0,.22));
 }
 .ball-badge {
   position: absolute;
   top: -3px;
   left: -3px;
-  min-width: 17px;
-  height: 17px;
+  min-width: 18px;
+  height: 18px;
   padding: 0 4px;
   display: grid;
   place-items: center;
@@ -918,11 +918,11 @@ onUnmounted(() => {
   z-index: 50;
   display: flex;
   gap: 2px;
-  padding: 4px;
+  padding: 5px;
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 8px 22px rgba(0,0,0,.3);
+  border-radius: 10px;
+  box-shadow: var(--shadow-float);
   -webkit-app-region: no-drag;
 }
 .widget-menu-bar button {
@@ -945,22 +945,23 @@ onUnmounted(() => {
   position: relative;
   color: var(--text-primary);
   background:
+    radial-gradient(circle at 100% 0%, var(--accent-soft), transparent 36%),
     linear-gradient(180deg, rgba(255,255,255,.10), transparent 120px),
     color-mix(in srgb, var(--bg-surface) 94%, transparent);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 16px 44px rgba(0,0,0,.26);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
+  border-radius: 14px;
+  box-shadow: var(--shadow-float);
 }
 .widget-shell.collapsed {
-  box-shadow: 0 10px 28px rgba(0,0,0,.22);
+  box-shadow: 0 14px 32px rgba(0,0,0,.24);
 }
 .widget-titlebar {
-  height: 38px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 8px 0 10px;
+  padding: 0 10px 0 12px;
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   user-select: none;
@@ -978,11 +979,11 @@ onUnmounted(() => {
   -webkit-app-region: drag;
 }
 .widget-icon {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--accent-soft);
 }
 .widget-project > * {
@@ -996,8 +997,8 @@ onUnmounted(() => {
   font-size: 13px;
 }
 .widget-project small {
-  min-width: 22px;
-  height: 22px;
+  min-width: 23px;
+  height: 23px;
   display: grid;
   place-items: center;
   color: var(--accent);
@@ -1019,7 +1020,7 @@ onUnmounted(() => {
 .widget-actions button {
   width: 28px;
   height: 28px;
-  border-radius: 5px;
+  border-radius: 8px;
   color: var(--text-muted);
 }
 .widget-actions svg,
@@ -1030,31 +1031,31 @@ onUnmounted(() => {
   background: var(--accent-soft);
 }
 .widget-controls {
-  padding: 8px 10px 4px;
+  padding: 10px 12px 5px;
   -webkit-app-region: no-drag;
 }
 .widget-controls select {
   width: 100%;
-  height: 28px;
-  padding: 0 8px;
+  height: 32px;
+  padding: 0 9px;
   color: var(--text-secondary);
   background: var(--bg-base);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   font: inherit;
 }
 .widget-filters {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-  margin-top: 7px;
+  gap: 5px;
+  margin-top: 8px;
 }
 .widget-filters button {
-  height: 24px;
+  height: 27px;
   color: var(--text-muted);
   background: var(--bg-base);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 7px;
   font-size: 11px;
 }
 .widget-filters button:hover,
@@ -1066,18 +1067,18 @@ onUnmounted(() => {
 .widget-create {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 30px;
-  gap: 6px;
-  padding: 7px 10px 4px;
+  gap: 7px;
+  padding: 8px 12px 5px;
   -webkit-app-region: no-drag;
 }
 .widget-create input {
   min-width: 0;
-  height: 28px;
+  height: 32px;
   padding: 0 9px;
   color: var(--text-secondary);
   background: var(--bg-base);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   font: inherit;
 }
 .widget-create input:focus {
@@ -1085,8 +1086,8 @@ onUnmounted(() => {
   border-color: var(--accent);
 }
 .widget-create button {
-  height: 28px;
-  border-radius: 6px;
+  height: 32px;
+  border-radius: 8px;
   color: var(--accent);
   background: var(--accent-soft);
 }
@@ -1186,17 +1187,17 @@ onUnmounted(() => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 6px 8px 10px;
+  padding: 8px 10px 12px;
   -webkit-app-region: no-drag;
 }
 .widget-task {
   width: 100%;
-  min-height: 34px;
+  min-height: 38px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto 24px;
   align-items: center;
   gap: 4px;
-  border-radius: 6px;
+  border-radius: 9px;
   cursor: grab;
   user-select: none;
 }
@@ -1207,7 +1208,7 @@ onUnmounted(() => {
   cursor: grabbing;
 }
 .widget-task:hover {
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
 }
 .widget-task.busy {
   opacity: .6;
@@ -1216,11 +1217,11 @@ onUnmounted(() => {
 .widget-task-main {
   grid-column: 1;
   min-width: 0;
-  min-height: 34px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 6px 7px 8px;
+  padding: 8px 7px 8px 9px;
   color: var(--text-secondary);
   text-align: left;
   cursor: grab;
@@ -1240,11 +1241,11 @@ onUnmounted(() => {
   text-decoration: line-through;
 }
 .widget-check {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   border: 2px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: 5px;
   transition: background .12s, border-color .12s;
   cursor: pointer;
 }
