@@ -832,8 +832,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(circle at 82% -20%, var(--accent-soft), transparent 28%),
-    linear-gradient(180deg, rgba(255,255,255,.05), transparent 180px),
+    radial-gradient(circle at 78% -24%, color-mix(in srgb, var(--accent-soft) 85%, transparent), transparent 30%),
+    linear-gradient(180deg, rgba(255,255,255,.07), transparent 210px),
     var(--bg-base);
   overflow: hidden;
 }
@@ -843,11 +843,11 @@ onUnmounted(() => {
   height: var(--titlebar-h);
   display: flex;
   align-items: center;
-  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
-  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-surface) 86%, transparent);
+  border-bottom: 1px solid var(--border-soft);
   flex-shrink: 0;
   -webkit-app-region: drag;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(14px) saturate(115%);
 }
 .titlebar-drag {
   flex: 1;
@@ -859,20 +859,20 @@ onUnmounted(() => {
 .app-brand {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   font-family: var(--font-mono);
   font-size: 12.5px;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -.01em;
+  letter-spacing: -.025em;
 }
 .app-brand-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
+  width: 19px;
+  height: 19px;
+  border-radius: 6px;
   flex-shrink: 0;
   object-fit: cover;
-  box-shadow: 0 2px 5px rgba(19, 30, 40, .16);
+  box-shadow: 0 2px 6px rgba(19, 30, 40, .18), inset 0 0 0 1px rgba(255,255,255,.18);
 }
 .titlebar-controls {
   display: flex;
@@ -888,8 +888,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  border-radius: 6px;
-  transition: color .12s, background .12s, transform .12s;
+  border-radius: 8px;
+  transition: color .16s var(--ease-standard), background .16s var(--ease-standard), transform .16s var(--ease-standard);
 }
 .ctrl-btn:hover  { color: var(--text-secondary); background: var(--bg-elevated); }
 .ctrl-btn:active { transform: translateY(1px); }
@@ -917,8 +917,9 @@ onUnmounted(() => {
   flex-direction: column;
   min-width: 0;
   background:
-    radial-gradient(circle at 18% -8%, rgba(78,134,184,.10), transparent 34%),
-    radial-gradient(circle at 88% 12%, var(--accent-soft), transparent 28%),
+    radial-gradient(circle at 14% -10%, rgba(78,134,184,.12), transparent 34%),
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--accent-soft) 78%, transparent), transparent 30%),
+    linear-gradient(180deg, rgba(255,255,255,.035), transparent 260px),
     var(--bg-base);
 }
 

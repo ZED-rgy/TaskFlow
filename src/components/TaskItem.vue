@@ -217,23 +217,23 @@ function cancelEdit() {
 .task-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px 10px 9px;
-  border-radius: 11px;
+  gap: 11px;
+  padding: 10px 13px 10px 10px;
+  border-radius: 12px;
   border: 1px solid transparent;
-  transition: background .14s, border-color .14s, box-shadow .16s, transform .16s;
+  transition: background .16s var(--ease-standard), border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
   min-height: 48px;
 }
 .task-row:hover {
-  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
-  border-color: color-mix(in srgb, var(--border-strong) 55%, transparent);
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--bg-deep) 10%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  border-color: color-mix(in srgb, var(--border-strong) 42%, transparent);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--bg-deep) 8%, transparent);
   transform: translateY(-1px);
 }
 .task-row:focus-within {
-  background: var(--bg-surface);
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  box-shadow: var(--focus-ring);
 }
 
 /* Expand */
@@ -255,8 +255,8 @@ function cancelEdit() {
 
 /* Checkbox */
 .checkbox {
-  width: 21px;
-  height: 21px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -268,8 +268,9 @@ function cancelEdit() {
   stroke: var(--border-strong);
   stroke-width: 1.5;
   fill: transparent;
-  transition: stroke .15s, fill .15s;
+  transition: stroke .16s var(--ease-standard), fill .16s var(--ease-standard);
 }
+.checkbox:hover .cb-box { stroke: var(--accent); }
 .checked .cb-box {
   stroke: var(--accent);
   fill: var(--accent);
@@ -310,10 +311,11 @@ function cancelEdit() {
   font-size: 13px;
   color: var(--text-primary);
   background: var(--bg-elevated);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 72%, var(--border));
+  border-radius: 8px;
+  padding: 4px 8px;
   caret-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 /* Sub-badge */
@@ -381,7 +383,7 @@ function cancelEdit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 9px;
   color: var(--text-muted);
   transition: color .1s, background .1s;
 }
@@ -432,8 +434,8 @@ function cancelEdit() {
 /* Subtask indentation */
 .subtask-list {
   margin-left: 36px;
-  border-left: 1px solid var(--border);
-  padding-left: 6px;
+  border-left: 1px solid var(--border-soft);
+  padding-left: 8px;
 }
 
 /* Subtask sizing */

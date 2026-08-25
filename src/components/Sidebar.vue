@@ -383,13 +383,13 @@ function selectProject(p) {
   width: var(--sidebar-w);
   flex-shrink: 0;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 96%, white 4%), var(--bg-surface));
-  border-right: 1px solid var(--border);
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 94%, white 6%), var(--bg-surface));
+  border-right: 1px solid var(--border-soft);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  box-shadow: 1px 0 0 rgba(255,255,255,.42);
+  box-shadow: 1px 0 0 rgba(255,255,255,.52);
 }
 
 /* Project list */
@@ -397,13 +397,14 @@ function selectProject(p) {
   flex: 1;
   overflow-y: auto;
   overflow-x: clip;   /* clip 不创建 BFC，避免影响 section-label 布局 */
-  padding: 20px 10px 12px;
+  padding: 18px 10px 12px;
 }
 
 .section-label {
   font-size: 10.5px;
   font-weight: 750;
-  letter-spacing: .04em;
+  letter-spacing: .08em;
+  text-transform: uppercase;
   color: var(--text-muted);
   padding: 13px 10px 8px;
 }
@@ -417,7 +418,7 @@ function selectProject(p) {
   min-height: 40px;
   padding: 8px 11px;
   cursor: pointer;
-  transition: background .12s, color .12s, box-shadow .12s, transform .12s;
+  transition: background .16s var(--ease-standard), color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
   border-radius: 11px;
   margin: 3px 0;
   width: 100%;
@@ -429,13 +430,13 @@ function selectProject(p) {
 }
 .smart-row:hover,
 .project-row:hover  {
-  background: color-mix(in srgb, var(--bg-hover) 78%, transparent);
-  transform: translateX(2px);
+  background: color-mix(in srgb, var(--bg-hover) 66%, transparent);
+  transform: translateX(1px);
 }
 .smart-row.active,
 .project-row.active {
-  background: linear-gradient(100deg, var(--accent-soft), color-mix(in srgb, var(--bg-hover) 66%, transparent));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent), 0 7px 18px color-mix(in srgb, var(--accent) 8%, transparent);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--accent-soft) 92%, transparent), color-mix(in srgb, var(--bg-hover) 62%, transparent));
+  box-shadow: inset 2px 0 0 var(--accent), inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .project-row.dragging {
   cursor: grabbing;
@@ -450,7 +451,7 @@ function selectProject(p) {
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
   color: var(--text-muted);
   text-align: center;
   flex-shrink: 0;
@@ -462,6 +463,7 @@ function selectProject(p) {
   font-size: 13px;
 }
 .smart-row.active .smart-name { color: var(--text-primary); }
+.smart-row.active .smart-icon { color: var(--accent); background: var(--accent-soft); }
 
 .proj-stripe {
   width: 3px;
@@ -484,7 +486,8 @@ function selectProject(p) {
   font-size: 14px;
   flex-shrink: 0;
   border-radius: 8px;
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
 }
 
 .proj-name  {
@@ -497,6 +500,7 @@ function selectProject(p) {
   transition: color .1s;
 }
 .project-row.active .proj-name { color: var(--text-primary); }
+.project-row.active .proj-icon { background: var(--accent-soft); }
 
 .proj-name-input {
   flex: 1;
@@ -517,7 +521,7 @@ function selectProject(p) {
   text-align: center;
   border-radius: 999px;
   color: var(--text-secondary);
-  background: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
   opacity: .95;
 }
 
@@ -608,8 +612,8 @@ function selectProject(p) {
   color: var(--text-muted);
   font-size: 12px;
   width: 100%;
-  border-top: 1px solid var(--border);
-  transition: color .12s, background .12s;
+  border-top: 1px solid var(--border-soft);
+  transition: color .16s var(--ease-standard), background .16s var(--ease-standard);
   flex-shrink: 0;
 }
 .add-project-btn:hover { color: var(--accent); background: var(--accent-soft); }
@@ -617,17 +621,17 @@ function selectProject(p) {
 .utility-bar {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-soft);
   flex-shrink: 0;
 }
 .utility-btn {
-  height: 40px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  border-right: 1px solid var(--border);
-  transition: color .12s, background .12s;
+  border-right: 1px solid var(--border-soft);
+  transition: color .16s var(--ease-standard), background .16s var(--ease-standard);
 }
 .utility-btn:last-child { border-right: 0; }
 .utility-btn:hover,

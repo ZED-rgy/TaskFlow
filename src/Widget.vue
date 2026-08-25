@@ -877,7 +877,7 @@ onUnmounted(() => {
   background:
     radial-gradient(circle at 30% 22%, rgba(255,255,255,.16), transparent 34%),
     linear-gradient(145deg, color-mix(in srgb, var(--bg-elevated) 90%, #0A0F14), var(--bg-surface));
-  border: 1px solid color-mix(in srgb, var(--border-strong) 80%, white 20%);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 64%, white 20%);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
   transition: transform .18s ease;
 }
@@ -947,12 +947,13 @@ onUnmounted(() => {
   position: relative;
   color: var(--text-primary);
   background:
-    radial-gradient(circle at 100% 0%, var(--accent-soft), transparent 36%),
-    linear-gradient(180deg, rgba(255,255,255,.10), transparent 120px),
-    color-mix(in srgb, var(--bg-surface) 94%, transparent);
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--accent-soft) 72%, transparent), transparent 36%),
+    linear-gradient(180deg, rgba(255,255,255,.10), transparent 140px),
+    color-mix(in srgb, var(--bg-surface) 96%, transparent);
   border: 0;
-  border-radius: 14px;
+  border-radius: 16px;
   box-shadow: none;
+  backdrop-filter: blur(16px) saturate(118%);
 }
 .widget-shell.collapsed {
   box-shadow: none;
@@ -964,7 +965,7 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 8px;
   padding: 0 10px 0 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -1042,8 +1043,8 @@ onUnmounted(() => {
   padding: 0 9px;
   color: var(--text-secondary);
   background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
   font: inherit;
 }
 .widget-filters {
@@ -1056,8 +1057,8 @@ onUnmounted(() => {
   height: 27px;
   color: var(--text-muted);
   background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
   font-size: 11px;
 }
 .widget-filters button:hover,
@@ -1079,8 +1080,8 @@ onUnmounted(() => {
   padding: 0 9px;
   color: var(--text-secondary);
   background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
   font: inherit;
 }
 .widget-create input:focus {
@@ -1199,7 +1200,7 @@ onUnmounted(() => {
   grid-template-columns: minmax(0, 1fr) auto 24px;
   align-items: center;
   gap: 4px;
-  border-radius: 9px;
+  border-radius: 10px;
   cursor: grab;
   user-select: none;
 }

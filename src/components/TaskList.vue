@@ -541,7 +541,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 30px 36px 18px;
+  padding: 32px 40px 18px;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -552,20 +552,20 @@ onUnmounted(() => {
   gap: 12px;
 }
 .project-icon  {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 21px;
-  border-radius: 12px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--proj-color, var(--accent)) 18%, var(--bg-surface)), var(--accent-soft));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--proj-color, var(--accent)) 32%, transparent), 0 8px 18px color-mix(in srgb, var(--proj-color, var(--accent)) 10%, transparent);
+  border-radius: 14px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--proj-color, var(--accent)) 18%, var(--bg-surface)), color-mix(in srgb, var(--accent-soft) 80%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--proj-color, var(--accent)) 32%, transparent), 0 8px 18px color-mix(in srgb, var(--proj-color, var(--accent)) 8%, transparent);
 }
 .project-title {
   font-family: var(--font-display);
-  font-size: 27px;
-  font-weight: 750;
+  font-size: 28px;
+  font-weight: 760;
   color: var(--text-primary);
   letter-spacing: -.035em;
   position: relative;
@@ -585,7 +585,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto 112px 112px;
   gap: 12px;
-  padding: 0 36px 14px;
+  padding: 0 40px 14px;
   align-items: center;
   flex-shrink: 0;
   width: min(100%, 1180px);
@@ -596,18 +596,18 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
+  height: 42px;
   padding: 0 13px;
   color: var(--text-muted);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  box-shadow: var(--shadow-soft);
-  transition: border-color .15s, box-shadow .15s, background .15s;
+  background: var(--surface-glass);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.22);
+  transition: border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), background .16s var(--ease-standard);
 }
 .search-box:focus-within {
   border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
-  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-soft);
+  box-shadow: var(--focus-ring), 0 1px 0 rgba(255,255,255,.24);
 }
 .search-box input {
   width: 100%;
@@ -619,12 +619,12 @@ onUnmounted(() => {
 .segmented {
   display: grid;
   grid-template-columns: repeat(3, 58px);
-  height: 40px;
-  background: color-mix(in srgb, var(--bg-surface) 86%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 11px;
+  height: 42px;
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: var(--shadow-soft);
+  box-shadow: 0 1px 0 rgba(255,255,255,.2);
 }
 .segmented button {
   color: var(--text-muted);
@@ -634,15 +634,15 @@ onUnmounted(() => {
 .segmented button:last-child { border-right: 0; }
 .segmented button.active {
   color: var(--text-primary);
-  background: var(--bg-elevated);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .filter-select {
-  height: 40px;
+  height: 42px;
   color: var(--text-secondary);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 11px;
+  border-radius: 12px;
   font: inherit;
   font-size: 11px;
   padding: 0 8px;
@@ -655,14 +655,14 @@ onUnmounted(() => {
   color: var(--text-primary);
   background: var(--bg-surface);
   border-color: var(--border);
-  box-shadow: var(--shadow-soft);
+  box-shadow: 0 1px 0 rgba(255,255,255,.22);
 }
 
 .progress-ring { flex-shrink: 0; }
 
 /* Add task */
 .add-task-bar {
-  padding: 16px 36px 18px;
+  padding: 18px 40px 20px;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -671,17 +671,18 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 52px;
-  padding: 10px 14px;
-  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 13px;
-  box-shadow: var(--shadow-panel);
-  transition: border-color .15s, box-shadow .15s;
+  min-height: 54px;
+  padding: 10px 15px;
+  background: var(--surface-glass);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.24), 0 10px 24px color-mix(in srgb, var(--bg-deep) 5%, transparent);
+  transition: border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
 }
 .add-task-inner:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-panel);
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
+  box-shadow: var(--focus-ring), 0 1px 0 rgba(255,255,255,.24);
+  transform: translateY(-1px);
 }
 .add-task-inner.is-sub       { border-color: var(--accent); background: var(--accent-soft); }
 
@@ -783,16 +784,16 @@ onUnmounted(() => {
 .task-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 28px 32px;
+  padding: 18px 32px 36px;
   position: relative;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-soft);
 }
 .task-items {
   display: flex;
   flex-direction: column;
   max-width: 1180px;
   margin: 0 auto;
-  gap: 4px;
+  gap: 5px;
 }
 .task-wrapper { position: relative; }
 

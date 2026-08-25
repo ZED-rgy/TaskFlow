@@ -110,7 +110,11 @@ onUnmounted(() => {
   <div class="quickadd-shell" :class="`theme-${theme}`" data-tauri-drag-region>
     <div class="quickadd-card" @keydown="handleKeydown">
       <div class="quickadd-row">
-        <span class="quickadd-glyph">⚡</span>
+        <span class="quickadd-glyph" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M9.2 1.8 3.8 8.2h3.7l-.7 6 5.4-6.4H8.5l.7-6Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/>
+          </svg>
+        </span>
         <input
           ref="inputEl"
           v-model="title"
@@ -155,13 +159,14 @@ onUnmounted(() => {
 }
 .quickadd-card {
   width: 100%;
-  padding: 12px 14px;
+  padding: 14px 16px;
   background:
     linear-gradient(180deg, rgba(255,255,255,.10), transparent 60px),
-    var(--bg-surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: 0 18px 48px rgba(0,0,0,.32);
+    color-mix(in srgb, var(--bg-surface) 96%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.16), 0 18px 48px rgba(0,0,0,.26);
+  backdrop-filter: blur(16px) saturate(120%);
   color: var(--text-primary);
 }
 .quickadd-row {
@@ -170,7 +175,14 @@ onUnmounted(() => {
   gap: 8px;
 }
 .quickadd-glyph {
-  font-size: 16px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 14px;
   flex-shrink: 0;
 }
 .quickadd-input {
@@ -186,10 +198,10 @@ onUnmounted(() => {
 }
 .quickadd-input::placeholder { color: var(--text-muted); }
 .quickadd-close {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
-  border-radius: 5px;
+  border-radius: 8px;
   color: var(--text-muted);
 }
 .quickadd-close:hover {
@@ -199,16 +211,16 @@ onUnmounted(() => {
 .quickadd-meta {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-soft);
 }
 .quickadd-select {
-  height: 24px;
+  height: 28px;
   max-width: 150px;
   padding: 0 6px;
   color: var(--text-secondary);
   background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
   font: inherit;
   font-size: 11px;
 }
