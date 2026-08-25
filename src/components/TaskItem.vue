@@ -229,6 +229,11 @@ function cancelEdit() {
   border-color: var(--border);
   box-shadow: var(--shadow-soft);
 }
+.task-row:focus-within {
+  background: var(--bg-surface);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
 
 /* Expand */
 .expand-btn {
@@ -370,8 +375,8 @@ function cancelEdit() {
   flex-shrink: 0;
 }
 .action-btn {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;

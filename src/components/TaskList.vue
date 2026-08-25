@@ -543,6 +543,8 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 28px 36px 16px;
   flex-shrink: 0;
+  width: min(100%, 1180px);
+  margin-inline: auto;
 }
 .header-left {
   display: flex;
@@ -585,6 +587,8 @@ onUnmounted(() => {
   padding: 0 36px 14px;
   align-items: center;
   flex-shrink: 0;
+  width: min(100%, 1180px);
+  margin-inline: auto;
 }
 .search-box {
   min-width: 0;
@@ -629,13 +633,21 @@ onUnmounted(() => {
 .filter-select {
   height: 36px;
   color: var(--text-secondary);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius);
   font: inherit;
   font-size: 11px;
   padding: 0 8px;
   outline: none;
+  box-shadow: none;
+  transition: background .12s, border-color .12s, color .12s, box-shadow .12s;
+}
+.filter-select:hover,
+.filter-select:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border-color: var(--border);
   box-shadow: var(--shadow-soft);
 }
 
@@ -645,7 +657,8 @@ onUnmounted(() => {
 .add-task-bar {
   padding: 14px 36px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
+  width: min(100%, 1180px);
+  margin-inline: auto;
 }
 .add-task-inner {
   display: flex;
@@ -765,11 +778,12 @@ onUnmounted(() => {
   overflow-y: auto;
   padding: 12px 28px 28px;
   position: relative;
+  border-top: 1px solid var(--border);
 }
 .task-items {
   display: flex;
   flex-direction: column;
-  max-width: 980px;
+  max-width: 1180px;
   margin: 0 auto;
   gap: 3px;
 }

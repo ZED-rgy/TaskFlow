@@ -221,7 +221,7 @@ function selectProject(p) {
 
     <!-- Projects list -->
     <div class="project-list" ref="projectListEl">
-      <div class="section-label">FOCUS</div>
+      <div class="section-label">快捷视图</div>
       <button
         class="smart-row"
         :class="{ active: currentView === 'today' }"
@@ -250,7 +250,7 @@ function selectProject(p) {
         <span v-if="smartCounts.completed" class="proj-count">{{ smartCounts.completed }}</span>
       </button>
 
-      <div class="section-label">PROJECTS</div>
+      <div class="section-label">项目</div>
 
       <div
         v-for="(p, i) in visibleProjects"

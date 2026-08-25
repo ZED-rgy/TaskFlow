@@ -10,6 +10,7 @@ import {
   moveVisibleId,
 } from './runtime/widget-order.mjs'
 import { selectWidgetDisplayTasks } from './runtime/widget-visibility.mjs'
+import appIconUrl from '../assets/icon.svg'
 
 const projects = ref([])
 const tasks = ref([])
@@ -654,14 +655,19 @@ onUnmounted(() => {
     v-if="config?.mini"
     class="widget-ball-wrap"
     :class="`edge-${miniEdge}`"
+    role="button"
+    tabindex="0"
+    aria-label="展开小光任务桌面组件，可拖动调整位置"
     title="单击展开小光任务，可拖动调整位置"
     @mousedown="ballMouseDown"
     @mousemove="ballMouseMove"
     @mouseup="ballMouseUp"
+    @keydown.enter.prevent="ballMouseUp"
+    @keydown.space.prevent="ballMouseUp"
     @contextmenu.prevent
   >
     <div class="widget-ball" :style="shellStyle">
-      <span class="ball-icon">{{ scope?.icon || '☀️' }}</span>
+      <img class="ball-brand-icon" :src="appIconUrl" alt="" />
       <span v-if="pendingCount" class="ball-badge">{{ pendingCount > 99 ? '99' : pendingCount }}</span>
     </div>
   </div>
@@ -690,14 +696,26 @@ onUnmounted(() => {
         </span>
       </div>
       <div class="widget-actions">
-        <button :class="{ active: config?.collapsed }" title="折叠/展开" @click="toggleCollapsed">
-          {{ config?.collapsed ? '▾' : '▴' }}
+        <button :class="{ active: config?.collapsed }" title="折叠/展开" aria-label="折叠/展开" @click="toggleCollapsed">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path :d="config?.collapsed ? 'M4 6l4 4 4-4' : 'M4 10l4-4 4 4'" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </button>
-        <button :class="{ active: config?.alwaysOnTop }" title="置顶" @click="setTop">⇧</button>
-        <button :class="{ active: config?.compact }" title="紧凑" @click="setCompact">≡</button>
-        <button title="缩为悬浮球" @click="toMini">◐</button>
-        <button title="打开主窗口" @click="showMain">□</button>
-        <button title="隐藏组件" @click="api.hideWidget">×</button>
+        <button :class="{ active: config?.alwaysOnTop }" title="置顶" aria-label="窗口置顶" @click="setTop">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 2.5h6M6 2.5v3l-2.2 2.2v1h8.4v-1L10 5.5v-3M8 8.7v4.8" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button :class="{ active: config?.compact }" title="紧凑" aria-label="紧凑模式" @click="setCompact">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h10" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>
+        </button>
+        <button title="缩为悬浮球" aria-label="缩为悬浮球" @click="toMini">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="1.35"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/></svg>
+        </button>
+        <button title="打开主窗口" aria-label="打开主窗口" @click="showMain">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.35"/><path d="M8.5 7.5H11M11 7.5V10M11 7.5L7.5 11" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button title="隐藏组件" aria-label="隐藏组件" @click="api.hideWidget">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
       </div>
     </header>
 
@@ -790,11 +808,11 @@ onUnmounted(() => {
       @click.stop
       @contextmenu.prevent
     >
-      <button title="展开" @click="menuAction(toggleCollapsed)">▾</button>
-      <button :class="{ active: config?.alwaysOnTop }" title="置顶" @click="menuAction(setTop)">⇧</button>
-      <button title="缩为悬浮球" @click="menuAction(toMini)">◐</button>
-      <button title="打开主窗口" @click="menuAction(showMain)">□</button>
-      <button title="隐藏组件" @click="menuAction(api.hideWidget)">×</button>
+      <button title="展开" aria-label="展开" @click="menuAction(toggleCollapsed)"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button :class="{ active: config?.alwaysOnTop }" title="置顶" aria-label="窗口置顶" @click="menuAction(setTop)"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 2.5h6M6 2.5v3l-2.2 2.2v1h8.4v-1L10 5.5v-3M8 8.7v4.8" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button title="缩为悬浮球" aria-label="缩为悬浮球" @click="menuAction(toMini)"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="1.35"/><circle cx="8" cy="8" r="1.35" fill="currentColor"/></svg></button>
+      <button title="打开主窗口" aria-label="打开主窗口" @click="menuAction(showMain)"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.35"/><path d="M8.5 7.5H11M11 7.5V10M11 7.5L7.5 11" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button title="隐藏组件" aria-label="隐藏组件" @click="menuAction(api.hideWidget)"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
     </div>
 
     <!-- 右键菜单 -->
@@ -845,11 +863,12 @@ onUnmounted(() => {
   overflow: hidden;
   cursor: pointer;
   user-select: none;
+  outline: none;
 }
 .widget-ball {
   position: relative;
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -860,12 +879,20 @@ onUnmounted(() => {
   box-shadow: 0 6px 18px rgba(0,0,0,.3);
   transition: transform .18s ease;
 }
-.edge-right .widget-ball { transform: translateX(21px); }
-.edge-left .widget-ball { transform: translateX(-21px); }
+.edge-right .widget-ball { transform: translateX(14px); }
+.edge-left .widget-ball { transform: translateX(-14px); }
 .widget-ball-wrap:hover .widget-ball { transform: translateX(0); }
-.ball-icon {
-  font-size: 19px;
-  line-height: 1;
+.widget-ball-wrap:focus-visible .widget-ball {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  transform: translateX(0);
+}
+.ball-brand-icon {
+  width: 23px;
+  height: 23px;
+  display: block;
+  border-radius: 6px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.22));
 }
 .ball-badge {
   position: absolute;
@@ -990,11 +1017,13 @@ onUnmounted(() => {
   -webkit-app-region: no-drag;
 }
 .widget-actions button {
-  width: 25px;
-  height: 25px;
+  width: 28px;
+  height: 28px;
   border-radius: 5px;
   color: var(--text-muted);
 }
+.widget-actions svg,
+.widget-menu-bar svg { display: block; margin: auto; }
 .widget-actions button:hover,
 .widget-actions button.active {
   color: var(--accent);
