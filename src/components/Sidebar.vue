@@ -32,8 +32,17 @@ const dragIndex = ref(null)
 const dragChanged = ref(false)
 const suppressClick = ref(false)
 const pointerCandidate = ref(null)
+const uniqueProjects = computed(() => {
+  const seen = new Set()
+  return props.projects.filter(project => {
+    const key = String(project?.id ?? '')
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+})
 const visibleProjects = computed(() =>
-  dragIndex.value === null ? props.projects : orderedProjects.value
+  dragIndex.value === null ? uniqueProjects.value : orderedProjects.value
 )
 
 const showNewForm  = ref(false)
@@ -184,7 +193,7 @@ function onProjectPointerMove(event) {
     if (distance < 6) return
     dragIndex.value = candidate.index
     dragChanged.value = false
-    orderedProjects.value = [...props.projects]
+    orderedProjects.value = [...uniqueProjects.value]
     suppressClick.value = true
   }
   event.preventDefault()

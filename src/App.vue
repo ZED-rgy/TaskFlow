@@ -24,13 +24,36 @@ const selectedId = ref(null)
 const currentView = ref('project')
 const appInfo = ref(null)
 const toast = ref(null)
+const settingsSaveState = ref({ kind: 'idle', text: '自动保存' })
+let settingsSaveTimer = null
 const confirmState      = ref(null)
 const confirmSkipChecked = ref(false)
 const skipDeleteConfirm  = ref(localStorage.getItem('taskflow-skip-delete') === 'true')
 
+function setSettingsSaveState(kind, text) {
+  settingsSaveState.value = { kind, text }
+  if (settingsSaveTimer) clearTimeout(settingsSaveTimer)
+  if (kind === 'saved') {
+    settingsSaveTimer = setTimeout(() => {
+      settingsSaveState.value = { kind: 'idle', text: '自动保存' }
+      settingsSaveTimer = null
+    }, 2600)
+  }
+}
+
+function beginSettingsSave() {
+  setSettingsSaveState('saving', '保存中…')
+}
+
+function finishSettingsSave(message = '已保存') {
+  setSettingsSaveState('saved', message)
+}
+
 function toggleSkipDelete(val) {
+  beginSettingsSave()
   skipDeleteConfirm.value = val
   localStorage.setItem('taskflow-skip-delete', String(val))
+  finishSettingsSave('删除确认已更新')
 }
 const selectedTaskId = ref(null)
 const paletteOpen = ref(false)
@@ -90,8 +113,11 @@ function collectTaskTreeIds(id) {
 const theme = ref(normalizeTheme(localStorage.getItem('taskflow-theme') || 'morning'))
 
 function setTheme(nextTheme) {
+  beginSettingsSave()
   theme.value = normalizeTheme(nextTheme)
   localStorage.setItem('taskflow-theme', theme.value)
+  const themeName = { morning: '晨雾', midnight: '墨蓝', forest: '森林', graphite: '石墨', apricot: '暮杏' }[theme.value] || '当前'
+  finishSettingsSave(`已切换到${themeName}主题`)
 }
 
 function toggleTheme() {
@@ -166,23 +192,29 @@ watch(systemFonts, (fonts) => {
 })
 
 function selectFont(font) {
+  beginSettingsSave()
   fontFamily.value  = font.css
   fontSearch.value  = font.display  // 搜索框显示中文名
   fontPickerOpen.value = false
   localStorage.setItem('taskflow-font', font.css)
+  finishSettingsSave('字体已更新')
 }
 
 function clearFont() {
+  beginSettingsSave()
   fontFamily.value = ''
   fontSearch.value = ''
   fontPickerOpen.value = false
   localStorage.removeItem('taskflow-font')
+  finishSettingsSave('已恢复默认字体')
 }
 
 function setFontSize(val) {
   if (!FONT_SIZES[val]) return
+  beginSettingsSave()
   fontSize.value = val
   localStorage.setItem('taskflow-size', val)
+  finishSettingsSave('字号已更新')
 }
 
 const selectedProject = computed(() =>
@@ -298,11 +330,14 @@ function recordShortcut(event) {
 }
 
 async function saveShortcut(value) {
+  beginSettingsSave()
   try {
     appSettings.value = await api.setQuickAddShortcut(value)
     shortcutDraft.value = appSettings.value?.quickAddShortcut || ''
     showToast(value ? `快捷键已设为 ${shortcutDraft.value}` : '全局快捷键已停用')
+    finishSettingsSave('快捷键已更新')
   } catch (error) {
+    setSettingsSaveState('error', '保存失败')
     showToast(String(error?.message || error))
   }
 }
@@ -617,16 +652,26 @@ async function onExportLogs() {
 }
 
 async function updateWidgetConfig(patch) {
+  beginSettingsSave()
   try {
     widgetConfig.value = await api.updateWidgetConfig(patch)
+    finishSettingsSave('组件设置已更新')
   } catch (error) {
+    setSettingsSaveState('error', '保存失败')
     showToast(`组件设置失败：${error.message || '未知错误'}`)
   }
 }
 
 async function toggleWidgetVisible() {
+  beginSettingsSave()
   const visible = !widgetConfig.value?.visible
-  widgetConfig.value = visible ? await api.showWidget() : await api.hideWidget()
+  try {
+    widgetConfig.value = visible ? await api.showWidget() : await api.hideWidget()
+    finishSettingsSave(visible ? '组件已显示' : '组件已隐藏')
+  } catch (error) {
+    setSettingsSaveState('error', '保存失败')
+    showToast(`组件设置失败：${error.message || '未知错误'}`)
+  }
 }
 
 function onClearLogs() {
@@ -665,6 +710,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  if (settingsSaveTimer) clearTimeout(settingsSaveTimer)
   if (unlistenDataChanged) unlistenDataChanged()
   if (unlistenOpenTask) unlistenOpenTask()
 })
@@ -746,9 +792,11 @@ onUnmounted(() => {
           :appSettings="appSettings"
           :logs="logs"
           :projects="projects"
+          :tasks="tasks"
           :selectedId="selectedId"
           :theme="theme"
           :skipDeleteConfirm="skipDeleteConfirm"
+          :settingsSaveState="settingsSaveState"
           :shortcutDraft="shortcutDraft"
           :fontFamily="fontFamily"
           :fontSize="fontSize"

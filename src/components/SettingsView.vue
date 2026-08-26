@@ -2,11 +2,12 @@
 // 设置视图（从 App.vue 抽出的视图层）。
 // 业务逻辑仍由 App.vue 持有，通过 props / 函数 props 注入，行为与原内联实现完全一致。
 // 字体搜索框、字体下拉开关、快捷键录制状态用 v-model 双向同步回父级。
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { api } from '../runtime/api.js'
 import { THEMES } from '../runtime/themes.js'
 import { FONT_SIZES } from '../runtime/fonts.js'
 
-defineProps({
+const props = defineProps({
   // ── 只读状态 ──
   appInfo: { type: Object, default: null },
   dueSummary: { type: Object, default: null },
@@ -14,9 +15,11 @@ defineProps({
   appSettings: { type: Object, default: null },
   logs: { type: Array, default: () => [] },
   projects: { type: Array, default: () => [] },
+  tasks: { type: Array, default: () => [] },
   selectedId: { type: [String, Number, null], default: null },
   theme: { type: String, default: 'morning' },
   skipDeleteConfirm: { type: Boolean, default: false },
+  settingsSaveState: { type: Object, default: () => ({ kind: 'idle', text: '自动保存' }) },
   shortcutDraft: { type: String, default: '' },
   // 字体
   fontFamily: { type: String, default: '' },
@@ -46,10 +49,100 @@ defineProps({
 })
 
 defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecording'])
+
+const settingsScrollEl = ref(null)
+const activeSection = ref('data')
+const copiedPath = ref('')
+const logFilter = ref('all')
+const settingSections = [
+  { id: 'data', label: '数据与安全' },
+  { id: 'workflow', label: '工作流' },
+  { id: 'appearance', label: '外观' },
+  { id: 'diagnostics', label: '诊断' },
+]
+let sectionObserver = null
+
+function scrollToSection(id) {
+  const target = settingsScrollEl.value?.querySelector(`[data-settings-section="${id}"]`)
+  if (!target) return
+  activeSection.value = id
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+async function copyPath(path, key) {
+  if (!path) return
+  try {
+    await navigator.clipboard.writeText(path)
+    copiedPath.value = key
+    window.setTimeout(() => { if (copiedPath.value === key) copiedPath.value = '' }, 1600)
+  } catch {
+    copiedPath.value = ''
+  }
+}
+
+async function copyLog(log) {
+  try {
+    await navigator.clipboard.writeText(`${log.time || ''} [${log.level || 'info'}] ${log.message || ''}`.trim())
+    copiedPath.value = `log:${log.time}:${log.message}`
+    window.setTimeout(() => { copiedPath.value = '' }, 1600)
+  } catch {
+    copiedPath.value = ''
+  }
+}
+
+onMounted(() => {
+  const root = settingsScrollEl.value
+  if (!root) return
+  sectionObserver = new IntersectionObserver((entries) => {
+    const visible = entries
+      .filter(entry => entry.isIntersecting)
+      .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+    if (visible[0]?.target?.dataset?.settingsSection) {
+      activeSection.value = visible[0].target.dataset.settingsSection
+    }
+  }, { root, rootMargin: '-76px 0px -62% 0px', threshold: [0, .15, .5] })
+  root.querySelectorAll('[data-settings-section]').forEach(node => sectionObserver.observe(node))
+})
+
+onBeforeUnmount(() => sectionObserver?.disconnect())
+
+const selectedWidgetProject = computed(() => {
+  const id = props.widgetConfig?.projectId
+  if (id === 'view:today') return { name: '今天', icon: '☀️' }
+  if (id === 'view:upcoming') return { name: '近 7 天', icon: '📅' }
+  return props.projects.find(project => String(project.id) === String(id)) || props.projects[0] || { name: '未选择项目', icon: '📋' }
+})
+
+const widgetPreviewTasks = computed(() => {
+  const id = props.widgetConfig?.projectId
+  const scoped = props.tasks.filter(task => {
+    if (id === 'view:today' || id === 'view:upcoming') return Boolean(task.dueDate)
+    return String(task.projectId) === String(id || props.selectedId)
+  })
+  const filtered = props.widgetConfig?.statusFilter === 'completed'
+    ? scoped.filter(task => task.completed)
+    : props.widgetConfig?.statusFilter === 'all'
+      ? scoped
+      : scoped.filter(task => !task.completed)
+  return filtered.slice(0, 3)
+})
+
+const visibleLogs = computed(() => {
+  const filtered = logFilter.value === 'all'
+    ? props.logs
+    : props.logs.filter(log => String(log.level || '').toLowerCase() === logFilter.value)
+  return filtered.slice(-40).reverse()
+})
+
+const diagnosticSummary = computed(() => {
+  const error = props.logs.filter(log => ['error', 'fatal'].includes(String(log.level || '').toLowerCase())).length
+  const warning = props.logs.filter(log => ['warn', 'warning'].includes(String(log.level || '').toLowerCase())).length
+  return { error, warning }
+})
 </script>
 
 <template>
-  <section class="settings-view">
+  <section ref="settingsScrollEl" class="settings-view">
     <div class="settings-header">
       <span class="settings-icon" aria-hidden="true">
         <svg viewBox="0 0 20 20" fill="none"><path d="M8.1 2.4h3.8l.5 2a6.4 6.4 0 0 1 1.3.8l1.9-.8 1.9 3.3-1.5 1.3a6.5 6.5 0 0 1 0 1.6l1.5 1.3-1.9 3.3-1.9-.8a6.4 6.4 0 0 1-1.3.8l-.5 2H8.1l-.5-2a6.4 6.4 0 0 1-1.3-.8l-1.9.8-1.9-3.3L4 10.6a6.5 6.5 0 0 1 0-1.6L2.5 7.7l1.9-3.3 1.9.8a6.4 6.4 0 0 1 1.3-.8l.5-2Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" stroke="currentColor" stroke-width="1.25"/></svg>
@@ -58,10 +151,25 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
         <h1>设置</h1>
         <p>数据、备份和应用信息</p>
       </div>
+      <div class="settings-save-state" :class="`is-${settingsSaveState?.kind || 'idle'}`" role="status" aria-live="polite">
+        <span class="save-state-dot" aria-hidden="true"></span>
+        <span>{{ settingsSaveState?.text || '自动保存' }}</span>
+      </div>
     </div>
 
+    <nav class="settings-nav" aria-label="设置页面导航">
+      <button
+        v-for="section in settingSections"
+        :key="section.id"
+        class="settings-nav-item"
+        :class="{ active: activeSection === section.id }"
+        :aria-current="activeSection === section.id ? 'location' : undefined"
+        @click="scrollToSection(section.id)"
+      >{{ section.label }}</button>
+    </nav>
+
     <div class="settings-grid">
-      <div class="settings-section-heading">
+      <div class="settings-section-heading" data-settings-section="data">
         <span>数据与安全</span>
         <small>任务、备份和运行状态</small>
       </div>
@@ -75,21 +183,29 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
       </div>
       <div class="settings-card">
         <h2>存储位置</h2>
-        <p class="path-text">{{ appInfo?.dataPath }}</p>
+        <div class="path-row">
+          <p class="path-text">{{ appInfo?.dataPath || '正在读取…' }}</p>
+          <button class="copy-path-btn" :disabled="!appInfo?.dataPath" @click="copyPath(appInfo.dataPath, 'data')">{{ copiedPath === 'data' ? '已复制' : '复制' }}</button>
+        </div>
       </div>
       <div class="settings-card">
         <h2>自动备份</h2>
         <p>启动和导入前会自动备份，保留最近 30 份。</p>
-        <p class="path-text">{{ appInfo?.backupDir }}</p>
-        <p>当前备份：{{ appInfo?.backup?.count || 0 }} 份</p>
+        <div class="path-row">
+          <p class="path-text">{{ appInfo?.backupDir || '正在读取…' }}</p>
+          <button class="copy-path-btn" :disabled="!appInfo?.backupDir" @click="copyPath(appInfo.backupDir, 'backup')">{{ copiedPath === 'backup' ? '已复制' : '复制' }}</button>
+        </div>
+        <p class="status-line"><span class="status-line-dot"></span>最近保留 {{ appInfo?.backup?.count || 0 }} 份备份</p>
       </div>
       <div class="settings-card">
         <h2>提醒</h2>
         <p>应用启动后会提醒今天截止和已逾期的未完成任务。</p>
-        <p>今天截止：{{ dueSummary?.todayCount || 0 }} 个</p>
-        <p>已逾期：{{ dueSummary?.overdueCount || 0 }} 个</p>
+        <div class="summary-pills">
+          <span><strong>{{ dueSummary?.todayCount || 0 }}</strong> 今天截止</span>
+          <span class="is-danger"><strong>{{ dueSummary?.overdueCount || 0 }}</strong> 已逾期</span>
+        </div>
       </div>
-      <div class="settings-section-heading">
+      <div class="settings-section-heading" data-settings-section="workflow">
         <span>工作流</span>
         <small>让添加和整理更顺手</small>
       </div>
@@ -121,6 +237,8 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
       <div class="settings-card widget-settings-card">
         <h2>桌面组件</h2>
         <p>把某个项目的未完成任务显示成桌面浮动小组件。</p>
+        <div class="widget-settings-layout">
+          <div class="widget-settings-controls">
         <div class="widget-setting-row">
           <span>显示项目</span>
           <select
@@ -192,6 +310,34 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
           >折叠</button>
           <button class="option-btn" @click="api.showMainWindow">显示主窗口</button>
         </div>
+          </div>
+          <div class="widget-preview-wrap">
+            <div class="widget-preview-label">实时预览</div>
+            <div
+              class="widget-preview"
+              :class="{ compact: widgetConfig?.compact, collapsed: widgetConfig?.collapsed, hidden: !widgetConfig?.visible }"
+              :style="{ opacity: widgetConfig?.opacity || .96 }"
+            >
+              <div class="widget-preview-ball" :title="widgetConfig?.visible ? '组件已显示' : '组件已隐藏'">
+                <span class="widget-preview-count">{{ widgetPreviewTasks.length }}</span>
+                <span class="widget-preview-check">✓</span>
+              </div>
+              <div v-if="!widgetConfig?.collapsed" class="widget-preview-panel">
+                <div class="widget-preview-head">
+                  <span>{{ selectedWidgetProject.icon }} {{ selectedWidgetProject.name }}</span>
+                  <small>{{ widgetConfig?.statusFilter === 'all' ? '全部' : widgetConfig?.statusFilter === 'completed' ? '已完成' : '未完成' }}</small>
+                </div>
+                <div v-if="widgetPreviewTasks.length" class="widget-preview-list">
+                  <div v-for="task in widgetPreviewTasks" :key="task.id" class="widget-preview-task">
+                    <i :class="{ completed: task.completed }"></i><span>{{ task.title }}</span>
+                  </div>
+                </div>
+                <div v-else class="widget-preview-empty">暂无符合条件的任务</div>
+              </div>
+            </div>
+            <small class="widget-preview-note">{{ widgetConfig?.visible ? '组件将按当前设置显示在桌面' : '组件当前已隐藏' }}</small>
+          </div>
+        </div>
       </div>
       <div class="settings-card">
         <h2>删除确认</h2>
@@ -209,7 +355,7 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
           >不再提醒</button>
         </div>
       </div>
-      <div class="settings-section-heading">
+      <div class="settings-section-heading" data-settings-section="appearance">
         <span>外观</span>
         <small>让小光任务更像你的工作台</small>
       </div>
@@ -235,7 +381,7 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
             <span class="theme-mini-preview" aria-hidden="true">
               <i></i><b></b><em></em>
             </span>
-            <strong>{{ item.name }}</strong>
+            <span class="theme-choice-title"><strong>{{ item.name }}</strong><span v-if="theme === item.id" class="theme-selected-mark">✓</span></span>
             <small>{{ item.desc }}</small>
           </button>
         </div>
@@ -245,6 +391,9 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
         <h2>字体</h2>
         <div class="font-preview-box" :style="{ fontFamily: fontFamily || 'inherit', fontSize: FONT_SIZES[fontSize]?.size || '13px' }">
           {{ fontFamily || '默认字体' }} · 小光任务 · The quick brown fox · 0123
+        </div>
+        <div class="font-task-preview" :style="{ fontFamily: fontFamily || 'inherit' }">
+          <span class="font-task-check"></span><strong>整理本周待办</strong><small>任务列表预览</small>
         </div>
         <div class="font-picker-wrap">
           <div class="font-search-row">
@@ -285,7 +434,7 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
           >{{ opt.label }}</button>
         </div>
       </div>
-      <div class="settings-section-heading">
+      <div class="settings-section-heading" data-settings-section="diagnostics">
         <span>诊断</span>
         <small>版本信息与问题排查</small>
       </div>
@@ -295,19 +444,36 @@ defineEmits(['update:fontSearch', 'update:fontPickerOpen', 'update:shortcutRecor
         <p>数据版本：{{ appInfo?.schemaVersion || '-' }}</p>
       </div>
       <div class="settings-card logs-card">
-        <h2>诊断日志</h2>
-        <p class="path-text">{{ appInfo?.logPath }}</p>
+        <div class="diagnostic-head">
+          <div>
+            <h2>诊断日志</h2>
+            <p class="path-text">{{ appInfo?.logPath }}</p>
+          </div>
+          <div class="diagnostic-health" :class="{ warning: diagnosticSummary.error || diagnosticSummary.warning }">
+            <span class="status-line-dot"></span>
+            {{ diagnosticSummary.error ? `${diagnosticSummary.error} 个错误` : diagnosticSummary.warning ? `${diagnosticSummary.warning} 个警告` : '运行正常' }}
+          </div>
+        </div>
         <div class="settings-actions compact">
           <button class="secondary-btn" @click="onExportLogs">导出日志</button>
           <button class="secondary-btn" @click="onClearLogs">清空日志</button>
         </div>
+        <div class="log-toolbar">
+          <span>最近 {{ logs.length }} 条记录</span>
+          <div class="option-group inline-options">
+            <button class="option-btn" :class="{ active: logFilter === 'all' }" @click="logFilter = 'all'">全部</button>
+            <button class="option-btn" :class="{ active: logFilter === 'warn' }" @click="logFilter = 'warn'">警告</button>
+            <button class="option-btn" :class="{ active: logFilter === 'error' }" @click="logFilter = 'error'">错误</button>
+          </div>
+        </div>
         <div class="log-list">
-          <div v-for="log in logs" :key="`${log.time}-${log.message}`" class="log-row">
+          <div v-for="log in visibleLogs" :key="`${log.time}-${log.message}`" class="log-row">
             <span>{{ log.time?.slice(0, 19).replace('T', ' ') }}</span>
             <strong>{{ log.level }}</strong>
             <p>{{ log.message }}</p>
+            <button class="log-copy-btn" :class="{ copied: copiedPath === `log:${log.time}:${log.message}` }" @click="copyLog(log)">{{ copiedPath === `log:${log.time}:${log.message}` ? '已复制' : '复制' }}</button>
           </div>
-          <p v-if="!logs.length">暂无日志</p>
+          <p v-if="!visibleLogs.length">暂无匹配日志</p>
         </div>
       </div>
     </div>
