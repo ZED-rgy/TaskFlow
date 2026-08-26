@@ -500,7 +500,7 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="header-right" v-if="totalCount > 0">
-        <svg class="progress-ring" width="26" height="26" viewBox="0 0 26 26" :title="`已完成 ${completedCount}/${totalCount}`">
+        <svg class="progress-ring" width="34" height="34" viewBox="0 0 26 26" :title="`已完成 ${completedCount}/${totalCount}`" role="img" :aria-label="`已完成 ${completedCount}/${totalCount}`">
           <circle cx="13" cy="13" r="10.5" fill="none" stroke="var(--border)" stroke-width="3"/>
           <circle
             cx="13" cy="13" r="10.5" fill="none"
@@ -613,7 +613,7 @@ onUnmounted(() => {
 
     <!-- Add task input -->
     <div v-if="!project.readonlyProject" class="add-task-bar">
-      <div class="add-task-inner" :class="{ 'is-sub': addSubFor }">
+      <div class="add-task-inner" :class="{ 'is-sub': addSubFor, 'has-content': addingTitle.trim() }">
         <svg class="add-icon" width="13" height="13" viewBox="0 0 14 14" fill="none">
           <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
@@ -777,6 +777,11 @@ onUnmounted(() => {
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
+  animation: header-enter .42s var(--ease-standard) both;
+}
+@keyframes header-enter {
+  from { opacity: 0; transform: translateY(-7px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .header-left {
   display: flex;
@@ -795,7 +800,9 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--proj-color, var(--accent)) 10%, var(--bg-surface));
   border: 1px solid color-mix(in srgb, var(--proj-color, var(--accent)) 30%, var(--border));
   box-shadow: 0 10px 22px color-mix(in srgb, var(--proj-color, var(--accent)) 10%, transparent), inset 0 1px rgba(255,255,255,.6);
+  transition: transform .22s var(--ease-standard), box-shadow .22s var(--ease-standard), background .22s var(--ease-standard);
 }
+.list-header:hover .project-icon { transform: translateY(-1px) rotate(-2deg); box-shadow: 0 13px 26px color-mix(in srgb, var(--proj-color, var(--accent)) 16%, transparent), inset 0 1px rgba(255,255,255,.68); }
 .project-icon :deep(svg) { width: 23px; height: 23px; }
 .header-copy { min-width: 0; }
 .header-eyebrow {
@@ -837,7 +844,15 @@ onUnmounted(() => {
   padding: 8px 0 8px 18px;
   border-left: 1px solid var(--border-soft);
   flex-shrink: 0;
+  padding: 9px 13px 9px 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg-surface) 64%, transparent);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--bg-deep) 7%, transparent), inset 0 1px rgba(255,255,255,.44);
+  backdrop-filter: blur(12px) saturate(115%);
+  transition: transform .18s var(--ease-standard), border-color .18s var(--ease-standard), box-shadow .18s var(--ease-standard);
 }
+.header-right:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 32%, var(--border)); box-shadow: 0 11px 24px color-mix(in srgb, var(--bg-deep) 10%, transparent), inset 0 1px rgba(255,255,255,.52); }
 .progress-copy {
   min-width: 78px;
   display: grid;
@@ -866,7 +881,7 @@ onUnmounted(() => {
   100% { transform: scale(1); color: var(--text-primary); }
 }
 .progress-copy small { grid-column: 1; }
-.progress-ring { flex-shrink: 0; }
+.progress-ring { width: 34px; height: 34px; flex-shrink: 0; filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--accent) 18%, transparent)); }
 
 .filter-bar {
   display: grid;
@@ -878,6 +893,11 @@ onUnmounted(() => {
   width: min(100%, 1180px);
   margin-inline: auto;
   min-width: 0;
+  animation: controls-enter .46s .04s var(--ease-standard) both;
+}
+@keyframes controls-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .search-box {
   min-width: 0;
@@ -922,6 +942,7 @@ onUnmounted(() => {
   background: var(--bg-surface);
   border-radius: 999px;
   box-shadow: 0 2px 6px rgba(67,58,44,.08), inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+  transition: background .2s var(--ease-standard), box-shadow .2s var(--ease-standard), color .2s var(--ease-standard);
 }
 .filter-pickers {
   display: flex;
@@ -1044,6 +1065,7 @@ onUnmounted(() => {
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
+  animation: controls-enter .46s .08s var(--ease-standard) both;
 }
 .add-task-inner {
   display: flex;
@@ -1057,6 +1079,7 @@ onUnmounted(() => {
   box-shadow: 0 10px 24px rgba(68,62,52,.06), inset 0 1px rgba(255,255,255,.55);
   transition: border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
 }
+.add-task-inner.has-content { border-color: color-mix(in srgb, var(--accent) 48%, var(--border)); background: color-mix(in srgb, var(--bg-surface) 66%, transparent); }
 .add-task-inner:focus-within {
   border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
   box-shadow: var(--focus-ring), 0 10px 26px rgba(68,62,52,.09), inset 0 1px rgba(255,255,255,.65);
@@ -1195,6 +1218,7 @@ onUnmounted(() => {
   padding: 12px 32px 36px;
   position: relative;
   border-top: 1px solid color-mix(in srgb, var(--border-soft) 66%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 12%, transparent), transparent 130px);
 }
 .task-items {
   display: flex;
@@ -1218,6 +1242,7 @@ onUnmounted(() => {
   outline-offset: 2px;
   border-radius: 10px;
 }
+.task-wrapper:has(.task-row:hover) { z-index: 1; }
 
 /* Keyboard focus */
 .kb-focus :deep(.task-item:not(.is-sub) > .task-row) {

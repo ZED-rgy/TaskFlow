@@ -249,6 +249,14 @@ function formatDueLabel(dateKey) {
 .task-item.just-completed > .task-row {
   animation: task-complete-pop .42s var(--ease-standard);
 }
+.task-item.just-completed .checkbox-svg {
+  animation: checkbox-pop .42s var(--ease-standard);
+}
+@keyframes checkbox-pop {
+  0% { transform: scale(1); }
+  42% { transform: scale(1.16) rotate(-4deg); }
+  100% { transform: scale(1); }
+}
 @keyframes task-complete-pop {
   0% { background: var(--accent-soft); transform: translateX(0); }
   55% { background: color-mix(in srgb, var(--accent-soft) 60%, var(--bg-surface)); transform: translateX(3px); }
@@ -265,17 +273,18 @@ function formatDueLabel(dateKey) {
   border-bottom-color: color-mix(in srgb, var(--border) 58%, transparent);
   transition: background .16s var(--ease-standard), border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
   min-height: 52px;
+  box-shadow: inset 2px 0 0 transparent;
 }
 .task-row:hover {
   background: color-mix(in srgb, var(--bg-surface) 76%, transparent);
   border-color: color-mix(in srgb, var(--border-strong) 45%, transparent);
-  box-shadow: 0 5px 16px color-mix(in srgb, var(--bg-deep) 7%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 72%, transparent), 0 5px 16px color-mix(in srgb, var(--bg-deep) 7%, transparent);
   transform: translateX(2px);
 }
 .task-row:focus-within {
   background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  box-shadow: var(--focus-ring);
+  box-shadow: inset 2px 0 0 var(--accent), var(--focus-ring);
 }
 
 /* Expand */
@@ -303,7 +312,11 @@ function formatDueLabel(dateKey) {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 6px;
+  transition: transform .15s var(--ease-standard), background .15s var(--ease-standard);
 }
+.checkbox:hover { background: color-mix(in srgb, var(--accent-soft) 70%, transparent); }
+.checkbox:active { transform: scale(.9); }
 .checkbox-svg { width: 21px; height: 21px; overflow: visible; }
 
 .cb-box {
@@ -339,8 +352,9 @@ function formatDueLabel(dateKey) {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
-  transition: color .15s, opacity .15s;
+  transition: color .15s var(--ease-standard), opacity .15s var(--ease-standard), transform .15s var(--ease-standard);
 }
+.task-row:hover .task-title { transform: translateX(1px); }
 .completed .task-title {
   color: var(--text-muted);
   text-decoration: line-through;
@@ -440,9 +454,10 @@ function formatDueLabel(dateKey) {
   justify-content: center;
   border-radius: 9px;
   color: var(--text-muted);
-  transition: color .1s, background .1s;
+  transition: color .14s var(--ease-standard), background .14s var(--ease-standard), transform .14s var(--ease-standard);
 }
-.action-btn:hover       { color: var(--accent); background: var(--accent-soft); }
+.action-btn:hover       { color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
+.action-btn:active { transform: translateY(0) scale(.92); }
 .action-postpone        { color: var(--danger); opacity: .85; }
 .action-postpone:hover  { color: var(--accent); background: var(--accent-soft); opacity: 1; }
 .action-delete:hover    { color: var(--danger); background: var(--danger-soft); }

@@ -398,7 +398,7 @@ function selectProject(p) {
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  box-shadow: 1px 0 0 rgba(255,255,255,.38);
+  box-shadow: 1px 0 0 rgba(255,255,255,.38), inset -18px 0 38px color-mix(in srgb, var(--bg-deep) 4%, transparent);
 }
 
 /* Project list */
@@ -407,6 +407,7 @@ function selectProject(p) {
   overflow-y: auto;
   overflow-x: clip;   /* clip 不创建 BFC，避免影响 section-label 布局 */
   padding: 18px 10px 12px;
+  scrollbar-gutter: stable;
 }
 
 .section-label {
@@ -416,6 +417,7 @@ function selectProject(p) {
   text-transform: uppercase;
   color: var(--text-muted);
   padding: 13px 10px 8px;
+  user-select: none;
 }
 
 .smart-row,
@@ -447,6 +449,22 @@ function selectProject(p) {
   background: color-mix(in srgb, var(--accent-soft) 82%, var(--bg-surface));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
 }
+.project-row::after,
+.smart-row::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 99px;
+  background: var(--accent);
+  opacity: 0;
+  transform: scaleY(.4);
+  transition: opacity .18s var(--ease-standard), transform .18s var(--ease-standard);
+}
+.project-row.active::after,
+.smart-row.active::after { opacity: 1; transform: scaleY(1); }
 .project-row.dragging {
   cursor: grabbing;
   opacity: .52;
