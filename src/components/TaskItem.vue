@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch, onUnmounted } from 'vue'
 
 const props = defineProps({
   task:     { type: Object, required: true },
@@ -16,6 +16,19 @@ const editing    = ref(false)
 const editTitle  = ref('')
 const editEl     = ref(null)
 const hovered    = ref(false)
+const justCompleted = ref(false)
+let completionTimer = null
+
+watch(() => props.task.completed, (now, previous) => {
+  if (!now || previous) return
+  justCompleted.value = true
+  if (completionTimer) clearTimeout(completionTimer)
+  completionTimer = setTimeout(() => { justCompleted.value = false }, 420)
+})
+
+onUnmounted(() => {
+  if (completionTimer) clearTimeout(completionTimer)
+})
 
 const pendingSubtasks = computed(() =>
   props.subtasks.filter(t => !t.completed).length
@@ -64,7 +77,7 @@ function formatDueLabel(dateKey) {
 <template>
   <div
     class="task-item"
-    :class="{ completed: task.completed, 'is-sub': depth > 0, 'priority-high': task.priority === 'high' }"
+    :class="{ completed: task.completed, 'just-completed': justCompleted, 'is-sub': depth > 0, 'priority-high': task.priority === 'high' }"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
   >
@@ -232,6 +245,14 @@ function formatDueLabel(dateKey) {
   border-radius: 0 3px 3px 0;
   background: var(--danger);
   opacity: .78;
+}
+.task-item.just-completed > .task-row {
+  animation: task-complete-pop .42s var(--ease-standard);
+}
+@keyframes task-complete-pop {
+  0% { background: var(--accent-soft); transform: translateX(0); }
+  55% { background: color-mix(in srgb, var(--accent-soft) 60%, var(--bg-surface)); transform: translateX(3px); }
+  100% { background: transparent; transform: translateX(0); }
 }
 
 .task-row {

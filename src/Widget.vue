@@ -880,11 +880,12 @@ onUnmounted(() => {
     linear-gradient(145deg, color-mix(in srgb, var(--bg-elevated) 90%, #0A0F14), var(--bg-surface));
   border: 1px solid color-mix(in srgb, var(--border-strong) 64%, white 20%);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-  transition: transform .18s ease;
+  transition: transform .18s var(--ease-standard), box-shadow .18s var(--ease-standard);
 }
 .edge-right .widget-ball { transform: translateX(14px); }
 .edge-left .widget-ball { transform: translateX(-14px); }
 .widget-ball-wrap:hover .widget-ball { transform: translateX(0); }
+.widget-ball-wrap:active .widget-ball { transform: translateX(0) scale(.96); }
 .widget-ball-wrap:focus-visible .widget-ball {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -955,6 +956,11 @@ onUnmounted(() => {
   border-radius: 16px;
   box-shadow: none;
   backdrop-filter: blur(16px) saturate(118%);
+  animation: widget-rise .22s var(--ease-standard) both;
+}
+@keyframes widget-rise {
+  from { opacity: 0; transform: translateY(5px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .widget-shell.collapsed {
   box-shadow: none;
@@ -1205,6 +1211,7 @@ onUnmounted(() => {
   border-radius: 10px;
   cursor: grab;
   user-select: none;
+  transition: background .14s var(--ease-standard), transform .14s var(--ease-standard), box-shadow .14s var(--ease-standard);
 }
 .widget-task.sorting {
   opacity: .55;
@@ -1214,11 +1221,13 @@ onUnmounted(() => {
 }
 .widget-task:hover {
   background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+  transform: translateX(2px);
 }
 .widget-task:focus-within {
   background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
   outline: 2px solid var(--accent-soft);
   outline-offset: -2px;
+  transform: translateX(2px);
 }
 .widget-task.busy {
   opacity: .6;

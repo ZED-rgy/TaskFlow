@@ -472,10 +472,12 @@ function selectProject(p) {
   flex-shrink: 0;
   margin-left: -3px;
   opacity: .48;
-  transition: opacity .15s;
+  transform: scaleY(.72);
+  transform-origin: center;
+  transition: opacity .18s var(--ease-standard), transform .18s var(--ease-standard);
 }
 .project-row.active .proj-stripe,
-.project-row:hover  .proj-stripe { opacity: 1; }
+.project-row:hover  .proj-stripe { opacity: 1; transform: scaleY(1); }
 
 .proj-icon  {
   width: 24px;

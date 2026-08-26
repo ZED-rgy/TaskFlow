@@ -333,6 +333,16 @@ body.widget-mode #app {
 .slide-enter-from   { opacity: 0; transform: translateY(-6px); }
 .slide-leave-to     { opacity: 0; transform: translateY(-4px); }
 
+/* Respect system-level motion preferences while keeping state changes visible. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}
+
 
 
 /* ── 设置视图样式（从 App.vue 抽出，供 SettingsView.vue 使用；

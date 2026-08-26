@@ -21,6 +21,60 @@ const dueFilter = ref('all')
 const priorityFilter = ref('all')
 const newDueDate  = ref('')
 const newPriority = ref('normal')
+const openFilterMenu = ref(null)
+
+const FILTER_OPTIONS = {
+  due: [
+    { value: 'all', label: '所有日期' },
+    { value: 'today', label: '今天' },
+    { value: 'overdue', label: '已逾期' },
+    { value: 'none', label: '无日期' },
+  ],
+  priority: [
+    { value: 'all', label: '所有优先级' },
+    { value: 'high', label: '高优先级' },
+    { value: 'normal', label: '普通' },
+    { value: 'low', label: '低优先级' },
+  ],
+}
+
+function filterLabel(kind) {
+  const value = kind === 'due' ? dueFilter.value : priorityFilter.value
+  return FILTER_OPTIONS[kind].find(option => option.value === value)?.label || ''
+}
+
+function toggleFilterMenu(kind) {
+  openFilterMenu.value = openFilterMenu.value === kind ? null : kind
+  if (openFilterMenu.value) {
+    nextTick(() => document.querySelector(`[data-filter-kind="${kind}"][data-filter-index="0"]`)?.focus())
+  }
+}
+
+function selectFilter(kind, value) {
+  if (kind === 'due') dueFilter.value = value
+  else priorityFilter.value = value
+  openFilterMenu.value = null
+}
+
+function handleFilterOptionKeydown(event, kind, index) {
+  const options = FILTER_OPTIONS[kind]
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    const next = (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length
+    nextTick(() => document.querySelector(`[data-filter-kind="${kind}"][data-filter-index="${next}"]`)?.focus())
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    selectFilter(kind, options[index].value)
+  }
+}
+
+function closeFilterMenu() {
+  openFilterMenu.value = null
+}
+
+function onDocumentPointerdown(event) {
+  if (!event.target?.closest?.('.filter-control')) closeFilterMenu()
+}
 
 const activeFilterItems = computed(() => {
   const items = []
@@ -130,6 +184,15 @@ const overdueCount = computed(() =>
 const completionPercent = computed(() =>
   totalCount.value ? Math.round((completedCount.value / totalCount.value) * 100) : 0
 )
+const progressPulse = ref(false)
+let progressTimer = null
+
+watch(completedCount, (now, previous) => {
+  if (now <= previous) return
+  progressPulse.value = true
+  if (progressTimer) clearTimeout(progressTimer)
+  progressTimer = setTimeout(() => { progressPulse.value = false }, 420)
+})
 
 const completionSummary = computed(() =>
   openRootCount.value ? `${openRootCount.value} 个待完成` : '全部完成'
@@ -254,6 +317,11 @@ function moveFocusedTask(step) {
 async function handleKeydown(event) {
   // 中文输入法组词中不响应快捷键，避免误触发
   if (event.isComposing) return
+  if (event.key === 'Escape' && openFilterMenu.value) {
+    event.preventDefault()
+    closeFilterMenu()
+    return
+  }
   // 添加栏为空时，↑↓ 直接进入列表导航（添加栏默认聚焦，否则方向键会被输入框吞掉）
   if (
     (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
@@ -385,6 +453,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('focus', scheduleSortableRefresh)
   document.addEventListener('visibilitychange', refreshSortableWhenVisible)
+  document.addEventListener('pointerdown', onDocumentPointerdown)
 })
 
 watch(() => props.project.id, () => {
@@ -403,9 +472,11 @@ watch(() => props.tasks.length, () => {
 
 onUnmounted(() => {
   destroySortable()
+  if (progressTimer) clearTimeout(progressTimer)
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('focus', scheduleSortableRefresh)
   document.removeEventListener('visibilitychange', refreshSortableWhenVisible)
+  document.removeEventListener('pointerdown', onDocumentPointerdown)
 })
 </script>
 
@@ -442,7 +513,7 @@ onUnmounted(() => {
         </svg>
         <div class="progress-copy">
           <span>今日进度</span>
-          <strong>{{ completionPercent }}%</strong>
+          <strong :class="{ 'progress-pulse': progressPulse }">{{ completionPercent }}%</strong>
           <small>{{ completedCount }}/{{ totalCount }} 已完成</small>
         </div>
       </div>
@@ -462,24 +533,70 @@ onUnmounted(() => {
         <button :class="{ active: statusFilter === 'done' }" @click="statusFilter = 'done'">已完成</button>
       </div>
       <div class="filter-pickers">
-        <label class="filter-control" aria-label="按日期筛选">
+        <div class="filter-control" :class="{ open: openFilterMenu === 'due' }" aria-label="按日期筛选">
           <span>日期</span>
-          <select v-model="dueFilter" class="filter-select">
-            <option value="all">所有日期</option>
-            <option value="today">今天</option>
-            <option value="overdue">已逾期</option>
-            <option value="none">无日期</option>
-          </select>
-        </label>
-        <label class="filter-control" aria-label="按优先级筛选">
+          <button
+            type="button"
+            class="filter-select-trigger"
+            :aria-expanded="openFilterMenu === 'due'"
+            aria-haspopup="listbox"
+            @click.stop="toggleFilterMenu('due')"
+            @keydown.esc.prevent="closeFilterMenu"
+          >
+            {{ filterLabel('due') }}
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <Transition name="popover">
+            <div v-if="openFilterMenu === 'due'" class="filter-popover" role="listbox" aria-label="日期筛选选项">
+              <button
+                v-for="option in FILTER_OPTIONS.due"
+                :key="option.value"
+                type="button"
+                role="option"
+                :data-filter-kind="'due'"
+                :data-filter-index="index"
+                :aria-selected="dueFilter === option.value"
+                :class="{ active: dueFilter === option.value }"
+                @click="selectFilter('due', option.value)"
+                @keydown="handleFilterOptionKeydown($event, 'due', index)"
+              >
+                <span>{{ option.label }}</span><span v-if="dueFilter === option.value" class="filter-check">✓</span>
+              </button>
+            </div>
+          </Transition>
+        </div>
+        <div class="filter-control" :class="{ open: openFilterMenu === 'priority' }" aria-label="按优先级筛选">
           <span>优先级</span>
-          <select v-model="priorityFilter" class="filter-select">
-            <option value="all">所有优先级</option>
-            <option value="high">高优先级</option>
-            <option value="normal">普通</option>
-            <option value="low">低优先级</option>
-          </select>
-        </label>
+          <button
+            type="button"
+            class="filter-select-trigger"
+            :aria-expanded="openFilterMenu === 'priority'"
+            aria-haspopup="listbox"
+            @click.stop="toggleFilterMenu('priority')"
+            @keydown.esc.prevent="closeFilterMenu"
+          >
+            {{ filterLabel('priority') }}
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <Transition name="popover">
+            <div v-if="openFilterMenu === 'priority'" class="filter-popover" role="listbox" aria-label="优先级筛选选项">
+              <button
+                v-for="option in FILTER_OPTIONS.priority"
+                :key="option.value"
+                type="button"
+                role="option"
+                :data-filter-kind="'priority'"
+                :data-filter-index="index"
+                :aria-selected="priorityFilter === option.value"
+                :class="{ active: priorityFilter === option.value }"
+                @click="selectFilter('priority', option.value)"
+                @keydown="handleFilterOptionKeydown($event, 'priority', index)"
+              >
+                <span>{{ option.label }}</span><span v-if="priorityFilter === option.value" class="filter-check">✓</span>
+              </button>
+            </div>
+          </Transition>
+        </div>
       </div>
     </div>
     <div v-if="hasActiveFilters" class="filter-summary" aria-live="polite">
@@ -573,6 +690,7 @@ onUnmounted(() => {
         <div
           :data-id="task.id"
           class="task-wrapper"
+          :style="{ '--task-delay': `${Math.min(index, 8) * 22}ms` }"
           tabindex="0"
           :aria-label="`任务：${task.title}`"
           :class="{ 'kb-focus': task.id === focusedId }"
@@ -741,6 +859,12 @@ onUnmounted(() => {
   font-weight: 750;
   letter-spacing: -.03em;
 }
+.progress-copy strong.progress-pulse { animation: progress-pulse .42s var(--ease-standard); }
+@keyframes progress-pulse {
+  0% { transform: scale(1); color: var(--text-primary); }
+  45% { transform: scale(1.12); color: var(--accent); }
+  100% { transform: scale(1); color: var(--text-primary); }
+}
 .progress-copy small { grid-column: 1; }
 .progress-ring { flex-shrink: 0; }
 
@@ -815,13 +939,17 @@ onUnmounted(() => {
   padding-left: 12px;
   border-left: 1px solid var(--border-soft);
   width: auto;
+  position: relative;
 }
 .filter-control > span {
   color: var(--text-muted);
   font-size: 10px;
   white-space: nowrap;
 }
-.filter-select {
+.filter-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   width: auto;
   min-width: 0;
   color: var(--text-secondary);
@@ -835,11 +963,49 @@ onUnmounted(() => {
   box-shadow: none;
   transition: background .12s, border-color .12s, color .12s, box-shadow .12s;
 }
-.filter-select:hover,
-.filter-select:focus-visible {
+.filter-select-trigger svg { transition: transform .16s var(--ease-standard); }
+.filter-control.open .filter-select-trigger svg { transform: rotate(180deg); }
+.filter-select-trigger:hover,
+.filter-select-trigger:focus-visible,
+.filter-control.open .filter-select-trigger {
   color: var(--text-primary);
   background: var(--bg-elevated);
 }
+.filter-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  min-width: 142px;
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-surface) 96%, transparent);
+  box-shadow: 0 14px 28px color-mix(in srgb, var(--bg-deep) 18%, transparent), 0 1px 0 rgba(255,255,255,.7) inset;
+  backdrop-filter: blur(14px) saturate(120%);
+}
+.filter-popover button {
+  width: 100%;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 9px;
+  border-radius: 7px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-align: left;
+  transition: background .12s, color .12s, transform .12s;
+}
+.filter-popover button:hover,
+.filter-popover button.active { color: var(--text-primary); background: var(--accent-soft); }
+.filter-popover button:hover { transform: translateX(2px); }
+.filter-check { color: var(--accent); font-weight: 750; }
+.popover-enter-active,
+.popover-leave-active { transition: opacity .14s ease, transform .14s var(--ease-standard); transform-origin: top right; }
+.popover-enter-from,
+.popover-leave-to { opacity: 0; transform: translateY(-4px) scale(.98); }
 .filter-summary {
   display: flex;
   align-items: center;
@@ -1037,7 +1203,15 @@ onUnmounted(() => {
   margin: 0 auto;
   gap: 1px;
 }
-.task-wrapper { position: relative; }
+.task-wrapper {
+  position: relative;
+  animation: task-enter .24s var(--ease-standard) both;
+  animation-delay: var(--task-delay, 0ms);
+}
+@keyframes task-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .task-wrapper:focus { outline: none; }
 .task-wrapper:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent);
@@ -1082,8 +1256,22 @@ onUnmounted(() => {
 .postpone-all-btn:hover { filter: brightness(1.12); }
 
 /* Sortable ghost/chosen */
-:deep(.task-ghost)    { opacity: .3; }
-:deep(.task-chosen)   { cursor: grabbing; }
+:deep(.task-ghost) {
+  opacity: .48;
+  border-top: 2px solid var(--accent);
+  border-radius: 10px;
+}
+:deep(.task-chosen) {
+  cursor: grabbing;
+  z-index: 2;
+}
+:deep(.task-chosen .task-row) {
+  background: var(--bg-surface);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-soft);
+  transform: scale(1.01);
+}
+:deep(.task-dragging .task-row) { cursor: grabbing; }
 
 /* 空状态快捷键提示 */
 .empty-hints {
