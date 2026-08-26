@@ -173,7 +173,7 @@ const diagnosticSummary = computed(() => {
         <span>数据与安全</span>
         <small>任务、备份和运行状态</small>
       </div>
-      <div class="settings-card">
+      <div class="settings-card data-card">
         <h2>数据备份</h2>
         <p>导出当前所有项目和任务，或从备份文件恢复。</p>
         <div class="settings-actions">
@@ -181,14 +181,14 @@ const diagnosticSummary = computed(() => {
           <button class="secondary-btn" @click="onImportData">导入备份</button>
         </div>
       </div>
-      <div class="settings-card">
+      <div class="settings-card data-card">
         <h2>存储位置</h2>
         <div class="path-row">
           <p class="path-text">{{ appInfo?.dataPath || '正在读取…' }}</p>
           <button class="copy-path-btn" :disabled="!appInfo?.dataPath" @click="copyPath(appInfo.dataPath, 'data')">{{ copiedPath === 'data' ? '已复制' : '复制' }}</button>
         </div>
       </div>
-      <div class="settings-card">
+      <div class="settings-card data-card">
         <h2>自动备份</h2>
         <p>启动和导入前会自动备份，保留最近 30 份。</p>
         <div class="path-row">
@@ -197,7 +197,7 @@ const diagnosticSummary = computed(() => {
         </div>
         <p class="status-line"><span class="status-line-dot"></span>最近保留 {{ appInfo?.backup?.count || 0 }} 份备份</p>
       </div>
-      <div class="settings-card">
+      <div class="settings-card data-card">
         <h2>提醒</h2>
         <p>应用启动后会提醒今天截止和已逾期的未完成任务。</p>
         <div class="summary-pills">
@@ -209,7 +209,7 @@ const diagnosticSummary = computed(() => {
         <span>工作流</span>
         <small>让添加和整理更顺手</small>
       </div>
-      <div class="settings-card">
+      <div class="settings-card workflow-shortcut-card">
         <h2>全局快速添加</h2>
         <p>在任何应用里按下快捷键，立即弹出任务输入框。点击输入框后按下想要的组合键，松手即生效。</p>
         <div class="widget-setting-row">
@@ -339,7 +339,7 @@ const diagnosticSummary = computed(() => {
           </div>
         </div>
       </div>
-      <div class="settings-card">
+      <div class="settings-card workflow-delete-card">
         <h2>删除确认</h2>
         <p>删除项目或任务时是否弹出确认对话框。</p>
         <div class="option-group" style="margin-top:12px">
@@ -438,7 +438,7 @@ const diagnosticSummary = computed(() => {
         <span>诊断</span>
         <small>版本信息与问题排查</small>
       </div>
-      <div class="settings-card">
+      <div class="settings-card diagnostic-version-card">
         <h2>版本</h2>
         <p>小光任务 {{ appInfo?.version || '0.2.0' }}</p>
         <p>数据版本：{{ appInfo?.schemaVersion || '-' }}</p>
