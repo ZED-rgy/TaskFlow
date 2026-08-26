@@ -198,8 +198,8 @@ function onKeydown(event) {
   display: flex;
   justify-content: center;
   padding-top: 12vh;
-  background: rgba(0, 0, 0, .38);
-  backdrop-filter: blur(2px);
+  background: color-mix(in srgb, var(--bg-deep) 42%, transparent);
+  backdrop-filter: blur(5px) saturate(115%);
 }
 .palette-panel {
   width: min(560px, calc(100vw - 48px));
@@ -209,8 +209,8 @@ function onKeydown(event) {
   flex-direction: column;
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  box-shadow: 0 24px 64px rgba(0,0,0,.45);
+  border-radius: 15px;
+  box-shadow: 0 28px 72px color-mix(in srgb, var(--bg-deep) 34%, transparent), 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent);
   overflow: hidden;
   animation: palette-rise .22s var(--ease-standard) both;
 }
@@ -225,6 +225,7 @@ function onKeydown(event) {
   padding: 13px 16px;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent-soft) 28%, transparent), transparent 55%);
 }
 .palette-input-row input {
   flex: 1;
@@ -267,8 +268,8 @@ function onKeydown(event) {
   font-size: 13px;
 }
 .palette-item.active { background: var(--accent-soft); }
-.palette-item { transition: background .14s var(--ease-standard), transform .14s var(--ease-standard), color .14s var(--ease-standard); }
-.palette-item.active { color: var(--text-primary); transform: translateX(2px); box-shadow: inset 2px 0 0 var(--accent); }
+.palette-item { transition: background .14s var(--ease-standard), transform .14s var(--ease-standard), color .14s var(--ease-standard), box-shadow .14s var(--ease-standard); }
+.palette-item.active { color: var(--text-primary); transform: translateY(-1px); box-shadow: inset 2px 0 0 var(--accent), 0 4px 10px color-mix(in srgb, var(--bg-deep) 7%, transparent); }
 .palette-item.active .item-icon { color: var(--accent); transform: scale(1.06); }
 .palette-item.done .item-label { color: var(--text-muted); text-decoration: line-through; }
 .item-icon {

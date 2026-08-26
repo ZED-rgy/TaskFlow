@@ -922,6 +922,25 @@ onUnmounted(() => {
     linear-gradient(180deg, rgba(255,255,255,.07), transparent 210px),
     var(--bg-base);
   overflow: hidden;
+  position: relative;
+  isolation: isolate;
+}
+.app-shell::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  inset: var(--titlebar-h) 0 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 8%, color-mix(in srgb, var(--accent-soft) 52%, transparent), transparent 26%),
+    radial-gradient(circle at 88% 16%, color-mix(in srgb, var(--info-soft) 35%, transparent), transparent 28%);
+  opacity: .45;
+  animation: shell-atmosphere 18s ease-in-out infinite alternate;
+}
+.app-shell > * { position: relative; z-index: 1; }
+@keyframes shell-atmosphere {
+  from { transform: translate3d(-1.5%, -1%, 0) scale(1); opacity: .28; }
+  to { transform: translate3d(1.5%, 1%, 0) scale(1.035); opacity: .52; }
 }
 
 /* Titlebar */
@@ -959,7 +978,9 @@ onUnmounted(() => {
   flex-shrink: 0;
   object-fit: cover;
   box-shadow: 0 2px 6px rgba(19, 30, 40, .18), inset 0 0 0 1px rgba(255,255,255,.18);
+  transition: transform .24s var(--ease-spring), box-shadow .24s var(--ease-spring);
 }
+.app-brand:hover .app-brand-icon { transform: rotate(-7deg) scale(1.08); box-shadow: 0 4px 10px var(--accent-glow), inset 0 0 0 1px rgba(255,255,255,.24); }
 .titlebar-controls {
   display: flex;
   align-items: center;
@@ -1007,6 +1028,21 @@ onUnmounted(() => {
     radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--accent-soft) 78%, transparent), transparent 30%),
     linear-gradient(180deg, rgba(255,255,255,.035), transparent 260px),
     var(--bg-base);
+  position: relative;
+}
+.main-area::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 0 38%, color-mix(in srgb, var(--accent-soft) 8%, transparent) 50%, transparent 62%);
+  background-size: 220% 100%;
+  opacity: .22;
+  animation: main-sheen 22s ease-in-out infinite;
+}
+@keyframes main-sheen {
+  0%, 35% { background-position: 120% 0; }
+  65%, 100% { background-position: -20% 0; }
 }
 
 /* Empty state */

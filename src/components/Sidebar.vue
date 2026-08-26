@@ -567,9 +567,12 @@ function selectProject(p) {
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--bg-elevated) 56%, transparent);
   opacity: .95;
+  transition: transform .18s var(--ease-spring), background .18s var(--ease-spring), color .18s var(--ease-spring);
 }
 .project-row.active .proj-count,
 .smart-row.active .proj-count { color: var(--accent); background: var(--accent-soft); }
+.project-row:hover .proj-count,
+.smart-row:hover .proj-count { transform: scale(1.08); }
 
 /* New project form */
 .new-form {
