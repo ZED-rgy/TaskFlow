@@ -813,6 +813,7 @@ onUnmounted(() => {
   min-width: 0;
 }
 .project-icon  {
+  position: relative;
   width: 44px;
   height: 44px;
   display: flex;
@@ -824,6 +825,25 @@ onUnmounted(() => {
   border: 1px solid color-mix(in srgb, var(--proj-color, var(--accent)) 30%, var(--border));
   box-shadow: 0 10px 22px color-mix(in srgb, var(--proj-color, var(--accent)) 10%, transparent), inset 0 1px rgba(255,255,255,.6);
   transition: transform .22s var(--ease-standard), box-shadow .22s var(--ease-standard), background .22s var(--ease-standard);
+}
+.project-icon::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 1px solid color-mix(in srgb, var(--proj-color, var(--accent)) 42%, transparent);
+  border-radius: 20px;
+  opacity: 0;
+  transform: scale(.84);
+  pointer-events: none;
+}
+.list-header:hover .project-icon::after {
+  opacity: .72;
+  animation: project-icon-pulse .72s var(--ease-standard);
+}
+@keyframes project-icon-pulse {
+  0% { opacity: .05; transform: scale(.84); }
+  52% { opacity: .72; transform: scale(1.06); }
+  100% { opacity: 0; transform: scale(1.18); }
 }
 .list-header:hover .project-icon { transform: translateY(-1px) rotate(-2deg); box-shadow: 0 13px 26px color-mix(in srgb, var(--proj-color, var(--accent)) 16%, transparent), inset 0 1px rgba(255,255,255,.68); }
 .project-icon :deep(svg) { width: 23px; height: 23px; }
@@ -876,6 +896,11 @@ onUnmounted(() => {
   transition: transform .18s var(--ease-standard), border-color .18s var(--ease-standard), box-shadow .18s var(--ease-standard);
 }
 .header-right:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 32%, var(--border)); box-shadow: 0 11px 24px color-mix(in srgb, var(--bg-deep) 10%, transparent), inset 0 1px rgba(255,255,255,.52); }
+.header-right:hover .progress-ring { animation: progress-ring-float .9s var(--ease-standard) infinite; }
+@keyframes progress-ring-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-2px) rotate(3deg); }
+}
 .progress-copy {
   min-width: 78px;
   display: grid;

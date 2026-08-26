@@ -264,6 +264,8 @@ function formatDueLabel(dateKey) {
 }
 
 .task-row {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -274,6 +276,26 @@ function formatDueLabel(dateKey) {
   transition: background .16s var(--ease-standard), border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
   min-height: 52px;
   box-shadow: inset 2px 0 0 transparent;
+}
+.task-row::after {
+  content: '';
+  position: absolute;
+  top: -18%;
+  bottom: -18%;
+  left: -30%;
+  width: 22%;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--accent) 18%, transparent), transparent);
+  transform: skewX(-18deg) translateX(-120%);
+}
+.task-row:hover::after {
+  opacity: 1;
+  animation: task-row-sheen .62s var(--ease-standard);
+}
+@keyframes task-row-sheen {
+  from { transform: skewX(-18deg) translateX(-120%); }
+  to { transform: skewX(-18deg) translateX(720%); }
 }
 .task-row:hover {
   background: color-mix(in srgb, var(--bg-surface) 76%, transparent);

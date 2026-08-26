@@ -333,6 +333,15 @@ body.widget-mode #app {
 .slide-enter-from   { opacity: 0; transform: translateY(-6px); }
 .slide-leave-to     { opacity: 0; transform: translateY(-4px); }
 
+/* Page-level transitions keep navigation spatial: the next view settles in
+   from the direction of the content rather than flashing in place. */
+.view-switch-enter-active,
+.view-switch-leave-active {
+  transition: opacity .24s var(--ease-standard), transform .28s var(--ease-standard), filter .24s ease;
+}
+.view-switch-enter-from { opacity: 0; transform: translateY(8px) scale(.995); filter: blur(2px); }
+.view-switch-leave-to { opacity: 0; transform: translateY(-5px) scale(.998); filter: blur(1px); }
+
 /* Respect system-level motion preferences while keeping state changes visible. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

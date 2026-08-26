@@ -789,65 +789,69 @@ onUnmounted(() => {
       />
 
       <main class="main-area">
-        <TaskList
-          v-if="activeScope && currentView !== 'settings'"
-          :project="activeScope"
-          :tasks="projectTasks"
-          :projects="projects"
-          :today="todayKey"
-          @create="onCreateTask"
-          @update="onUpdateTask"
-          @delete="onDeleteTask"
-          @reorder="onReorderTasks"
-          @selectTask="selectTask"
-        />
-        <SettingsView
-          v-else-if="currentView === 'settings'"
-          :appInfo="appInfo"
-          :dueSummary="dueSummary"
-          :widgetConfig="widgetConfig"
-          :appSettings="appSettings"
-          :logs="logs"
-          :projects="projects"
-          :tasks="tasks"
-          :selectedId="selectedId"
-          :theme="theme"
-          :skipDeleteConfirm="skipDeleteConfirm"
-          :settingsSaveState="settingsSaveState"
-          :shortcutDraft="shortcutDraft"
-          :fontFamily="fontFamily"
-          :fontSize="fontSize"
-          :systemFonts="systemFonts"
-          :filteredFonts="filteredFonts"
-          :fontLoading="fontLoading"
-          :fontLoadError="fontLoadError"
-          v-model:fontSearch="fontSearch"
-          v-model:fontPickerOpen="fontPickerOpen"
-          v-model:shortcutRecording="shortcutRecording"
-          :onExportData="onExportData"
-          :onImportData="onImportData"
-          :onExportLogs="onExportLogs"
-          :onClearLogs="onClearLogs"
-          :updateWidgetConfig="updateWidgetConfig"
-          :toggleWidgetVisible="toggleWidgetVisible"
-          :saveShortcut="saveShortcut"
-          :recordShortcut="recordShortcut"
-          :setTheme="setTheme"
-          :setFontSize="setFontSize"
-          :selectFont="selectFont"
-          :clearFont="clearFont"
-          :toggleSkipDelete="toggleSkipDelete"
-        />
-        <div v-else class="empty-screen">
-          <div class="empty-icon" aria-hidden="true">
-            <svg viewBox="0 0 48 48" fill="none">
-              <path d="M24 6l15 9v18l-15 9-15-9V15l15-9Z" stroke="currentColor" stroke-width="1.4"/>
-              <path d="M15 18.5l9 5.5 9-5.5M24 24v12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+        <Transition name="view-switch" mode="out-in">
+          <TaskList
+            v-if="activeScope && currentView !== 'settings'"
+            :key="`project:${activeScope.id}`"
+            :project="activeScope"
+            :tasks="projectTasks"
+            :projects="projects"
+            :today="todayKey"
+            @create="onCreateTask"
+            @update="onUpdateTask"
+            @delete="onDeleteTask"
+            @reorder="onReorderTasks"
+            @selectTask="selectTask"
+          />
+          <SettingsView
+            v-else-if="currentView === 'settings'"
+            key="settings"
+            :appInfo="appInfo"
+            :dueSummary="dueSummary"
+            :widgetConfig="widgetConfig"
+            :appSettings="appSettings"
+            :logs="logs"
+            :projects="projects"
+            :tasks="tasks"
+            :selectedId="selectedId"
+            :theme="theme"
+            :skipDeleteConfirm="skipDeleteConfirm"
+            :settingsSaveState="settingsSaveState"
+            :shortcutDraft="shortcutDraft"
+            :fontFamily="fontFamily"
+            :fontSize="fontSize"
+            :systemFonts="systemFonts"
+            :filteredFonts="filteredFonts"
+            :fontLoading="fontLoading"
+            :fontLoadError="fontLoadError"
+            v-model:fontSearch="fontSearch"
+            v-model:fontPickerOpen="fontPickerOpen"
+            v-model:shortcutRecording="shortcutRecording"
+            :onExportData="onExportData"
+            :onImportData="onImportData"
+            :onExportLogs="onExportLogs"
+            :onClearLogs="onClearLogs"
+            :updateWidgetConfig="updateWidgetConfig"
+            :toggleWidgetVisible="toggleWidgetVisible"
+            :saveShortcut="saveShortcut"
+            :recordShortcut="recordShortcut"
+            :setTheme="setTheme"
+            :setFontSize="setFontSize"
+            :selectFont="selectFont"
+            :clearFont="clearFont"
+            :toggleSkipDelete="toggleSkipDelete"
+          />
+          <div v-else class="empty-screen">
+            <div class="empty-icon" aria-hidden="true">
+              <svg viewBox="0 0 48 48" fill="none">
+                <path d="M24 6l15 9v18l-15 9-15-9V15l15-9Z" stroke="currentColor" stroke-width="1.4"/>
+                <path d="M15 18.5l9 5.5 9-5.5M24 24v12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <strong>先创建一个项目</strong>
+            <p>从左侧新建项目，或按 <kbd>Ctrl</kbd><span>+</span><kbd>K</kbd> 快速跳转。</p>
           </div>
-          <strong>先创建一个项目</strong>
-          <p>从左侧新建项目，或按 <kbd>Ctrl</kbd><span>+</span><kbd>K</kbd> 快速跳转。</p>
-        </div>
+        </Transition>
       </main>
       <TaskDetail
         :task="selectedTask"

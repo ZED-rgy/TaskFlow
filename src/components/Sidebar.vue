@@ -234,6 +234,7 @@ function selectProject(p) {
       <div class="section-label">快捷视图</div>
       <button
         class="smart-row"
+        style="--row-delay: 0ms"
         :class="{ active: currentView === 'today' }"
         @click="$emit('selectView', 'today')"
       >
@@ -245,6 +246,7 @@ function selectProject(p) {
       </button>
       <button
         class="smart-row"
+        style="--row-delay: 18ms"
         :class="{ active: currentView === 'upcoming' }"
         @click="$emit('selectView', 'upcoming')"
       >
@@ -256,6 +258,7 @@ function selectProject(p) {
       </button>
       <button
         class="smart-row"
+        style="--row-delay: 36ms"
         :class="{ active: currentView === 'completed' }"
         @click="$emit('selectView', 'completed')"
       >
@@ -273,6 +276,7 @@ function selectProject(p) {
         :key="p.id"
         :data-project-index="i"
         class="project-row"
+        :style="{ '--row-delay': `${54 + i * 18}ms` }"
         :class="{ active: currentView === 'project' && selectedId === p.id, dragging: dragIndex === i }"
         @click="selectProject(p)"
         @contextmenu="showCtx($event, p)"
@@ -434,6 +438,12 @@ function selectProject(p) {
   margin: 2px 0;
   width: 100%;
   text-align: left;
+  animation: sidebar-row-enter .34s var(--ease-standard) backwards;
+  animation-delay: var(--row-delay, 0ms);
+}
+@keyframes sidebar-row-enter {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 .project-row {
   touch-action: none;
@@ -491,6 +501,10 @@ function selectProject(p) {
 }
 .smart-row.active .smart-name { color: var(--text-primary); }
 .smart-row.active .smart-icon { color: var(--accent); background: var(--accent-soft); }
+.smart-row:hover .smart-icon,
+.project-row:hover .proj-icon { transform: translateY(-1px) rotate(-4deg); }
+.smart-icon,
+.proj-icon { transition: transform .2s var(--ease-standard), background .2s var(--ease-standard), color .2s var(--ease-standard); }
 
 .proj-stripe {
   width: 2px;
