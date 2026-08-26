@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import Sortable from 'sortablejs'
+import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/vue'
 import TaskItem from './TaskItem.vue'
 import ProjectIcon from './ProjectIcon.vue'
 import { parseQuickInput, friendlyDate } from '../runtime/quickparse.js'
@@ -22,6 +23,20 @@ const priorityFilter = ref('all')
 const newDueDate  = ref('')
 const newPriority = ref('normal')
 const openFilterMenu = ref(null)
+const dueTriggerEl = ref(null)
+const duePopoverEl = ref(null)
+const priorityTriggerEl = ref(null)
+const priorityPopoverEl = ref(null)
+const { floatingStyles: dueFloatingStyles } = useFloating(dueTriggerEl, duePopoverEl, {
+  placement: 'bottom-end',
+  middleware: [offset(8), flip(), shift({ padding: 8 })],
+  whileElementsMounted: autoUpdate,
+})
+const { floatingStyles: priorityFloatingStyles } = useFloating(priorityTriggerEl, priorityPopoverEl, {
+  placement: 'bottom-end',
+  middleware: [offset(8), flip(), shift({ padding: 8 })],
+  whileElementsMounted: autoUpdate,
+})
 
 const FILTER_OPTIONS = {
   due: [
@@ -447,6 +462,10 @@ function ensureSortableReady() {
   if (!sortable && sortableEnabled.value) initSortable()
 }
 
+function focusAddFromCommandPalette() {
+  if (!props.project.readonlyProject) focusAdd()
+}
+
 onMounted(() => {
   scheduleSortableRefresh()
   focusAdd()
@@ -454,6 +473,7 @@ onMounted(() => {
   window.addEventListener('focus', scheduleSortableRefresh)
   document.addEventListener('visibilitychange', refreshSortableWhenVisible)
   document.addEventListener('pointerdown', onDocumentPointerdown)
+  window.addEventListener('taskflow-focus-add', focusAddFromCommandPalette)
 })
 
 watch(() => props.project.id, () => {
@@ -477,6 +497,7 @@ onUnmounted(() => {
   window.removeEventListener('focus', scheduleSortableRefresh)
   document.removeEventListener('visibilitychange', refreshSortableWhenVisible)
   document.removeEventListener('pointerdown', onDocumentPointerdown)
+  window.removeEventListener('taskflow-focus-add', focusAddFromCommandPalette)
 })
 </script>
 
@@ -537,6 +558,7 @@ onUnmounted(() => {
           <span>日期</span>
           <button
             type="button"
+            ref="dueTriggerEl"
             class="filter-select-trigger"
             :aria-expanded="openFilterMenu === 'due'"
             aria-haspopup="listbox"
@@ -547,9 +569,9 @@ onUnmounted(() => {
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <Transition name="popover">
-            <div v-if="openFilterMenu === 'due'" class="filter-popover" role="listbox" aria-label="日期筛选选项">
+            <div v-if="openFilterMenu === 'due'" ref="duePopoverEl" class="filter-popover" :style="dueFloatingStyles" role="listbox" aria-label="日期筛选选项">
               <button
-                v-for="option in FILTER_OPTIONS.due"
+                v-for="(option, index) in FILTER_OPTIONS.due"
                 :key="option.value"
                 type="button"
                 role="option"
@@ -569,6 +591,7 @@ onUnmounted(() => {
           <span>优先级</span>
           <button
             type="button"
+            ref="priorityTriggerEl"
             class="filter-select-trigger"
             :aria-expanded="openFilterMenu === 'priority'"
             aria-haspopup="listbox"
@@ -579,9 +602,9 @@ onUnmounted(() => {
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <Transition name="popover">
-            <div v-if="openFilterMenu === 'priority'" class="filter-popover" role="listbox" aria-label="优先级筛选选项">
+            <div v-if="openFilterMenu === 'priority'" ref="priorityPopoverEl" class="filter-popover" :style="priorityFloatingStyles" role="listbox" aria-label="优先级筛选选项">
               <button
-                v-for="option in FILTER_OPTIONS.priority"
+                v-for="(option, index) in FILTER_OPTIONS.priority"
                 :key="option.value"
                 type="button"
                 role="option"
@@ -994,8 +1017,9 @@ onUnmounted(() => {
 }
 .filter-popover {
   position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  top: 0;
+  left: 0;
+  right: auto;
   z-index: 30;
   min-width: 142px;
   padding: 5px;

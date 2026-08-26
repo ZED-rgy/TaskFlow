@@ -33,6 +33,7 @@
         "verify": "npm run check"
     },
     "dependencies": {
+        "@floating-ui/vue": "^2.0.1",
         "sortablejs": "^1.15.7",
         "vue": "^3.5.41"
     },

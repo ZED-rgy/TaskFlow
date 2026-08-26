@@ -21,6 +21,7 @@ const taskDraft = ref('')
 const creating = ref(false)
 const errorText = ref('')
 const pendingIds = ref(new Set())
+const recentlyCompletedIds = ref(new Set())
 const undoState = ref(null)
 const menu = ref(null)
 let undoTimer = null
@@ -365,6 +366,16 @@ async function toggleTask(task) {
     completedAt: nextCompleted ? new Date().toISOString() : null,
   }
   markPending(task.id, true)
+  if (nextCompleted) {
+    const next = new Set(recentlyCompletedIds.value)
+    next.add(task.id)
+    recentlyCompletedIds.value = next
+    window.setTimeout(() => {
+      const current = new Set(recentlyCompletedIds.value)
+      current.delete(task.id)
+      recentlyCompletedIds.value = current
+    }, 520)
+  }
   try {
     const result = await withTimeout(
       api.updateTask({ id: task.id, completed: nextCompleted }),
@@ -376,6 +387,9 @@ async function toggleTask(task) {
   } catch (error) {
     const j = tasks.value.findIndex(item => item.id === task.id)
     if (j !== -1) tasks.value[j] = prev
+    const current = new Set(recentlyCompletedIds.value)
+    current.delete(task.id)
+    recentlyCompletedIds.value = current
     errorText.value = '操作失败，请重试'
     console.warn('[widget] toggle failed', error)
   } finally {
@@ -640,6 +654,7 @@ onUnmounted(() => {
   if (timer) clearInterval(timer)
   for (const t of toggleTimers.values()) window.clearTimeout(t)
   toggleTimers.clear()
+  recentlyCompletedIds.value = new Set()
   if (healthTimer) clearInterval(healthTimer)
   stopPomoTimer()
   if (loadTimer) window.clearTimeout(loadTimer)
@@ -781,6 +796,7 @@ onUnmounted(() => {
           class="widget-task"
           :class="{
             completed: task.completed,
+            'just-completed': recentlyCompletedIds.has(task.id),
             busy: pendingIds.has(task.id),
             sorting: pointerSortId === task.id,
           }"
@@ -867,6 +883,11 @@ onUnmounted(() => {
   cursor: pointer;
   user-select: none;
   outline: none;
+  animation: widget-mini-in .24s var(--ease-standard) both;
+}
+@keyframes widget-mini-in {
+  from { opacity: 0; transform: scale(.9); }
+  to { opacity: 1; transform: scale(1); }
 }
 .widget-ball {
   position: relative;
@@ -1223,6 +1244,14 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
   transform: translateX(2px);
 }
+.widget-task.just-completed {
+  animation: widget-task-complete .5s var(--ease-standard);
+}
+@keyframes widget-task-complete {
+  0% { background: var(--accent-soft); transform: translateX(0); }
+  45% { background: color-mix(in srgb, var(--accent-soft) 55%, var(--bg-elevated)); transform: translateX(3px); }
+  100% { background: transparent; transform: translateX(0); }
+}
 .widget-task:focus-within {
   background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
   outline: 2px solid var(--accent-soft);
@@ -1268,6 +1297,7 @@ onUnmounted(() => {
   transition: background .12s, border-color .12s;
   cursor: pointer;
 }
+.widget-check:active { transform: scale(.88); }
 .widget-task.completed .widget-check {
   background: var(--accent);
   border-color: var(--accent);

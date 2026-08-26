@@ -8,7 +8,7 @@ const props = defineProps({
   projects: { type: Array,   default: () => [] },
   today:    { type: String,  default: '' },
 })
-const emit = defineEmits(['close', 'jumpTask', 'jumpView', 'jumpProject'])
+const emit = defineEmits(['close', 'jumpTask', 'jumpView', 'jumpProject', 'action'])
 
 const query = ref('')
 const activeIndex = ref(0)
@@ -22,10 +22,18 @@ const VIEWS = [
   { kind: 'view', group: 'view', id: 'settings',  icon: '⚙',  label: '设置' },
 ]
 
+const ACTIONS = [
+  { kind: 'action', group: 'action', id: 'add-task', icon: '+', label: '添加任务', shortcut: 'Ctrl+N' },
+  { kind: 'action', group: 'action', id: 'quick-add', icon: '↗', label: '打开快速添加窗口', shortcut: '全局' },
+  { kind: 'action', group: 'action', id: 'toggle-widget', icon: '◉', label: '显示 / 隐藏桌面组件' },
+  { kind: 'action', group: 'action', id: 'toggle-theme', icon: '☼', label: '切换主题' },
+]
+
 const GROUP_LABELS = {
   view: '快捷视图',
   project: '项目',
   task: '任务',
+  action: '操作',
 }
 
 function groupLabel(group) {
@@ -44,6 +52,11 @@ const results = computed(() => {
   for (const view of VIEWS) {
     if (!q || view.label.toLowerCase().includes(q)) {
       items.push({ ...view, key: `view:${view.id}` })
+    }
+  }
+  for (const action of ACTIONS) {
+    if (!q || action.label.toLowerCase().includes(q)) {
+      items.push({ ...action, key: `action:${action.id}` })
     }
   }
   for (const project of props.projects) {
@@ -108,6 +121,7 @@ function choose(item) {
   if (!target) return
   if (target.kind === 'task') emit('jumpTask', target.id)
   else if (target.kind === 'project') emit('jumpProject', target.id)
+  else if (target.kind === 'action') emit('action', target.id)
   else emit('jumpView', target.id)
   emit('close')
 }
@@ -161,7 +175,8 @@ function onKeydown(event) {
               <span class="item-label">{{ item.label }}</span>
               <span v-if="item.meta" class="item-meta">· {{ item.meta }}</span>
               <span v-if="item.due" class="item-due" :class="{ overdue: item.overdue }">{{ item.due }}</span>
-              <span v-if="item.kind !== 'task'" class="item-kind">{{ item.kind === 'project' ? '项目' : '视图' }}</span>
+              <span v-if="item.shortcut" class="item-shortcut">{{ item.shortcut }}</span>
+              <span v-if="item.kind !== 'task'" class="item-kind">{{ item.kind === 'project' ? '项目' : item.kind === 'action' ? '操作' : '视图' }}</span>
             </button>
           </template>
           <div v-if="!results.length" class="palette-empty">没有匹配结果</div>
@@ -197,6 +212,11 @@ function onKeydown(event) {
   border-radius: 12px;
   box-shadow: 0 24px 64px rgba(0,0,0,.45);
   overflow: hidden;
+  animation: palette-rise .22s var(--ease-standard) both;
+}
+@keyframes palette-rise {
+  from { opacity: 0; transform: translateY(-9px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .palette-input-row {
   display: flex;
@@ -247,6 +267,9 @@ function onKeydown(event) {
   font-size: 13px;
 }
 .palette-item.active { background: var(--accent-soft); }
+.palette-item { transition: background .14s var(--ease-standard), transform .14s var(--ease-standard), color .14s var(--ease-standard); }
+.palette-item.active { color: var(--text-primary); transform: translateX(2px); box-shadow: inset 2px 0 0 var(--accent); }
+.palette-item.active .item-icon { color: var(--accent); transform: scale(1.06); }
 .palette-item.done .item-label { color: var(--text-muted); text-decoration: line-through; }
 .item-icon {
   width: 20px;
@@ -266,11 +289,13 @@ function onKeydown(event) {
 }
 .item-meta,
 .item-due,
-.item-kind {
+.item-kind,
+.item-shortcut {
   flex-shrink: 0;
   font-size: 10.5px;
   color: var(--text-muted);
 }
+.item-shortcut { padding: 1px 5px; border-radius: 4px; background: var(--bg-elevated); border: 1px solid var(--border); font-family: var(--font-mono); }
 .item-due.overdue { color: var(--danger); }
 .item-kind {
   padding: 1px 6px;
@@ -294,7 +319,7 @@ function onKeydown(event) {
 .palette-foot span { display: flex; align-items: center; gap: 4px; }
 
 .palette-fade-enter-active,
-.palette-fade-leave-active { transition: opacity .14s ease; }
+.palette-fade-leave-active { transition: opacity .16s ease; }
 .palette-fade-enter-from,
 .palette-fade-leave-to { opacity: 0; }
 </style>

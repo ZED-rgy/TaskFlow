@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import TaskList from './components/TaskList.vue'
 import TaskDetail from './components/TaskDetail.vue'
@@ -411,6 +411,23 @@ async function paletteJumpTask(id) {
   if (!task) return
   await selectProject(task.projectId)
   selectTask(id)
+}
+
+async function paletteAction(id) {
+  if (id === 'add-task') {
+    if (currentView.value !== 'project' || activeScope.value?.readonlyProject) {
+      const fallback = selectedId.value || projects.value[0]?.id
+      if (fallback) await selectProject(fallback)
+    }
+    await nextTick()
+    window.dispatchEvent(new Event('taskflow-focus-add'))
+  } else if (id === 'quick-add') {
+    await api.openQuickAdd()
+  } else if (id === 'toggle-widget') {
+    await toggleWidgetVisible()
+  } else if (id === 'toggle-theme') {
+    toggleTheme()
+  }
 }
 
 function showToast(message, action = null) {
@@ -851,6 +868,7 @@ onUnmounted(() => {
       @jumpTask="paletteJumpTask"
       @jumpProject="selectProject"
       @jumpView="selectView"
+      @action="paletteAction"
     />
 
     <Transition name="fade">
