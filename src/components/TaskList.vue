@@ -932,6 +932,8 @@ onUnmounted(() => {
 .progress-ring { width: 34px; height: 34px; flex-shrink: 0; filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--accent) 18%, transparent)); }
 
 .filter-bar {
+  position: relative;
+  z-index: 40;
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto auto;
   gap: 16px;
@@ -1010,6 +1012,7 @@ onUnmounted(() => {
   width: auto;
   position: relative;
 }
+.filter-control.open { z-index: 2; }
 .filter-control > span {
   color: var(--text-muted);
   font-size: 10px;
@@ -1110,6 +1113,8 @@ onUnmounted(() => {
 
 /* Add task */
 .add-task-bar {
+  position: relative;
+  z-index: 10;
   padding: 8px 40px 17px;
   flex-shrink: 0;
   width: min(100%, 1180px);

@@ -24,6 +24,7 @@ const pendingIds = ref(new Set())
 const recentlyCompletedIds = ref(new Set())
 const undoState = ref(null)
 const menu = ref(null)
+const collapsePending = ref(false)
 let undoTimer = null
 let timer = null
 let healthTimer = null
@@ -534,7 +535,15 @@ function setFilter(statusFilter) {
   patchConfig({ statusFilter })
   scheduleLoad(0)
 }
-function toggleCollapsed() { patchConfig({ collapsed: !config.value?.collapsed }) }
+async function toggleCollapsed() {
+  if (collapsePending.value) return
+  collapsePending.value = true
+  try {
+    await patchConfig({ collapsed: !config.value?.collapsed })
+  } finally {
+    collapsePending.value = false
+  }
+}
 
 async function showMain() {
   await api.showMainWindow()
@@ -714,7 +723,7 @@ onUnmounted(() => {
         </span>
       </div>
       <div class="widget-actions">
-        <button :class="{ active: config?.collapsed }" title="折叠/展开" aria-label="折叠/展开" @click="toggleCollapsed">
+        <button :class="{ active: config?.collapsed }" :disabled="collapsePending" :aria-busy="collapsePending" title="折叠/展开" aria-label="折叠/展开" @click="toggleCollapsed">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path :d="config?.collapsed ? 'M4 6l4 4 4-4' : 'M4 10l4-4 4 4'" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -1061,6 +1070,10 @@ onUnmounted(() => {
 .widget-actions button.active {
   color: var(--accent);
   background: var(--accent-soft);
+}
+.widget-actions button:disabled {
+  opacity: .48;
+  cursor: wait;
 }
 .widget-controls {
   padding: 10px 12px 5px;
@@ -1409,6 +1422,7 @@ onUnmounted(() => {
   background: var(--accent-soft);
 }
 .widget-shell.compact .widget-titlebar { height: 32px; }
+.widget-shell.collapsed.compact .widget-titlebar { height: 44px; }
 .widget-shell.compact .widget-controls { display: none; }
 .widget-shell.compact .widget-create { padding-top: 5px; }
 .widget-shell.compact .widget-create input,
