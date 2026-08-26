@@ -265,7 +265,6 @@ function formatDueLabel(dateKey) {
 
 .task-row {
   position: relative;
-  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -277,31 +276,11 @@ function formatDueLabel(dateKey) {
   min-height: 52px;
   box-shadow: inset 2px 0 0 transparent;
 }
-.task-row::after {
-  content: '';
-  position: absolute;
-  top: -18%;
-  bottom: -18%;
-  left: -30%;
-  width: 22%;
-  pointer-events: none;
-  opacity: 0;
-  background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--accent) 18%, transparent), transparent);
-  transform: skewX(-18deg) translateX(-120%);
-}
-.task-row:hover::after {
-  opacity: 1;
-  animation: task-row-sheen .62s var(--ease-standard);
-}
-@keyframes task-row-sheen {
-  from { transform: skewX(-18deg) translateX(-120%); }
-  to { transform: skewX(-18deg) translateX(720%); }
-}
 .task-row:hover {
   background: color-mix(in srgb, var(--bg-surface) 76%, transparent);
   border-color: color-mix(in srgb, var(--border-strong) 45%, transparent);
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 72%, transparent), 0 5px 16px color-mix(in srgb, var(--bg-deep) 7%, transparent);
-  transform: translateX(2px);
+  transform: translateY(-1px);
 }
 .task-row:focus-within {
   background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
@@ -376,7 +355,7 @@ function formatDueLabel(dateKey) {
   cursor: pointer;
   transition: color .15s var(--ease-standard), opacity .15s var(--ease-standard), transform .15s var(--ease-standard);
 }
-.task-row:hover .task-title { transform: translateX(1px); }
+.task-row:hover .task-title { transform: translateY(-.5px); }
 .completed .task-title {
   color: var(--text-muted);
   text-decoration: line-through;

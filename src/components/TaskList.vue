@@ -1331,9 +1331,21 @@ onUnmounted(() => {
 
 /* Sortable ghost/chosen */
 :deep(.task-ghost) {
-  opacity: .48;
-  border-top: 2px solid var(--accent);
+  opacity: .62;
+  border: 1px dashed color-mix(in srgb, var(--accent) 72%, var(--border));
   border-radius: 10px;
+  background: color-mix(in srgb, var(--accent-soft) 74%, transparent);
+  animation: drop-target-pulse .8s ease-in-out infinite;
+}
+:deep(.task-ghost .task-row) {
+  min-height: 50px;
+  border-color: transparent;
+  box-shadow: none;
+  background: transparent;
+}
+@keyframes drop-target-pulse {
+  0%, 100% { opacity: .42; }
+  50% { opacity: .76; }
 }
 :deep(.task-chosen) {
   cursor: grabbing;
