@@ -12,7 +12,7 @@ const props = defineProps({
   projects:{ type: Array,  default: () => [] },
   today:   { type: String, default: '' },
 })
-const emit = defineEmits(['create', 'created', 'update', 'delete', 'reorder', 'selectTask'])
+const emit = defineEmits(['create', 'update', 'delete', 'reorder', 'selectTask'])
 
 // ── Derived lists ─────────────────────────────────────
 const searchQuery = ref('')
@@ -197,7 +197,6 @@ function submitAdd() {
     priority: newPriority.value !== 'normal' ? newPriority.value : (parsed.priority || 'normal'),
     tags: parsed.tags.length ? parsed.tags : undefined,
   })
-  emit('created', { title })
   addingTitle.value = ''
   addSubFor.value   = null
   newDueDate.value  = ''

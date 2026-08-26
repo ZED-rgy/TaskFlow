@@ -469,12 +469,13 @@ async function onReorderProjects(ids) {
 // ── Task handlers ─────────────────────────────────────
 async function onCreateTask(data) {
   if (!selectedId.value || currentView.value !== 'project') return
-  const t = await api.createTask({ ...data, projectId: selectedId.value })
-  tasks.value.push(t)
-}
-
-function onTaskCreated({ title }) {
-  showToast(`已添加「${title}」`)
+  try {
+    const t = await api.createTask({ ...data, projectId: selectedId.value })
+    tasks.value.push(t)
+    showToast(`已添加「${data.title}」`)
+  } catch (error) {
+    showToast(`添加任务失败：${error.message || '未知错误'}`)
+  }
 }
 
 async function onUpdateTask(data) {
@@ -732,7 +733,6 @@ onUnmounted(() => {
           :projects="projects"
           :today="todayKey"
           @create="onCreateTask"
-          @created="onTaskCreated"
           @update="onUpdateTask"
           @delete="onDeleteTask"
           @reorder="onReorderTasks"
