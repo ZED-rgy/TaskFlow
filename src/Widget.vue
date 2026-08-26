@@ -750,7 +750,7 @@ onUnmounted(() => {
           maxlength="80"
           :placeholder="isSmartView ? '添加今天的任务...' : '添加任务...'"
         />
-        <button type="submit" :disabled="!taskDraft.trim() || creating">＋</button>
+        <button type="submit" :disabled="!taskDraft.trim() || creating" aria-label="添加任务">＋</button>
       </form>
       <div class="widget-pomo-row">
         <template v-if="pomo.remaining > 0">
@@ -1215,6 +1215,11 @@ onUnmounted(() => {
 .widget-task:hover {
   background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
 }
+.widget-task:focus-within {
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+}
 .widget-task.busy {
   opacity: .6;
   pointer-events: none;
@@ -1284,7 +1289,9 @@ onUnmounted(() => {
   color: var(--text-muted);
   opacity: .45;
 }
-.widget-task:hover .widget-delete {
+.widget-task:hover .widget-delete,
+.widget-task:focus-within .widget-delete,
+.widget-delete:focus-visible {
   opacity: 1;
 }
 .widget-delete:hover {

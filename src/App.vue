@@ -473,6 +473,10 @@ async function onCreateTask(data) {
   tasks.value.push(t)
 }
 
+function onTaskCreated({ title }) {
+  showToast(`已添加「${title}」`)
+}
+
 async function onUpdateTask(data) {
   // 乐观更新：先改界面，后台落库，失败回滚
   const i = tasks.value.findIndex(t => t.id === data.id)
@@ -728,6 +732,7 @@ onUnmounted(() => {
           :projects="projects"
           :today="todayKey"
           @create="onCreateTask"
+          @created="onTaskCreated"
           @update="onUpdateTask"
           @delete="onDeleteTask"
           @reorder="onReorderTasks"

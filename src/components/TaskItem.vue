@@ -53,6 +53,12 @@ function commitEdit() {
 function cancelEdit() {
   editing.value = false
 }
+
+function formatDueLabel(dateKey) {
+  if (!dateKey) return ''
+  const [, month, day] = dateKey.split('-')
+  return month && day ? `${Number(month)}/${Number(day)}` : dateKey
+}
 </script>
 
 <template>
@@ -64,7 +70,7 @@ function cancelEdit() {
   >
     <div class="task-row">
       <!-- Drag handle (shown on hover) -->
-      <span class="drag-handle" title="拖拽排序">
+      <span class="drag-handle" role="img" aria-label="拖拽排序" title="拖拽排序">
         <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
           <circle cx="3" cy="3"  r="1.2" fill="currentColor"/>
           <circle cx="7" cy="3"  r="1.2" fill="currentColor"/>
@@ -108,6 +114,7 @@ function cancelEdit() {
       <span
         v-if="!editing"
         class="task-title"
+        :title="task.title"
         @click="$emit('select', task.id)"
         @dblclick="startEdit"
       >{{ task.title }}</span>
@@ -142,15 +149,15 @@ function cancelEdit() {
         v-if="task.dueDate"
         class="due-badge"
         :class="dueState"
-      >{{ task.dueDate }}</span>
+      >{{ formatDueLabel(task.dueDate) }}</span>
       <span
         v-if="subtasks.length && !expanded"
         class="sub-badge"
       >{{ pendingSubtasks }}/{{ subtasks.length }}</span>
 
-      <!-- Hover actions -->
+      <!-- Hover / keyboard actions -->
       <Transition name="fade">
-        <div v-if="hovered && !editing" class="task-actions">
+        <div v-if="!editing" class="task-actions">
           <button class="action-btn" title="添加子任务" @click.stop="$emit('addSubtask', task.id)">
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
               <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
@@ -349,7 +356,8 @@ function cancelEdit() {
 .repeat-badge {
   font-size: 10px;
   color: var(--text-muted);
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   border-radius: 999px;
   padding: 1px 5px;
   flex-shrink: 0;
@@ -362,6 +370,7 @@ function cancelEdit() {
   color: var(--accent);
   background: var(--accent-soft);
 }
+.due-badge.future { color: var(--text-secondary); }
 .due-badge.overdue {
   color: var(--danger);
   background: var(--danger-soft);
@@ -390,6 +399,17 @@ function cancelEdit() {
   align-items: center;
   gap: 3px;
   flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(4px);
+  transition: opacity .14s var(--ease-standard), transform .14s var(--ease-standard);
+}
+.task-row:hover .task-actions,
+.task-row:focus-within .task-actions,
+:global(.task-wrapper:focus-within) .task-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
 }
 .action-btn {
   width: 28px;

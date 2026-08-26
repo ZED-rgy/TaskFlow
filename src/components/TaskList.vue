@@ -12,7 +12,7 @@ const props = defineProps({
   projects:{ type: Array,  default: () => [] },
   today:   { type: String, default: '' },
 })
-const emit = defineEmits(['create', 'update', 'delete', 'reorder', 'selectTask'])
+const emit = defineEmits(['create', 'created', 'update', 'delete', 'reorder', 'selectTask'])
 
 // ── Derived lists ─────────────────────────────────────
 const searchQuery = ref('')
@@ -21,6 +21,28 @@ const dueFilter = ref('all')
 const priorityFilter = ref('all')
 const newDueDate  = ref('')
 const newPriority = ref('normal')
+
+const activeFilterItems = computed(() => {
+  const items = []
+  if (statusFilter.value !== 'open') {
+    items.push({ key: 'status', label: statusFilter.value === 'all' ? '全部状态' : '已完成' })
+  }
+  if (dueFilter.value !== 'all') {
+    items.push({ key: 'due', label: dueFilter.value === 'today' ? '今天到期' : dueFilter.value === 'overdue' ? '已逾期' : '无日期' })
+  }
+  if (priorityFilter.value !== 'all') {
+    items.push({ key: 'priority', label: priorityFilter.value === 'high' ? '高优先级' : priorityFilter.value === 'low' ? '低优先级' : '普通优先级' })
+  }
+  return items
+})
+
+const hasActiveFilters = computed(() => activeFilterItems.value.length > 0)
+
+function resetFilters() {
+  statusFilter.value = 'open'
+  dueFilter.value = 'all'
+  priorityFilter.value = 'all'
+}
 
 function formatDueShort(d) {
   if (!d) return ''
@@ -101,6 +123,10 @@ const openRootCount = computed(() =>
   props.tasks.filter(t => !t.parentId && !t.completed).length
 )
 
+const overdueCount = computed(() =>
+  props.tasks.filter(t => !t.parentId && !t.completed && t.dueDate && t.dueDate < props.today).length
+)
+
 const completionPercent = computed(() =>
   totalCount.value ? Math.round((completedCount.value / totalCount.value) * 100) : 0
 )
@@ -171,6 +197,7 @@ function submitAdd() {
     priority: newPriority.value !== 'normal' ? newPriority.value : (parsed.priority || 'normal'),
     tags: parsed.tags.length ? parsed.tags : undefined,
   })
+  emit('created', { title })
   addingTitle.value = ''
   addSubFor.value   = null
   newDueDate.value  = ''
@@ -201,7 +228,27 @@ function moveFocus(step) {
     : Math.min(Math.max(idx + step, 0), list.length - 1)
   focusedId.value = list[next].id
   nextTick(() => {
-    document.querySelector(`[data-id="${focusedId.value}"]`)?.scrollIntoView({ block: 'nearest' })
+    const row = document.querySelector(`[data-id="${focusedId.value}"]`)
+    row?.scrollIntoView({ block: 'nearest' })
+    row?.focus({ preventScroll: true })
+  })
+}
+
+function moveFocusedTask(step) {
+  if (!focusedId.value || !sortableEnabled.value) return
+  const list = [...visibleTasks.value]
+  const from = list.findIndex(task => task.id === focusedId.value)
+  const to = from + step
+  if (from < 0 || to < 0 || to >= list.length) return
+  const [moved] = list.splice(from, 1)
+  list.splice(to, 0, moved)
+  emit('reorder', {
+    projectId: props.project.id,
+    orderedIds: list.map(task => task.id),
+    parentId: null,
+  })
+  nextTick(() => {
+    document.querySelector(`[data-id="${focusedId.value}"]`)?.focus({ preventScroll: true })
   })
 }
 
@@ -227,6 +274,11 @@ async function handleKeydown(event) {
   if (event.ctrlKey && event.key.toLowerCase() === 'n' && !props.project.readonlyProject) {
     event.preventDefault()
     await focusAdd()
+  }
+  if (event.altKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp') && focusedId.value) {
+    event.preventDefault()
+    moveFocusedTask(event.key === 'ArrowDown' ? 1 : -1)
+    return
   }
   if (isTypingTarget(event.target) || event.ctrlKey || event.altKey || event.metaKey) return
   if (event.key === 'ArrowDown') {
@@ -368,12 +420,18 @@ onUnmounted(() => {
         <div class="header-copy">
           <span class="header-eyebrow">{{ project.readonlyProject ? 'SMART VIEW' : 'FOCUS / PROJECT' }}</span>
           <h1 class="project-title" :style="{ '--proj-color': project.color }">{{ project.name }}</h1>
-          <p class="header-subtitle">{{ totalCount ? completionSummary : '把今天最重要的事放在这里' }}</p>
+          <p v-if="totalCount" class="header-subtitle header-stats">
+            <span>{{ totalCount }} 个任务</span>
+            <span>{{ openRootCount }} 待完成</span>
+            <span>{{ completedCount }} 已完成</span>
+            <span v-if="overdueCount" class="stat-danger">{{ overdueCount }} 已逾期</span>
+          </p>
+          <p v-else class="header-subtitle">把今天最重要的事放在这里</p>
         </div>
       </div>
       <div class="header-right" v-if="totalCount > 0">
         <svg class="progress-ring" width="26" height="26" viewBox="0 0 26 26" :title="`已完成 ${completedCount}/${totalCount}`">
-          <circle cx="13" cy="13" r="10.5" fill="none" stroke="var(--bg-elevated)" stroke-width="3"/>
+          <circle cx="13" cy="13" r="10.5" fill="none" stroke="var(--border)" stroke-width="3"/>
           <circle
             cx="13" cy="13" r="10.5" fill="none"
             :stroke="project.color" stroke-width="3" stroke-linecap="round"
@@ -425,6 +483,17 @@ onUnmounted(() => {
         </label>
       </div>
     </div>
+    <div v-if="hasActiveFilters" class="filter-summary" aria-live="polite">
+      <span class="filter-summary-label">当前筛选</span>
+      <button
+        v-for="item in activeFilterItems"
+        :key="item.key"
+        type="button"
+        class="filter-summary-chip"
+        @click="resetFilters"
+      >{{ item.label }} <span aria-hidden="true">×</span></button>
+      <button type="button" class="filter-reset-btn" @click="resetFilters">清除</button>
+    </div>
 
     <!-- Add task input -->
     <div v-if="!project.readonlyProject" class="add-task-bar">
@@ -436,11 +505,18 @@ onUnmounted(() => {
           ref="addInput"
           v-model="addingTitle"
           class="add-input"
+          aria-label="添加任务"
           :placeholder="addSubFor ? '添加子任务...' : '添加任务，试试「明天 交报告 #学校 !高」'"
           @keydown.enter="submitAdd"
           @keydown.escape="addSubFor = null; addingTitle = ''; $event.target.blur()"
         />
         <span v-if="!addingTitle && !addSubFor" class="add-hint"><kbd>Enter</kbd> 添加</span>
+        <button
+          v-else-if="addingTitle.trim()"
+          class="add-submit-btn"
+          type="button"
+          @click="submitAdd"
+        >添加</button>
         <span v-if="addSubFor" class="sub-hint" @click="addSubFor = null">
           子任务 ✕
         </span>
@@ -498,7 +574,10 @@ onUnmounted(() => {
         <div
           :data-id="task.id"
           class="task-wrapper"
+          tabindex="0"
+          :aria-label="`任务：${task.title}`"
           :class="{ 'kb-focus': task.id === focusedId }"
+          @focus="focusedId = task.id"
           @mousedown="focusedId = task.id"
         >
           <TaskItem
@@ -577,7 +656,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 38px 40px 18px;
+  padding: 28px 40px 14px;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -589,8 +668,8 @@ onUnmounted(() => {
   min-width: 0;
 }
 .project-icon  {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -619,10 +698,21 @@ onUnmounted(() => {
   position: relative;
 }
 .header-subtitle {
-  margin-top: 1px;
+  margin-top: 3px;
   color: var(--text-muted);
   font-size: 11.5px;
 }
+.header-stats {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.header-stats span + span::before {
+  content: '·';
+  color: var(--border-strong);
+  margin-right: 9px;
+}
+.header-stats .stat-danger { color: var(--danger); }
 .header-right {
   display: flex;
   align-items: center;
@@ -659,7 +749,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto auto;
   gap: 16px;
-  padding: 0 40px 19px;
+  padding: 0 40px 13px;
   align-items: center;
   flex-shrink: 0;
   width: min(100%, 1180px);
@@ -728,11 +818,8 @@ onUnmounted(() => {
   width: auto;
 }
 .filter-control > span {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
+  color: var(--text-muted);
+  font-size: 10px;
   white-space: nowrap;
 }
 .filter-select {
@@ -754,10 +841,41 @@ onUnmounted(() => {
   color: var(--text-primary);
   background: var(--bg-elevated);
 }
+.filter-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 40px 6px;
+  width: min(100%, 1180px);
+  margin: -5px auto 0;
+  min-height: 24px;
+}
+.filter-summary-label {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.filter-summary-chip,
+.filter-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+.filter-summary-chip {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+.filter-summary-chip:hover { color: var(--accent); border-color: var(--accent); }
+.filter-reset-btn { color: var(--accent); padding-inline: 5px; }
+.filter-reset-btn:hover { background: var(--accent-soft); }
 
 /* Add task */
 .add-task-bar {
-  padding: 12px 40px 24px;
+  padding: 8px 40px 17px;
   flex-shrink: 0;
   width: min(100%, 1180px);
   margin-inline: auto;
@@ -799,6 +917,19 @@ onUnmounted(() => {
   font-family: var(--font-mono);
   font-size: 9px;
 }
+.add-submit-btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: #1a1000;
+  background: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: filter .12s, transform .12s;
+}
+.add-submit-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.add-submit-btn:active { transform: translateY(0); }
 .add-input {
   flex: 1;
   font-size: 13.5px;
@@ -896,7 +1027,7 @@ onUnmounted(() => {
 .task-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 18px 32px 42px;
+  padding: 12px 32px 36px;
   position: relative;
   border-top: 1px solid color-mix(in srgb, var(--border-soft) 66%, transparent);
 }
@@ -908,6 +1039,12 @@ onUnmounted(() => {
   gap: 1px;
 }
 .task-wrapper { position: relative; }
+.task-wrapper:focus { outline: none; }
+.task-wrapper:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
 
 /* Keyboard focus */
 .kb-focus :deep(.task-item:not(.is-sub) > .task-row) {
@@ -1019,7 +1156,8 @@ onUnmounted(() => {
 @media (max-width: 1600px) {
   .list-header,
   .filter-bar,
-  .add-task-bar {
+  .add-task-bar,
+  .filter-summary {
     width: min(100%, 1040px);
   }
   .filter-bar {
