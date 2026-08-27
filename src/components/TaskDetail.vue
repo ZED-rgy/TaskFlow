@@ -56,7 +56,13 @@ function formatDateTime(value) {
 </script>
 
 <template>
-  <aside class="detail-panel" :class="{ open: task }">
+  <aside
+    class="detail-panel"
+    :class="{ open: task }"
+    role="dialog"
+    aria-label="任务详情"
+    :aria-hidden="task ? 'false' : 'true'"
+  >
     <template v-if="task">
       <div class="detail-head">
         <div class="detail-heading">
@@ -216,9 +222,10 @@ function formatDateTime(value) {
   width: 0;
   flex-shrink: 0;
   overflow: hidden;
+  min-height: 0;
   background: var(--bg-surface);
   border-left: 1px solid transparent;
-  transition: width .18s ease, border-color .18s ease, box-shadow .18s ease;
+  transition: width .22s var(--ease-standard), border-color .22s var(--ease-standard), box-shadow .22s var(--ease-standard);
 }
 .detail-panel.open {
   width: 324px;
@@ -226,6 +233,11 @@ function formatDateTime(value) {
   padding: 22px;
   box-shadow: -14px 0 30px rgba(0,0,0,.08);
   overflow-y: auto;
+  animation: detail-panel-in .24s var(--ease-standard) both;
+}
+@keyframes detail-panel-in {
+  from { opacity: .35; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 .detail-head {
   display: flex;
@@ -505,5 +517,22 @@ function formatDateTime(value) {
 .detail-empty div {
   font-size: 28px;
   opacity: .35;
+}
+
+@media (max-width: 760px) {
+  .detail-panel {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 30;
+    width: 0;
+    max-width: min(360px, 100vw);
+    box-shadow: none;
+    pointer-events: none;
+  }
+  .detail-panel.open {
+    width: min(360px, 100vw);
+    pointer-events: auto;
+    box-shadow: -18px 0 40px rgba(16, 33, 46, .18);
+  }
 }
 </style>

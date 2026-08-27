@@ -7,6 +7,8 @@ const props = defineProps({
   tasks:    { type: Array,   default: () => [] },
   projects: { type: Array,   default: () => [] },
   today:    { type: String,  default: '' },
+  currentView: { type: String, default: 'project' },
+  selectedTask: { type: Object, default: null },
 })
 const emit = defineEmits(['close', 'jumpTask', 'jumpView', 'jumpProject', 'action'])
 
@@ -25,6 +27,8 @@ const VIEWS = [
 const ACTIONS = [
   { kind: 'action', group: 'action', id: 'add-task', icon: '+', label: '添加任务', shortcut: 'Ctrl+N' },
   { kind: 'action', group: 'action', id: 'quick-add', icon: '↗', label: '打开快速添加窗口', shortcut: '全局' },
+  { kind: 'action', group: 'action', id: 'focus-search', icon: '⌕', label: '聚焦搜索', shortcut: 'Ctrl+F' },
+  { kind: 'action', group: 'action', id: 'toggle-grouping', icon: '≋', label: '切换日期分组', shortcut: 'G' },
   { kind: 'action', group: 'action', id: 'toggle-widget', icon: '◉', label: '显示 / 隐藏桌面组件' },
   { kind: 'action', group: 'action', id: 'toggle-theme', icon: '☼', label: '切换主题' },
 ]
@@ -44,6 +48,24 @@ function projectOf(id) {
   return props.projects.find(p => p.id === id) || null
 }
 
+const availableActions = computed(() => {
+  const actions = [...ACTIONS]
+  if (props.selectedTask) {
+    actions.unshift({
+      kind: 'action',
+      group: 'action',
+      id: 'toggle-selected-task',
+      icon: props.selectedTask.completed ? '↶' : '✓',
+      label: props.selectedTask.completed ? '标记当前任务为未完成' : '完成当前任务',
+      shortcut: 'Space',
+    })
+  }
+  if (props.currentView === 'settings') {
+    return actions.filter(action => action.id !== 'add-task' && action.id !== 'toggle-grouping')
+  }
+  return actions
+})
+
 const results = computed(() => {
   const q = query.value.trim().toLowerCase()
   const items = []
@@ -54,7 +76,7 @@ const results = computed(() => {
       items.push({ ...view, key: `view:${view.id}` })
     }
   }
-  for (const action of ACTIONS) {
+  for (const action of availableActions.value) {
     if (!q || action.label.toLowerCase().includes(q)) {
       items.push({ ...action, key: `action:${action.id}` })
     }

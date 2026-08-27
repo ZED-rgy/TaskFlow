@@ -64,6 +64,10 @@ html, body, #app {
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
+::selection {
+  color: var(--text-primary);
+  background: var(--accent-soft);
+}
 
 :where(button, input, select, textarea, [role="button"]):focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 84%, white 16%);
@@ -189,6 +193,7 @@ body.widget-mode #app {
 
 /* ── Light Theme ─────────────────────────────────────── */
 .theme-morning {
+  color-scheme: light;
   --bg-deep:       #DDE4E7;
   --bg-base:       #F1F4F4;
   --bg-surface:    #FCFDFD;
@@ -223,6 +228,7 @@ body.widget-mode #app {
 .theme-morning #app::after { opacity: 0.012; }
 
 .theme-midnight {
+  color-scheme: dark;
   --bg-deep:       #0A0F14;
   --bg-base:       #10161D;
   --bg-surface:    #171F29;
@@ -248,8 +254,20 @@ body.widget-mode #app {
   --shadow-panel:  0 1px 0 rgba(255,255,255,.05), 0 18px 38px rgba(0,0,0,.22);
   --shadow-float:  0 20px 46px rgba(0, 0, 0, .28);
 }
+.theme-midnight .sidebar {
+  background: color-mix(in srgb, var(--bg-surface) 94%, var(--bg-deep));
+  box-shadow: 1px 0 0 rgba(255,255,255,.025), inset -18px 0 38px rgba(0,0,0,.08);
+}
+.theme-midnight .main-area {
+  background:
+    radial-gradient(circle at 14% -10%, rgba(106, 133, 153, .12), transparent 34%),
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--accent-soft) 72%, transparent), transparent 30%),
+    linear-gradient(180deg, rgba(255,255,255,.025), transparent 260px),
+    var(--bg-base);
+}
 
 .theme-forest {
+  color-scheme: light;
   --bg-deep:       #D7E4D9;
   --bg-base:       #EBF2EC;
   --bg-surface:    #FCFEFB;
@@ -275,6 +293,7 @@ body.widget-mode #app {
 }
 
 .theme-graphite {
+  color-scheme: light;
   --bg-deep:       #D9DFE6;
   --bg-base:       #E7EBF0;
   --bg-surface:    #FCFDFE;
@@ -300,6 +319,7 @@ body.widget-mode #app {
 }
 
 .theme-apricot {
+  color-scheme: light;
   --bg-deep:       #E8D9CD;
   --bg-base:       #F5EDE5;
   --bg-surface:    #FFFCF9;
@@ -837,7 +857,12 @@ body.widget-mode #app {
 .theme-choice.active {
   color: var(--text-primary);
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 10px 22px color-mix(in srgb, var(--accent) 10%, transparent);
+  transform: translateY(-2px);
+}
+.theme-choice:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 .theme-swatch-row {
   width: 100%;
@@ -1091,4 +1116,20 @@ body.widget-mode #app {
   .log-row strong { grid-column: 2; grid-row: 1; }
   .log-row p { grid-column: 1 / -1; grid-row: 2; }
   .log-copy-btn { grid-column: 2; grid-row: 2; }
+}
+
+/* Compact desktop and narrow-window guardrails.  The native shell can be
+   resized independently of the page, so keep the sidebar and control rows
+   usable before the settings-specific breakpoints take over. */
+@media (max-width: 1180px) {
+  .app-shell { --sidebar-w: 224px; }
+  .titlebar-drag { padding-left: 11px; }
+}
+
+@media (max-width: 760px) {
+  .app-shell { --sidebar-w: 208px; }
+  .titlebar-controls .ctrl-btn { width: 30px; }
+  .app-brand { gap: 6px; }
+  .app-brand-icon { width: 18px; height: 18px; }
+  .main-area { min-width: 0; }
 }

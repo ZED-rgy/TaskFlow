@@ -23,6 +23,12 @@ const priorityFilter = ref('all')
 const newDueDate  = ref('')
 const newPriority = ref('normal')
 const openFilterMenu = ref(null)
+const storedGroupMode = localStorage.getItem('taskflow-group-mode')
+const groupMode = ref(['smart', 'date', 'none'].includes(storedGroupMode) ? storedGroupMode : 'smart')
+const collapsedGroups = ref(new Set())
+const savedViews = ref([])
+const saveViewOpen = ref(false)
+const saveViewName = ref('')
 const dueTriggerEl = ref(null)
 const duePopoverEl = ref(null)
 const priorityTriggerEl = ref(null)
@@ -105,12 +111,104 @@ const activeFilterItems = computed(() => {
   return items
 })
 
+const statusCounts = computed(() => {
+  const roots = props.tasks.filter(task => !task.parentId)
+  return {
+    open: roots.filter(task => !task.completed).length,
+    all: roots.length,
+    done: roots.filter(task => task.completed).length,
+  }
+})
+
 const hasActiveFilters = computed(() => activeFilterItems.value.length > 0)
 
 function resetFilters() {
   statusFilter.value = 'open'
   dueFilter.value = 'all'
   priorityFilter.value = 'all'
+}
+
+function savedViewsKey() {
+  return `taskflow-saved-views:${encodeURIComponent(String(props.project.id))}`
+}
+
+function loadSavedViews() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(savedViewsKey()) || '[]')
+    savedViews.value = Array.isArray(parsed)
+      ? parsed.filter(view => view && typeof view.name === 'string' && view.name.trim()).slice(0, 8)
+      : []
+  } catch {
+    savedViews.value = []
+  }
+}
+
+function persistSavedViews() {
+  try {
+    localStorage.setItem(savedViewsKey(), JSON.stringify(savedViews.value))
+  } catch (error) {
+    console.warn('[task-list] save views failed', error)
+  }
+}
+
+function openSaveView() {
+  saveViewName.value = `${props.project.name}视图`
+  saveViewOpen.value = true
+  nextTick(() => document.querySelector('.save-view-input')?.select())
+}
+
+function saveCurrentView() {
+  const name = saveViewName.value.trim()
+  if (!name) return
+  const view = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: name.slice(0, 24),
+    status: statusFilter.value,
+    due: dueFilter.value,
+    priority: priorityFilter.value,
+  }
+  savedViews.value = [view, ...savedViews.value.filter(item => item.name !== view.name)].slice(0, 8)
+  persistSavedViews()
+  saveViewOpen.value = false
+  saveViewName.value = ''
+}
+
+function applySavedView(view) {
+  statusFilter.value = view.status || 'open'
+  dueFilter.value = view.due || 'all'
+  priorityFilter.value = view.priority || 'all'
+}
+
+function removeSavedView(view, event) {
+  event.stopPropagation()
+  savedViews.value = savedViews.value.filter(item => item.id !== view.id)
+  persistSavedViews()
+}
+
+function cycleGroupMode() {
+  const modes = ['smart', 'date', 'none']
+  const next = modes[(modes.indexOf(groupMode.value) + 1) % modes.length]
+  groupMode.value = next
+  try {
+    localStorage.setItem('taskflow-group-mode', next)
+  } catch (error) {
+    console.warn('[task-list] save grouping mode failed', error)
+  }
+  collapsedGroups.value = new Set()
+  scheduleSortableRefresh()
+}
+
+const groupModeLabel = computed(() => ({ smart: '智能分组', date: '按日期', none: '无分组' }[groupMode.value] || '智能分组'))
+
+function shouldGroupByDate() {
+  return groupMode.value === 'date' || (groupMode.value === 'smart' && ['today', 'upcoming'].includes(props.project.id))
+}
+
+function toggleGroup(key) {
+  const next = new Set(collapsedGroups.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedGroups.value = next
 }
 
 function formatDueShort(d) {
@@ -226,19 +324,15 @@ function isOverdueTask(task) {
   return !task.completed && task.dueDate && task.dueDate < props.today
 }
 
-const todayGroups = computed(() => {
-  if (props.project.id !== 'today') return null
-  const overdue = visibleTasks.value.filter(isOverdueTask)
-  if (!overdue.length) return null
-  return { overdueCount: overdue.length }
-})
-
-const displayTasks = computed(() => {
-  if (!todayGroups.value) return visibleTasks.value
-  return [
-    ...visibleTasks.value.filter(isOverdueTask),
-    ...visibleTasks.value.filter(t => !isOverdueTask(t)),
+const taskGroups = computed(() => {
+  if (!shouldGroupByDate()) return [{ key: 'all', label: '', tasks: visibleTasks.value }]
+  const groups = [
+    { key: 'overdue', label: '已逾期', tasks: visibleTasks.value.filter(isOverdueTask) },
+    { key: 'today', label: '今天', tasks: visibleTasks.value.filter(task => !isOverdueTask(task) && dateState(task.dueDate) === 'today') },
+    { key: 'upcoming', label: '接下来', tasks: visibleTasks.value.filter(task => !isOverdueTask(task) && dateState(task.dueDate) === 'future') },
+    { key: 'none', label: '无日期', tasks: visibleTasks.value.filter(task => !task.dueDate || dateState(task.dueDate) === 'none') },
   ]
+  return groups.filter(group => group.tasks.length || group.key === 'today' && props.project.id === 'today')
 })
 
 function postponeAllOverdue() {
@@ -290,6 +384,47 @@ async function handleAddSubtask(parentId) {
 
 // ── Keyboard navigation ───────────────────────────────
 const focusedId = ref(null)
+const selectedTaskIds = ref(new Set())
+const selectionAnchorId = ref(null)
+
+function clearSelection() {
+  selectedTaskIds.value = new Set()
+  selectionAnchorId.value = null
+}
+
+function toggleSelection(id) {
+  const next = new Set(selectedTaskIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedTaskIds.value = next
+  selectionAnchorId.value = id
+}
+
+function handleTaskSelect(id, event) {
+  if (event?.ctrlKey || event?.metaKey) {
+    if (event.shiftKey && selectionAnchorId.value) {
+      const from = visibleTasks.value.findIndex(task => task.id === selectionAnchorId.value)
+      const to = visibleTasks.value.findIndex(task => task.id === id)
+      if (from >= 0 && to >= 0) {
+        const [start, end] = from < to ? [from, to] : [to, from]
+        const next = new Set(selectedTaskIds.value)
+        visibleTasks.value.slice(start, end + 1).forEach(task => next.add(task.id))
+        selectedTaskIds.value = next
+      }
+    } else {
+      toggleSelection(id)
+    }
+    return
+  }
+  clearSelection()
+  emit('selectTask', id)
+}
+
+function completeSelected() {
+  const ids = [...selectedTaskIds.value]
+  ids.forEach(id => emit('update', { id, completed: true }))
+  clearSelection()
+}
 
 function isTypingTarget(target) {
   const tag = target?.tagName
@@ -394,6 +529,7 @@ const sortableEnabled = computed(() =>
     statusFilter.value !== 'done' &&
     dueFilter.value === 'all' &&
     priorityFilter.value === 'all' &&
+    !shouldGroupByDate() &&
     visibleTasks.value.length > 1
   )
 )
@@ -466,7 +602,16 @@ function focusAddFromCommandPalette() {
   if (!props.project.readonlyProject) focusAdd()
 }
 
+function focusSearchFromCommandPalette() {
+  searchInput.value?.focus()
+}
+
+function toggleGroupingFromCommandPalette() {
+  cycleGroupMode()
+}
+
 onMounted(() => {
+  loadSavedViews()
   scheduleSortableRefresh()
   focusAdd()
   window.addEventListener('keydown', handleKeydown)
@@ -474,10 +619,13 @@ onMounted(() => {
   document.addEventListener('visibilitychange', refreshSortableWhenVisible)
   document.addEventListener('pointerdown', onDocumentPointerdown)
   window.addEventListener('taskflow-focus-add', focusAddFromCommandPalette)
+  window.addEventListener('taskflow-focus-search', focusSearchFromCommandPalette)
+  window.addEventListener('taskflow-toggle-grouping', toggleGroupingFromCommandPalette)
 })
 
 watch(() => props.project.id, () => {
   focusedId.value = null
+  clearSelection()
   scheduleSortableRefresh()
 })
 
@@ -498,6 +646,8 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', refreshSortableWhenVisible)
   document.removeEventListener('pointerdown', onDocumentPointerdown)
   window.removeEventListener('taskflow-focus-add', focusAddFromCommandPalette)
+  window.removeEventListener('taskflow-focus-search', focusSearchFromCommandPalette)
+  window.removeEventListener('taskflow-toggle-grouping', toggleGroupingFromCommandPalette)
 })
 </script>
 
@@ -547,11 +697,12 @@ onUnmounted(() => {
           <path d="M9.4 9.4l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
         <input ref="searchInput" v-model="searchQuery" placeholder="搜索任务、项目或标签" />
+        <span class="search-shortcut" aria-hidden="true">Ctrl F</span>
       </div>
-      <div class="segmented">
-        <button :class="{ active: statusFilter === 'open' }" @click="statusFilter = 'open'">未完成</button>
-        <button :class="{ active: statusFilter === 'all' }" @click="statusFilter = 'all'">全部</button>
-        <button :class="{ active: statusFilter === 'done' }" @click="statusFilter = 'done'">已完成</button>
+      <div class="segmented" role="group" aria-label="任务状态筛选">
+        <button :class="{ active: statusFilter === 'open' }" :aria-pressed="statusFilter === 'open'" @click="statusFilter = 'open'"><span>未完成</span><small>{{ statusCounts.open }}</small></button>
+        <button :class="{ active: statusFilter === 'all' }" :aria-pressed="statusFilter === 'all'" @click="statusFilter = 'all'"><span>全部</span><small>{{ statusCounts.all }}</small></button>
+        <button :class="{ active: statusFilter === 'done' }" :aria-pressed="statusFilter === 'done'" @click="statusFilter = 'done'"><span>已完成</span><small>{{ statusCounts.done }}</small></button>
       </div>
       <div class="filter-pickers">
         <div class="filter-control" :class="{ open: openFilterMenu === 'due' }" aria-label="按日期筛选">
@@ -620,6 +771,10 @@ onUnmounted(() => {
             </div>
           </Transition>
         </div>
+        <button class="group-mode-btn" type="button" :title="`当前：${groupModeLabel}，点击切换`" @click="cycleGroupMode">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 3h8M2 6h5M2 9h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="8.8" cy="6" r="1.2" stroke="currentColor" stroke-width="1.1"/></svg>
+          <span>{{ groupModeLabel }}</span>
+        </button>
       </div>
     </div>
     <div v-if="hasActiveFilters" class="filter-summary" aria-live="polite">
@@ -632,6 +787,22 @@ onUnmounted(() => {
         @click="resetFilters"
       >{{ item.label }} <span aria-hidden="true">×</span></button>
       <button type="button" class="filter-reset-btn" @click="resetFilters">清除</button>
+      <button type="button" class="filter-save-btn" @click="openSaveView">保存视图</button>
+    </div>
+    <Transition name="slide">
+      <form v-if="saveViewOpen" class="save-view-row" @submit.prevent="saveCurrentView">
+        <span>保存为</span>
+        <input v-model="saveViewName" class="save-view-input" maxlength="24" aria-label="视图名称" />
+        <button type="submit" class="save-view-confirm">保存</button>
+        <button type="button" class="save-view-cancel" @click="saveViewOpen = false">取消</button>
+      </form>
+    </Transition>
+    <div v-if="savedViews.length" class="saved-views" aria-label="已保存视图">
+      <span>已保存</span>
+      <span v-for="view in savedViews" :key="view.id" class="saved-view-chip-wrap">
+        <button type="button" class="saved-view-chip" @click="applySavedView(view)">{{ view.name }}</button>
+        <button type="button" class="saved-view-remove" aria-label="删除保存视图" @click="removeSavedView(view, $event)">×</button>
+      </span>
     </div>
 
     <!-- Add task input -->
@@ -693,45 +864,55 @@ onUnmounted(() => {
 
     <!-- Task items -->
     <div class="task-scroll">
+      <Transition name="slide">
+        <div v-if="selectedTaskIds.size" class="selection-toolbar" role="toolbar" aria-label="批量任务操作">
+          <span><strong>{{ selectedTaskIds.size }}</strong> 个任务已选择</span>
+          <div>
+            <button type="button" @click="completeSelected">全部完成</button>
+            <button type="button" @click="clearSelection">清除选择</button>
+          </div>
+        </div>
+      </Transition>
       <div ref="listEl" class="task-items" @mouseenter="ensureSortableReady">
-        <template
-          v-for="(task, index) in displayTasks"
-          :key="task.id"
-        >
-        <div v-if="todayGroups && index === 0" class="group-header overdue-header">
-          <span class="group-label">已逾期 · {{ todayGroups.overdueCount }}</span>
-          <button class="postpone-all-btn" @click="postponeAllOverdue">
-            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-              <path d="M1.5 6h7M6 3l3 3-3 3M10.5 2.5v7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            全部顺延到今天
-          </button>
-        </div>
-        <div v-else-if="todayGroups && index === todayGroups.overdueCount" class="group-header">
-          <span class="group-label">今天</span>
-        </div>
-        <div
-          :data-id="task.id"
-          class="task-wrapper"
-          :style="{ '--task-delay': `${Math.min(index, 8) * 22}ms` }"
-          tabindex="0"
-          :aria-label="`任务：${task.title}`"
-          :class="{ 'kb-focus': task.id === focusedId }"
-          @focus="focusedId = task.id"
-          @mousedown="focusedId = task.id"
-        >
-          <TaskItem
-            :task="task"
-            :subtasks="subtasksOf(task.id)"
-            :depth="0"
-            :projectName="project.readonlyProject ? taskProjectName(task.projectId) : ''"
-            :today="today"
-            @update="$emit('update', $event)"
-            @delete="$emit('delete', $event)"
-            @addSubtask="handleAddSubtask"
-            @select="$emit('selectTask', $event)"
-          />
-        </div>
+        <template v-for="group in taskGroups" :key="group.key">
+          <div v-if="group.label" class="group-header" :class="{ 'overdue-header': group.key === 'overdue' }">
+            <button class="group-toggle" type="button" :aria-expanded="!collapsedGroups.has(group.key)" @click="toggleGroup(group.key)">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="m2.5 3.5 2.5 2.5 2.5-2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="group-label">{{ group.key === 'overdue' ? `${group.label} · ${group.tasks.length}` : group.label }}</span>
+            </button>
+            <button v-if="group.key === 'overdue'" class="postpone-all-btn" type="button" @click="postponeAllOverdue">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1.5 6h7M6 3l3 3-3 3M10.5 2.5v7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              全部顺延到今天
+            </button>
+          </div>
+          <template v-if="!group.label || !collapsedGroups.has(group.key)">
+            <div
+              v-for="(task, index) in group.tasks"
+              :key="task.id"
+              :data-id="task.id"
+              class="task-wrapper"
+              :style="{ '--task-delay': `${Math.min(index, 8) * 22}ms` }"
+              tabindex="0"
+              :aria-label="`任务：${task.title}`"
+              :aria-selected="selectedTaskIds.has(task.id)"
+              :class="{ 'kb-focus': task.id === focusedId }"
+              @focus="focusedId = task.id"
+              @mousedown="focusedId = task.id"
+            >
+              <TaskItem
+                :task="task"
+                :subtasks="subtasksOf(task.id)"
+                :depth="0"
+                :projectName="project.readonlyProject ? taskProjectName(task.projectId) : ''"
+                :today="today"
+                :selected="selectedTaskIds.has(task.id)"
+                @update="$emit('update', $event)"
+                @delete="$emit('delete', $event)"
+                @addSubtask="handleAddSubtask"
+                @select="handleTaskSelect"
+              />
+            </div>
+          </template>
         </template>
       </div>
 
@@ -972,6 +1153,17 @@ onUnmounted(() => {
   font-size: 12.5px;
 }
 .search-box input::placeholder { color: var(--text-muted); }
+.search-shortcut {
+  flex-shrink: 0;
+  padding: 2px 5px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  white-space: nowrap;
+}
 .segmented {
   display: grid;
   grid-template-columns: repeat(3, 62px);
@@ -982,9 +1174,25 @@ onUnmounted(() => {
   overflow: hidden;
 }
 .segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   color: var(--text-muted);
   font-size: 10.5px;
   border-right: 1px solid var(--border);
+}
+.segmented button small {
+  min-width: 14px;
+  height: 14px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 3px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-elevated) 74%, transparent);
+  font-size: 8.5px;
+  line-height: 1;
 }
 .segmented button:last-child { border-right: 0; }
 .segmented button.active {
@@ -994,6 +1202,7 @@ onUnmounted(() => {
   box-shadow: 0 2px 6px rgba(67,58,44,.08), inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
   transition: background .2s var(--ease-standard), box-shadow .2s var(--ease-standard), color .2s var(--ease-standard);
 }
+.segmented button.active small { color: var(--accent); background: var(--accent-soft); }
 .filter-pickers {
   display: flex;
   align-items: center;
@@ -1110,6 +1319,108 @@ onUnmounted(() => {
 .filter-summary-chip:hover { color: var(--accent); border-color: var(--accent); }
 .filter-reset-btn { color: var(--accent); padding-inline: 5px; }
 .filter-reset-btn:hover { background: var(--accent-soft); }
+.filter-save-btn {
+  margin-left: auto;
+  padding: 3px 7px;
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 10px;
+}
+.filter-save-btn:hover { background: var(--accent-soft); }
+.group-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+  transition: color .14s var(--ease-standard), background .14s var(--ease-standard), border-color .14s var(--ease-standard);
+}
+.group-mode-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.save-view-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 40px 8px;
+  width: min(100%, 1180px);
+  margin-inline: auto;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.save-view-input {
+  width: 160px;
+  height: 26px;
+  padding: 0 8px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  font-size: 11px;
+}
+.save-view-input:focus { border-color: var(--accent); box-shadow: var(--focus-ring); }
+.save-view-confirm,
+.save-view-cancel {
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 7px;
+  font-size: 10px;
+}
+.save-view-confirm { color: #1a1000; background: var(--accent); }
+.save-view-cancel { color: var(--text-muted); background: var(--bg-elevated); }
+.saved-views {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 40px 7px;
+  width: min(100%, 1180px);
+  margin-inline: auto;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.saved-view-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 23px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  font-size: 10px;
+}
+.saved-view-chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
+  overflow: hidden;
+}
+.saved-view-chip-wrap .saved-view-chip {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.saved-view-chip-wrap:has(.saved-view-chip:hover),
+.saved-view-chip-wrap:has(.saved-view-remove:hover) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.saved-view-chip:hover { color: var(--accent); }
+.saved-view-remove {
+  width: 20px;
+  height: 21px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+.saved-view-remove:hover { color: var(--danger); background: var(--danger-soft); }
 
 /* Add task */
 .add-task-bar {
@@ -1274,15 +1585,47 @@ onUnmounted(() => {
   border-top: 1px solid color-mix(in srgb, var(--border-soft) 66%, transparent);
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 12%, transparent), transparent 130px);
 }
+.selection-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 1180px;
+  margin: 0 auto 8px;
+  padding: 7px 10px 7px 12px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
+  border-radius: 9px;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(12px) saturate(120%);
+  font-size: 11px;
+}
+.selection-toolbar strong { color: var(--accent); font-weight: 750; }
+.selection-toolbar > div { display: flex; align-items: center; gap: 5px; }
+.selection-toolbar button {
+  height: 25px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  font-size: 10px;
+}
+.selection-toolbar button:hover { color: var(--accent); background: var(--accent-soft); }
 .task-items {
   display: flex;
   flex-direction: column;
   max-width: 1180px;
   margin: 0 auto;
   gap: 1px;
+  contain: layout style;
 }
 .task-wrapper {
   position: relative;
+  will-change: transform, opacity;
   animation: task-enter .24s var(--ease-standard) both;
   animation-delay: var(--task-delay, 0ms);
 }
@@ -1313,6 +1656,17 @@ onUnmounted(() => {
   padding: 12px 8px 5px;
   user-select: none;
 }
+.group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 2px 4px;
+}
+.group-toggle svg { transition: transform .16s var(--ease-standard); }
+.group-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.group-toggle:hover { background: var(--bg-elevated); }
 .group-label {
   font-size: 11px;
   font-weight: 650;
@@ -1471,6 +1825,9 @@ onUnmounted(() => {
   .add-task-bar {
     padding: 12px 24px;
   }
+  .search-shortcut { display: none; }
+  .save-view-row,
+  .saved-views { padding-inline: 24px; }
   .task-scroll {
     padding: 10px 18px 22px;
   }

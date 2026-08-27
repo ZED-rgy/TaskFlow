@@ -7,6 +7,7 @@ const props = defineProps({
   depth:    { type: Number, default: 0 },
   projectName: { type: String, default: '' },
   today: { type: String, default: '' },
+  selected: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update', 'delete', 'addSubtask', 'select'])
 
@@ -77,7 +78,7 @@ function formatDueLabel(dateKey) {
 <template>
   <div
     class="task-item"
-    :class="{ completed: task.completed, 'just-completed': justCompleted, 'is-sub': depth > 0, 'priority-high': task.priority === 'high' }"
+    :class="{ completed: task.completed, 'just-completed': justCompleted, 'is-sub': depth > 0, 'priority-high': task.priority === 'high', selected }"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
   >
@@ -128,7 +129,7 @@ function formatDueLabel(dateKey) {
         v-if="!editing"
         class="task-title"
         :title="task.title"
-        @click="$emit('select', task.id)"
+        @click="$emit('select', task.id, $event)"
         @dblclick="startEdit"
       >{{ task.title }}</span>
       <input
@@ -258,9 +259,9 @@ function formatDueLabel(dateKey) {
   100% { transform: scale(1); }
 }
 @keyframes task-complete-pop {
-  0% { background: var(--accent-soft); transform: translateX(0); }
-  55% { background: color-mix(in srgb, var(--accent-soft) 60%, var(--bg-surface)); transform: translateX(3px); }
-  100% { background: transparent; transform: translateX(0); }
+  0% { background: var(--accent-soft); transform: scale(1); }
+  55% { background: color-mix(in srgb, var(--accent-soft) 60%, var(--bg-surface)); transform: scale(1.006); }
+  100% { background: transparent; transform: scale(1); }
 }
 
 .task-row {
@@ -272,7 +273,7 @@ function formatDueLabel(dateKey) {
   border-radius: 9px;
   border: 1px solid transparent;
   border-bottom-color: color-mix(in srgb, var(--border) 58%, transparent);
-  transition: background .16s var(--ease-standard), border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard), transform .16s var(--ease-standard);
+  transition: background .16s var(--ease-standard), border-color .16s var(--ease-standard), box-shadow .16s var(--ease-standard);
   min-height: 52px;
   box-shadow: inset 2px 0 0 transparent;
 }
@@ -280,12 +281,16 @@ function formatDueLabel(dateKey) {
   background: color-mix(in srgb, var(--bg-surface) 76%, transparent);
   border-color: color-mix(in srgb, var(--border-strong) 45%, transparent);
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 72%, transparent), 0 5px 16px color-mix(in srgb, var(--bg-deep) 7%, transparent);
-  transform: translateY(-1px);
 }
 .task-row:focus-within {
   background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   box-shadow: inset 2px 0 0 var(--accent), var(--focus-ring);
+}
+.task-item.selected > .task-row {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  box-shadow: inset 2px 0 0 var(--accent), 0 0 0 2px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* Expand */
@@ -355,7 +360,6 @@ function formatDueLabel(dateKey) {
   cursor: pointer;
   transition: color .15s var(--ease-standard), opacity .15s var(--ease-standard), transform .15s var(--ease-standard);
 }
-.task-row:hover .task-title { transform: translateY(-.5px); }
 .completed .task-title {
   color: var(--text-muted);
   text-decoration: line-through;

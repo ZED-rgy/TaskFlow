@@ -746,8 +746,9 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <template v-if="!config?.collapsed">
-      <section class="widget-controls">
+    <Transition name="widget-content">
+      <div v-if="!config?.collapsed" class="widget-body">
+        <section class="widget-controls">
         <select :value="scopeId" @change="selectScope">
           <optgroup label="智能视图">
             <option v-for="item in SMART_VIEWS" :key="item.id" :value="item.id">
@@ -765,9 +766,9 @@ onUnmounted(() => {
           <button :class="{ active: activeFilter === 'all' }" @click="setFilter('all')">全部</button>
           <button :class="{ active: activeFilter === 'completed' }" @click="setFilter('completed')">已完成</button>
         </div>
-      </section>
+        </section>
 
-      <form class="widget-create" @submit.prevent="createTask">
+        <form class="widget-create" @submit.prevent="createTask">
         <input
           v-model="taskDraft"
           type="text"
@@ -775,8 +776,8 @@ onUnmounted(() => {
           :placeholder="isSmartView ? '添加今天的任务...' : '添加任务...'"
         />
         <button type="submit" :disabled="!taskDraft.trim() || creating" aria-label="添加任务">＋</button>
-      </form>
-      <div class="widget-pomo-row">
+        </form>
+        <div class="widget-pomo-row">
         <template v-if="pomo.remaining > 0">
           <span class="pomo-time" :class="pomo.mode">{{ pomoLabel(pomo.remaining) }}</span>
           <span class="pomo-mode">{{ pomo.mode === 'focus' ? '专注中' : '休息中' }}</span>
@@ -788,14 +789,14 @@ onUnmounted(() => {
           <button @click="startPomo('focus')">专注 25 分</button>
           <button @click="startPomo('break')">休息 5 分</button>
         </template>
-      </div>
-      <p v-if="errorText" class="widget-error">{{ errorText }}</p>
-      <div v-if="undoState" class="widget-undo">
-        <span>已删除「{{ undoState.title }}」</span>
-        <button @click="undoDelete">撤销</button>
-      </div>
+        </div>
+        <p v-if="errorText" class="widget-error">{{ errorText }}</p>
+        <div v-if="undoState" class="widget-undo">
+          <span>已删除「{{ undoState.title }}」</span>
+          <button @click="undoDelete">撤销</button>
+        </div>
 
-      <main ref="widgetListEl" class="widget-list">
+        <main ref="widgetListEl" class="widget-list">
         <p v-if="loading" class="widget-empty">读取中...</p>
         <p v-else-if="!filteredTasks.length" class="widget-empty">这个筛选下暂时没有任务</p>
         <div
@@ -825,8 +826,9 @@ onUnmounted(() => {
           >{{ formatDueShort(task.dueDate) }}</span>
           <button class="widget-delete" title="删除任务（可撤销）" @click.stop="deleteTask(task)">×</button>
         </div>
-      </main>
-    </template>
+        </main>
+      </div>
+    </Transition>
 
     <!-- 折叠态横向迷你菜单 -->
     <div
@@ -987,6 +989,23 @@ onUnmounted(() => {
   box-shadow: none;
   backdrop-filter: blur(16px) saturate(118%);
   animation: widget-rise .22s var(--ease-standard) both;
+}
+.widget-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.widget-content-enter-active,
+.widget-content-leave-active {
+  transition: opacity .18s var(--ease-standard), transform .22s var(--ease-standard), filter .18s ease;
+}
+.widget-content-enter-from,
+.widget-content-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(.995);
+  filter: blur(1px);
 }
 @keyframes widget-rise {
   from { opacity: 0; transform: translateY(5px) scale(.985); }
@@ -1245,7 +1264,7 @@ onUnmounted(() => {
   border-radius: 10px;
   cursor: grab;
   user-select: none;
-  transition: background .14s var(--ease-standard), transform .14s var(--ease-standard), box-shadow .14s var(--ease-standard);
+  transition: background .14s var(--ease-standard), box-shadow .14s var(--ease-standard), outline-color .14s var(--ease-standard);
 }
 .widget-task.sorting {
   opacity: .55;
@@ -1255,21 +1274,21 @@ onUnmounted(() => {
 }
 .widget-task:hover {
   background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
-  transform: translateX(2px);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 70%, transparent);
 }
 .widget-task.just-completed {
   animation: widget-task-complete .5s var(--ease-standard);
 }
 @keyframes widget-task-complete {
-  0% { background: var(--accent-soft); transform: translateX(0); }
-  45% { background: color-mix(in srgb, var(--accent-soft) 55%, var(--bg-elevated)); transform: translateX(3px); }
-  100% { background: transparent; transform: translateX(0); }
+  0% { background: var(--accent-soft); transform: scale(1); }
+  45% { background: color-mix(in srgb, var(--accent-soft) 55%, var(--bg-elevated)); transform: scale(1.008); }
+  100% { background: transparent; transform: scale(1); }
 }
 .widget-task:focus-within {
   background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
   outline: 2px solid var(--accent-soft);
   outline-offset: -2px;
-  transform: translateX(2px);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 .widget-task.busy {
   opacity: .6;

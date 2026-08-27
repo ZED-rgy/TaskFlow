@@ -423,6 +423,14 @@ async function paletteAction(id) {
     window.dispatchEvent(new Event('taskflow-focus-add'))
   } else if (id === 'quick-add') {
     await api.openQuickAdd()
+  } else if (id === 'focus-search') {
+    window.dispatchEvent(new Event('taskflow-focus-search'))
+  } else if (id === 'toggle-grouping') {
+    window.dispatchEvent(new Event('taskflow-toggle-grouping'))
+  } else if (id === 'toggle-selected-task') {
+    if (selectedTask.value) {
+      await onUpdateTask({ id: selectedTask.value.id, completed: !selectedTask.value.completed })
+    }
   } else if (id === 'toggle-widget') {
     await toggleWidgetVisible()
   } else if (id === 'toggle-theme') {
@@ -868,6 +876,8 @@ onUnmounted(() => {
       :tasks="tasks"
       :projects="projects"
       :today="todayKey"
+      :currentView="currentView"
+      :selectedTask="selectedTask"
       @close="paletteOpen = false"
       @jumpTask="paletteJumpTask"
       @jumpProject="selectProject"
@@ -1016,6 +1026,7 @@ onUnmounted(() => {
   display: flex;
   overflow: hidden;
   min-height: 0;
+  position: relative;
 }
 .main-area {
   flex: 1;
