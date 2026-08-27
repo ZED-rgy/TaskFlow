@@ -12,7 +12,6 @@ const props = defineProps({
   tasks:   { type: Array,  default: () => [] },
   projects:{ type: Array,  default: () => [] },
   today:   { type: String, default: '' },
-  selectedTaskId: { type: [String, Number], default: null },
 })
 const emit = defineEmits(['create', 'update', 'delete', 'reorder', 'selectTask'])
 
@@ -895,7 +894,7 @@ onUnmounted(() => {
               :style="{ '--task-delay': `${Math.min(index, 8) * 22}ms` }"
               tabindex="0"
               :aria-label="`任务：${task.title}`"
-              :aria-selected="selectedTaskIds.has(task.id) || selectedTaskId === task.id"
+              :aria-selected="selectedTaskIds.has(task.id)"
               :class="{ 'kb-focus': task.id === focusedId }"
               @focus="focusedId = task.id"
               @mousedown="focusedId = task.id"
@@ -906,7 +905,7 @@ onUnmounted(() => {
                 :depth="0"
                 :projectName="project.readonlyProject ? taskProjectName(task.projectId) : ''"
                 :today="today"
-                :selected="selectedTaskIds.has(task.id) || selectedTaskId === task.id"
+                :selected="selectedTaskIds.has(task.id)"
                 @update="$emit('update', $event)"
                 @delete="$emit('delete', $event)"
                 @addSubtask="handleAddSubtask"

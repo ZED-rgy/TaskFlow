@@ -68,11 +68,6 @@ function cancelEdit() {
   editing.value = false
 }
 
-function handleRowClick(event) {
-  if (event.target.closest?.('button, input, select, textarea, label')) return
-  emit('select', props.task.id, event)
-}
-
 function formatDueLabel(dateKey) {
   if (!dateKey) return ''
   const [, month, day] = dateKey.split('-')
@@ -87,7 +82,7 @@ function formatDueLabel(dateKey) {
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
   >
-    <div class="task-row" @click="handleRowClick">
+    <div class="task-row">
       <!-- Drag handle (shown on hover) -->
       <span class="drag-handle" role="img" aria-label="拖拽排序" title="拖拽排序">
         <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
@@ -134,6 +129,7 @@ function formatDueLabel(dateKey) {
         v-if="!editing"
         class="task-title"
         :title="task.title"
+        @click="$emit('select', task.id, $event)"
         @dblclick="startEdit"
       >{{ task.title }}</span>
       <input

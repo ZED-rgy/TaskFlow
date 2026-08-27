@@ -345,12 +345,10 @@ async function saveShortcut(value) {
 async function selectProject(id) {
   currentView.value = 'project'
   selectedId.value = id
-  selectedTaskId.value = null
 }
 
 function selectView(view) {
   currentView.value = view
-  selectedTaskId.value = null
   if (view === 'settings') {
     refreshLogs()
     refreshDueSummary()
@@ -744,7 +742,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-shell" :class="[`theme-${theme}`, { 'linear-app': currentView !== 'settings' }]" :style="fontStyles">
+  <div class="app-shell" :class="`theme-${theme}`" :style="fontStyles">
     <!-- Titlebar -->
     <div class="titlebar" data-tauri-drag-region @dragstart.prevent>
       <div class="titlebar-drag" data-tauri-drag-region>
@@ -807,7 +805,6 @@ onUnmounted(() => {
             :tasks="projectTasks"
             :projects="projects"
             :today="todayKey"
-            :selectedTaskId="selectedTaskId"
             @create="onCreateTask"
             @update="onUpdateTask"
             @delete="onDeleteTask"
@@ -864,21 +861,14 @@ onUnmounted(() => {
           </div>
         </Transition>
       </main>
-      <aside v-if="currentView !== 'settings'" class="linear-inspector-host" aria-label="任务检查器">
-        <TaskDetail
-          :task="selectedTask"
-          :project="selectedTaskProject"
-          :subtasks="selectedTaskSubtasks"
-          @update="onUpdateTask"
-          @delete="onDeleteTask"
-          @close="closeTaskDetail"
-        />
-        <div v-if="!selectedTask" class="linear-inspector-empty">
-          <div class="linear-inspector-empty-icon" aria-hidden="true">⌘</div>
-          <strong>选择一项任务</strong>
-          <span>查看详情、截止日期与下一步</span>
-        </div>
-      </aside>
+      <TaskDetail
+        :task="selectedTask"
+        :project="selectedTaskProject"
+        :subtasks="selectedTaskSubtasks"
+        @update="onUpdateTask"
+        @delete="onDeleteTask"
+        @close="closeTaskDetail"
+      />
     </div>
 
     <CommandPalette
