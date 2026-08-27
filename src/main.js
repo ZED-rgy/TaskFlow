@@ -5,9 +5,20 @@ import QuickAdd from './QuickAdd.vue'
 import './style.css'
 
 const params = new URLSearchParams(window.location.search)
+const isDev = import.meta.env.DEV
 if (params.has('widget') || params.has('quickadd')) {
   document.documentElement.classList.add('widget-mode')
   document.body.classList.add('widget-mode')
 }
-const Root = params.has('quickadd') ? QuickAdd : params.has('widget') ? Widget : App
-createApp(Root).mount('#app')
+async function bootstrap() {
+  const Root = isDev && params.has('prototype')
+    ? (await import('./Prototype.vue')).default
+    : params.has('quickadd')
+      ? QuickAdd
+      : params.has('widget')
+        ? Widget
+        : App
+  createApp(Root).mount('#app')
+}
+
+bootstrap()

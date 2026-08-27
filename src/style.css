@@ -1133,3 +1133,415 @@ body.widget-mode #app {
   .app-brand-icon { width: 18px; height: 18px; }
   .main-area { min-width: 0; }
 }
+
+/* ── Linear workspace layout ──────────────────────────
+   The production task view follows the selected Linear prototype: a compact
+   command-oriented sidebar, calm list canvas and persistent task inspector.
+   Settings keeps the original responsive layout. */
+.linear-app .layout {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr) 306px;
+  min-width: 0;
+}
+.linear-app .sidebar {
+  width: auto;
+  background: #162437;
+  border-right: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset -12px 0 28px rgba(0,0,0,.08);
+  color: #d9e2ef;
+}
+.linear-app .sidebar .project-list { padding: 16px 10px 12px; }
+.linear-app .sidebar .section-label {
+  color: #8295ab;
+  letter-spacing: .1em;
+  padding: 13px 10px 8px;
+}
+.linear-app .sidebar .smart-row,
+.linear-app .sidebar .project-row {
+  min-height: 36px;
+  margin: 2px 0;
+  border-radius: 9px;
+  color: #b5c2d2;
+}
+.linear-app .sidebar .smart-row:hover,
+.linear-app .sidebar .project-row:hover {
+  background: rgba(255,255,255,.07);
+  transform: none;
+}
+.linear-app .sidebar .smart-row.active,
+.linear-app .sidebar .project-row.active {
+  background: rgba(224,162,74,.15);
+  box-shadow: inset 0 0 0 1px rgba(224,162,74,.4);
+}
+.linear-app .sidebar .smart-row::after,
+.linear-app .sidebar .project-row::after { background: #e0a24a; }
+.linear-app .sidebar .smart-name,
+.linear-app .sidebar .proj-name { color: #b7c4d3; }
+.linear-app .sidebar .smart-row.active .smart-name,
+.linear-app .sidebar .project-row.active .proj-name { color: #f6f8fb; }
+.linear-app .sidebar .smart-icon,
+.linear-app .sidebar .proj-icon {
+  background: rgba(255,255,255,.09);
+  color: #94a6bb;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+}
+.linear-app .sidebar .smart-row.active .smart-icon,
+.linear-app .sidebar .project-row.active .proj-icon {
+  color: #f0ad51;
+  background: rgba(224,162,74,.17);
+}
+.linear-app .sidebar .proj-count,
+.linear-app .sidebar .smart-row .proj-count {
+  color: #a9b8ca;
+  background: rgba(255,255,255,.08);
+}
+.linear-app .sidebar .project-row.active .proj-count,
+.linear-app .sidebar .smart-row.active .proj-count {
+  color: #f0ad51;
+  background: rgba(224,162,74,.16);
+}
+.linear-app .sidebar .add-project-btn,
+.linear-app .sidebar .utility-bar {
+  border-color: rgba(255,255,255,.09);
+}
+.linear-app .sidebar .add-project-btn,
+.linear-app .sidebar .utility-btn { color: #a9b8ca; }
+.linear-app .sidebar .add-project-btn:hover,
+.linear-app .sidebar .utility-btn:hover {
+  color: #f6f8fb;
+  background: rgba(255,255,255,.07);
+}
+
+.linear-app .main-area {
+  background: #f7f9fc;
+  position: relative;
+}
+.linear-app .main-area::after { display: none; }
+.linear-app .task-list-view {
+  background: #f7f9fc;
+  color: #172638;
+}
+.linear-app .task-list-view::before { display: none; }
+.linear-app .list-header {
+  width: 100%;
+  max-width: none;
+  padding: 28px 34px 12px;
+  border-bottom: 1px solid #e1e8f0;
+}
+.linear-app .header-left { gap: 13px; }
+.linear-app .project-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+.linear-app .list-header:hover .project-icon {
+  transform: none;
+  box-shadow: none;
+}
+.linear-app .list-header:hover .project-icon::after { display: none; }
+.linear-app .header-eyebrow {
+  color: #bf7624;
+  font-size: 9px;
+  letter-spacing: .16em;
+}
+.linear-app .project-title {
+  color: #162538;
+  font-size: 29px;
+  letter-spacing: -.045em;
+}
+.linear-app .header-subtitle { color: #788da3; }
+.linear-app .header-stats { color: #8295aa; }
+.linear-app .header-right {
+  gap: 9px;
+  padding: 8px 12px 8px 13px;
+  border: 1px solid #dbe5ef;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(43,65,91,.06);
+}
+.linear-app .header-right:hover {
+  transform: none;
+  border-color: #dbe5ef;
+  box-shadow: 0 5px 18px rgba(43,65,91,.06);
+}
+.linear-app .progress-copy strong { color: #172638; }
+.linear-app .progress-copy span,
+.linear-app .progress-copy small { color: #8295aa; }
+
+.linear-app .filter-bar {
+  width: 100%;
+  max-width: none;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 12px;
+  padding: 12px 34px 14px;
+  background: #f7f9fc;
+}
+.linear-app .search-box {
+  height: 36px;
+  color: #8498ad;
+  border-bottom-color: #b9c9d8;
+}
+.linear-app .search-box:focus-within { border-color: #d4882e; box-shadow: 0 1px 0 #d4882e; }
+.linear-app .search-box input { color: #172638; }
+.linear-app .segmented {
+  height: 34px;
+  background: #fff;
+  border: 1px solid #d8e3ee;
+}
+.linear-app .segmented button { color: #71869c; }
+.linear-app .segmented button.active {
+  color: #bf7624;
+  background: #fff4e7;
+  box-shadow: inset 0 0 0 1px #e1a05d;
+}
+.linear-app .filter-select-trigger {
+  color: #61758b;
+  background: transparent;
+}
+.linear-app .add-task-bar {
+  width: 100%;
+  max-width: none;
+  padding: 12px 34px 17px;
+  border-bottom: 1px solid #e1e8f0;
+}
+.linear-app .add-task-inner {
+  min-height: 48px;
+  border-radius: 11px;
+  border-color: #c8d7e5;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(45,68,94,.05);
+}
+.linear-app .add-task-inner:focus-within {
+  transform: none;
+  border-color: #d4882e;
+  box-shadow: 0 0 0 3px rgba(212,136,46,.12);
+}
+.linear-app .add-input { color: #172638; }
+.linear-app .add-input::placeholder { color: #8396aa; }
+
+.linear-app .task-scroll {
+  padding: 14px 34px 34px;
+  border-top: 0;
+  background: #f7f9fc;
+}
+.linear-app .task-items {
+  max-width: none;
+  gap: 0;
+  padding: 0;
+}
+.linear-app .task-wrapper {
+  animation: linear-task-enter .2s ease both;
+  animation-delay: var(--task-delay, 0ms);
+}
+@keyframes linear-task-enter {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+.linear-app .task-row {
+  min-height: 62px;
+  padding: 11px 14px 11px 8px;
+  gap: 11px;
+  border: 0;
+  border-bottom: 1px solid #e0e8f0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  transition: background .16s ease, box-shadow .16s ease;
+}
+.linear-app .task-row:hover {
+  background: #fff;
+  border-color: #e0e8f0;
+  box-shadow: 0 4px 14px rgba(42,66,93,.07);
+}
+.linear-app .task-item.selected > .task-row {
+  background: #fff9f2;
+  border-color: #e0e8f0;
+  box-shadow: inset 3px 0 0 #d4882e;
+}
+.linear-app .drag-handle { color: #9fb1c1; opacity: .48; }
+.linear-app .checkbox { width: 25px; height: 25px; }
+.linear-app .checkbox-svg { width: 23px; height: 23px; }
+.linear-app .task-title { color: #1b2b3d; font-size: 14px; }
+.linear-app .completed .task-title { color: #8c9aaa; }
+.linear-app .task-actions { transform: none; }
+.linear-app .project-badge,
+.linear-app .due-badge,
+.linear-app .priority-badge,
+.linear-app .note-badge,
+.linear-app .tag-badge,
+.linear-app .repeat-badge {
+  color: #8194a8;
+  background: #f3f6f9;
+  border-color: #e0e8ef;
+}
+.linear-app .due-badge.today { color: #bb7223; background: #fff2df; }
+.linear-app .priority-badge.high { color: #b95145; background: #fff0ed; }
+.linear-app .task-item.priority-high > .task-row::before { background: #d4882e; }
+.linear-app .group-header { padding-top: 13px; }
+.linear-app .group-label { color: #6c8197; letter-spacing: .1em; }
+
+.linear-inspector-host {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+  border-left: 1px solid #dce5ee;
+}
+.linear-inspector-host .detail-panel {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 22px 20px;
+  overflow-y: auto;
+  background: #fff;
+  border-left: 0;
+  box-shadow: none;
+  transition: none;
+  animation: none;
+}
+.linear-inspector-host .detail-panel.open {
+  width: 100%;
+  box-sizing: border-box;
+}
+.linear-inspector-host .detail-panel:not(.open) {
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+.linear-inspector-host .detail-empty { display: none; }
+.linear-inspector-host .detail-head { margin-bottom: 20px; }
+.linear-inspector-host .detail-title { color: #172638; font-size: 18px; }
+.linear-inspector-host .detail-section-label { color: #7d91a5; }
+.linear-inspector-host .detail-section-label::after { background: #e0e8ef; }
+.linear-inspector-host .field input,
+.linear-inspector-host .field select,
+.linear-inspector-host .field textarea {
+  color: #24364a;
+  background: #f7f9fc;
+  border-color: #d8e3ee;
+}
+.linear-inspector-host .field input:focus,
+.linear-inspector-host .field select:focus,
+.linear-inspector-host .field textarea:focus { border-color: #d4882e; }
+.linear-inspector-host .icon-btn:hover { background: #fff4e7; color: #bf7624; }
+.linear-inspector-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #8396a9;
+  text-align: center;
+  padding: 24px;
+}
+.linear-inspector-empty-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+  color: #bf7624;
+  background: #fff4e7;
+  border: 1px solid #efcfaa;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+.linear-inspector-empty strong { color: #536b82; font-size: 13px; }
+.linear-inspector-empty span { font-size: 11px; }
+
+@media (max-width: 1180px) {
+  .linear-app .layout { grid-template-columns: 192px minmax(0, 1fr) 270px; }
+  .linear-app .list-header,
+  .linear-app .filter-bar,
+  .linear-app .add-task-bar,
+  .linear-app .task-scroll { padding-left: 24px; padding-right: 24px; }
+}
+@media (max-width: 900px) {
+  .linear-app .layout { grid-template-columns: 192px minmax(0, 1fr); }
+  .linear-inspector-host { display: none; }
+  .linear-app .filter-bar { grid-template-columns: minmax(0, 1fr) auto; }
+  .linear-app .filter-pickers { grid-column: 1 / -1; justify-content: flex-end; }
+}
+
+/* Keep the workspace model intact when the user switches to Midnight. */
+.theme-midnight.linear-app .sidebar { background: #0e1824; }
+.theme-midnight.linear-app .main-area,
+.theme-midnight.linear-app .task-list-view,
+.theme-midnight.linear-app .filter-bar,
+.theme-midnight.linear-app .task-scroll { background: #10161d; }
+.theme-midnight.linear-app .list-header { border-bottom-color: #2a3642; }
+.theme-midnight.linear-app .project-title,
+.theme-midnight.linear-app .task-title,
+.theme-midnight.linear-app .progress-copy strong { color: #f5f2ea; }
+.theme-midnight.linear-app .header-subtitle,
+.theme-midnight.linear-app .header-stats,
+.theme-midnight.linear-app .progress-copy span,
+.theme-midnight.linear-app .progress-copy small,
+.theme-midnight.linear-app .filter-select-trigger { color: #aab5bf; }
+.theme-midnight.linear-app .header-right,
+.theme-midnight.linear-app .segmented,
+.theme-midnight.linear-app .add-task-inner,
+.theme-midnight.linear-app .linear-inspector-host { background: #171f29; border-color: #2a3642; }
+.theme-midnight.linear-app .search-box { border-bottom-color: #405061; }
+.theme-midnight.linear-app .search-box input,
+.theme-midnight.linear-app .add-input { color: #f5f2ea; }
+.theme-midnight.linear-app .task-row { border-bottom-color: #2a3642; }
+.theme-midnight.linear-app .task-row:hover,
+.theme-midnight.linear-app .task-item.selected > .task-row { background: #202a35; }
+.theme-midnight.linear-app .linear-inspector-host .detail-panel { background: #171f29; }
+.theme-midnight.linear-app .linear-inspector-host .detail-title { color: #f5f2ea; }
+.theme-midnight.linear-app .linear-inspector-host .field input,
+.theme-midnight.linear-app .linear-inspector-host .field select,
+.theme-midnight.linear-app .linear-inspector-host .field textarea { color: #f5f2ea; background: #202a35; border-color: #405061; }
+.theme-midnight.linear-app .linear-inspector-empty { color: #7f8b98; }
+.theme-midnight.linear-app .linear-inspector-empty strong { color: #bcc2c8; }
+.theme-midnight.linear-app .linear-inspector-empty-icon { color: #f0b65d; background: #2a241b; border-color: #6b5130; }
+
+/* Map the same workspace structure to the alternate light palettes. */
+.theme-forest.linear-app .sidebar { background: #1d342c; }
+.theme-forest.linear-app .main-area,
+.theme-forest.linear-app .task-list-view,
+.theme-forest.linear-app .filter-bar,
+.theme-forest.linear-app .task-scroll { background: var(--bg-base); }
+.theme-forest.linear-app .list-header { border-bottom-color: var(--border); }
+.theme-forest.linear-app .project-title,
+.theme-forest.linear-app .task-title,
+.theme-forest.linear-app .progress-copy strong { color: var(--text-primary); }
+.theme-forest.linear-app .header-right,
+.theme-forest.linear-app .segmented,
+.theme-forest.linear-app .add-task-inner,
+.theme-forest.linear-app .linear-inspector-host { background: var(--bg-surface); border-color: var(--border); }
+.theme-forest.linear-app .task-row { border-bottom-color: var(--border); }
+
+.theme-graphite.linear-app .sidebar { background: #26313e; }
+.theme-graphite.linear-app .main-area,
+.theme-graphite.linear-app .task-list-view,
+.theme-graphite.linear-app .filter-bar,
+.theme-graphite.linear-app .task-scroll { background: var(--bg-base); }
+.theme-graphite.linear-app .list-header { border-bottom-color: var(--border); }
+.theme-graphite.linear-app .project-title,
+.theme-graphite.linear-app .task-title,
+.theme-graphite.linear-app .progress-copy strong { color: var(--text-primary); }
+.theme-graphite.linear-app .header-right,
+.theme-graphite.linear-app .segmented,
+.theme-graphite.linear-app .add-task-inner,
+.theme-graphite.linear-app .linear-inspector-host { background: var(--bg-surface); border-color: var(--border); }
+.theme-graphite.linear-app .task-row { border-bottom-color: var(--border); }
+
+.theme-apricot.linear-app .sidebar { background: #3a2c24; }
+.theme-apricot.linear-app .main-area,
+.theme-apricot.linear-app .task-list-view,
+.theme-apricot.linear-app .filter-bar,
+.theme-apricot.linear-app .task-scroll { background: var(--bg-base); }
+.theme-apricot.linear-app .list-header { border-bottom-color: var(--border); }
+.theme-apricot.linear-app .project-title,
+.theme-apricot.linear-app .task-title,
+.theme-apricot.linear-app .progress-copy strong { color: var(--text-primary); }
+.theme-apricot.linear-app .header-right,
+.theme-apricot.linear-app .segmented,
+.theme-apricot.linear-app .add-task-inner,
+.theme-apricot.linear-app .linear-inspector-host { background: var(--bg-surface); border-color: var(--border); }
+.theme-apricot.linear-app .task-row { border-bottom-color: var(--border); }
