@@ -3296,9 +3296,16 @@ mod tests {
     #[test]
     fn sync_workspace_rebind_resets_cursor_and_rejects_pending_operations() {
         let path = sync_temp_path("workspace");
+        let pending =
+            sync::enqueue(&path, sync::new_snapshot(serde_json::json!({"v": 0}), None)).unwrap();
         let first = sync::set_workspace(&path, Some("workspace-a".into())).unwrap();
         assert_eq!(first.workspace_id.as_deref(), Some("workspace-a"));
-        let state = sync::acknowledge(&path, &[], Some("12".into())).unwrap();
+        let state = sync::acknowledge(
+            &path,
+            &[pending.outbox[0].operation_id.clone()],
+            Some("12".into()),
+        )
+        .unwrap();
         assert_eq!(state.cursor.as_deref(), Some("12"));
 
         let rebound = sync::set_workspace(&path, Some(" workspace-b ".into())).unwrap();

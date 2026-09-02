@@ -186,7 +186,7 @@ pub fn set_workspace(path: &Path, workspace_id: Option<String>) -> Result<SyncSt
         (!value.is_empty()).then_some(value)
     });
     if state.workspace_id != next_workspace {
-        if !state.outbox.is_empty() {
+        if state.workspace_id.is_some() && !state.outbox.is_empty() {
             return Err("切换同步工作区前请先完成待同步操作".to_string());
         }
         state.workspace_id = next_workspace;

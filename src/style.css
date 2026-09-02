@@ -568,7 +568,7 @@ body.widget-mode #app {
 .cloud-state-pill.active { color: var(--success); border-color: color-mix(in srgb, var(--success) 32%, var(--border)); background: color-mix(in srgb, var(--success) 8%, transparent); }
 .cloud-auth-grid,
 .cloud-workspace-row,
-.cloud-workspace-create { display: flex; gap: 8px; margin-top: 14px; }
+.cloud-workspace-create { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .cloud-auth-grid input,
 .cloud-workspace-row select,
 .cloud-workspace-create input { min-width: 0; height: 32px; padding: 0 10px; color: var(--text-primary); background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; font-size: 12px; }
@@ -1129,6 +1129,14 @@ body.widget-mode #app {
   .settings-save-state span:last-child { display: none; }
   .settings-nav { width: 100%; overflow-x: auto; }
   .settings-nav-item { flex: 1 0 auto; }
+  .cloud-auth-grid,
+  .cloud-workspace-row,
+  .cloud-workspace-create { flex-direction: column; }
+  .cloud-auth-grid input,
+  .cloud-workspace-row select,
+  .cloud-workspace-create input,
+  .cloud-workspace-row button,
+  .cloud-workspace-create button { width: 100%; }
   .log-row { grid-template-columns: 1fr auto; }
   .log-row strong { grid-column: 2; grid-row: 1; }
   .log-row p { grid-column: 1 / -1; grid-row: 2; }

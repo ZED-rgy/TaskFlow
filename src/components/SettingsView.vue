@@ -235,7 +235,7 @@ async function cloudSignOut() {
   cloudBusy.value = true
   cloudMessage.value = ''
   try {
-    await unbindCloudWorkspace()
+    cloudStatus.value = await api.setSyncWorkspace(null)
     await syncRepository.signOut()
     cloudSession.value = null
     cloudWorkspaces.value = []
