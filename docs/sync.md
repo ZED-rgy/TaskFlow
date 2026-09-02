@@ -34,3 +34,7 @@ VITE_SUPABASE_ANON_KEY=your-public-anon-key
 前端只允许使用公开 anon key；`service_role` key 不能进入桌面包、浏览器或 Git。未配置变量时，`syncRepository.enabled` 为 `false`，所有云端方法会给出明确错误而不是静默伪同步。
 
 `createSyncEngine` 负责一次同步编排：先按游标拉取远端事件，再按批次幂等推送本地 outbox。它不会自动确认远端游标；调用方必须成功应用 `remoteEvents` 后，再调用 `commitRemoteCursor`，这样冲突或校验失败时不会跳过远端数据。`App.vue` 负责登录态检查、worker 生命周期、Realtime 订阅和远端快照应用；未登录或未绑定工作区时保持停止状态。
+
+## 邮箱验证回跳
+
+桌面安装包注册了 `taskflow://auth/callback` 自定义协议。请在 Supabase Dashboard 的 Authentication → URL Configuration 中，将 `taskflow://auth/callback` 加入 Redirect URLs；生产环境应将 Site URL 改为真实可访问的 HTTPS 地址，`http://localhost:3000` 仅保留给本地 Web 开发。点击验证邮件后，Windows 会唤起小光任务，应用会自动接收回调中的会话并刷新登录状态。若应用未运行，首次启动也会读取该回调；若系统阻止协议唤起，仍可回到应用手动登录。

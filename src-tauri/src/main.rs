@@ -2615,13 +2615,17 @@ fn next_repeat_date(date: Option<&str>, repeat: &str) -> Option<String> {
 /// 尝试唤起已运行的实例：连接本地端口、发送握手暗号、读取应答。
 /// 只有收到本程序的应答 `ok` 才返回 true（说明端口确实由另一实例持有）。
 /// 这样可以区分「端口被本程序占用」与「端口被无关进程占用」。
-fn try_signal_existing_instance() -> bool {
+fn try_signal_existing_instance(deep_link: Option<&str>) -> bool {
     use std::io::{Read, Write};
     let Ok(mut stream) = std::net::TcpStream::connect(("127.0.0.1", SINGLE_INSTANCE_PORT)) else {
         return false;
     };
     let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-    if stream.write_all(b"taskflow-show").is_err() {
+    let message = deep_link
+        .filter(|url| url.starts_with("taskflow://"))
+        .map(|url| format!("taskflow-link\n{url}"))
+        .unwrap_or_else(|| "taskflow-show".to_string());
+    if message.len() > 4096 || stream.write_all(message.as_bytes()).is_err() {
         return false;
     }
     let mut buf = [0u8; 8];
@@ -2632,13 +2636,16 @@ fn try_signal_existing_instance() -> bool {
 }
 
 fn main() {
+    let deep_link = std::env::args()
+        .skip(1)
+        .find(|arg| arg.starts_with("taskflow://"));
     // 单实例锁：绑定本地回环端口（回环流量不触发 Windows 防火墙）。
     // 端口被占用时，只有在握手确认对方确实是本程序的另一实例时才退出；
     // 若端口被无关进程占用，则继续启动（不加单实例锁），避免应用无法打开。
     let instance_listener = match std::net::TcpListener::bind(("127.0.0.1", SINGLE_INSTANCE_PORT)) {
         Ok(listener) => Some(listener),
         Err(_) => {
-            if try_signal_existing_instance() {
+            if try_signal_existing_instance(deep_link.as_deref()) {
                 return;
             }
             None
@@ -2647,8 +2654,16 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(move |app| {
             let handle = app.handle();
+            #[cfg(windows)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(error) = app.deep_link().register_all() {
+                    let _ = append_log(&handle, "warn", "deep-link registration failed", Some(error.to_string()));
+                }
+            }
             build_system_tray(&handle)?;
             let _ = append_log(&handle, "info", "小光任务 started", None);
             let initial = match read_data(&handle) {
@@ -2719,12 +2734,19 @@ fn main() {
                         let Ok(mut stream) = stream else { continue };
                         // 必须带握手暗号，避免本地端口扫描误触发唤起主窗口
                         let _ = stream.set_read_timeout(Some(Duration::from_millis(300)));
-                        let mut buf = [0u8; 16];
+                        let mut buf = [0u8; 4096];
                         let read = stream.read(&mut buf).unwrap_or(0);
-                        if &buf[..read] == b"taskflow-show" {
+                        let message = String::from_utf8_lossy(&buf[..read]);
+                        if message == "taskflow-show" {
                             // 回应 ok，让新进程确认连到的确实是本程序的实例
                             let _ = stream.write_all(b"ok");
                             let _ = show_main(&single_handle);
+                        } else if let Some(url) = message.strip_prefix("taskflow-link\n") {
+                            if url.starts_with("taskflow://") {
+                                let _ = stream.write_all(b"ok");
+                                let _ = show_main(&single_handle);
+                                let _ = single_handle.emit("taskflow-auth-deep-link", url.trim());
+                            }
                         }
                     }
                 });

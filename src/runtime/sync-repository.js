@@ -6,6 +6,7 @@ const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').tri
 export const syncConfig = Object.freeze({
   enabled: Boolean(supabaseUrl && supabaseAnonKey),
   url: supabaseUrl,
+  authRedirectUrl: 'taskflow://auth/callback',
 })
 
 const defaultClient = syncConfig.enabled
@@ -44,7 +45,32 @@ export function createSyncRepository(client = defaultClient) {
     },
 
     async signUp(email, password) {
-      const { data, error } = await requireClient(client).auth.signUp({ email, password })
+      const { data, error } = await requireClient(client).auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: syncConfig.authRedirectUrl },
+      })
+      if (error) throw error
+      return data.session
+    },
+
+    async setSessionFromUrl(rawUrl) {
+      const value = String(rawUrl || '').trim()
+      if (!value.startsWith(syncConfig.authRedirectUrl)) {
+        throw new Error('无效的登录回调地址')
+      }
+      const parsed = new URL(value)
+      const params = new URLSearchParams(parsed.hash.startsWith('#') ? parsed.hash.slice(1) : parsed.search)
+      const accessToken = params.get('access_token')
+      const refreshToken = params.get('refresh_token')
+      if (!accessToken || !refreshToken) {
+        const errorDescription = params.get('error_description')
+        throw new Error(errorDescription || '验证链接已失效，请重新发送验证邮件')
+      }
+      const { data, error } = await requireClient(client).auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
       if (error) throw error
       return data.session
     },

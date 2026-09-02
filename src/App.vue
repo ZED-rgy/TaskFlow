@@ -7,6 +7,7 @@ import SettingsView from './components/SettingsView.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import appIconUrl from '../assets/icon.svg'
 import { api, createSyncEngine, syncConfig, syncRepository } from './runtime/api.js'
+import { getCurrent as getDeepLinkUrls, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { normalizeTheme } from './runtime/themes.js'
 import { countSmartViews, localDateKey, matchesSmartView } from './runtime/taskviews.mjs'
 import {
@@ -64,6 +65,8 @@ const cloudSync = ref({ kind: 'disabled', text: '云同步未配置' })
 let toastTimer = null
 let unlistenDataChanged = null
 let unlistenOpenTask = null
+let unlistenAuthDeepLink = null
+let unlistenDeepLink = null
 let syncEngine = null
 let syncTimer = null
 let syncUnsubscribe = null
@@ -384,6 +387,34 @@ async function startCloudSync() {
     syncStartPromise = null
   })
   return syncStartPromise
+}
+
+async function handleAuthDeepLink(rawUrl) {
+  const url = String(rawUrl || '').trim()
+  if (!url.startsWith(syncConfig.authRedirectUrl)) return
+  try {
+    const session = await syncRepository.setSessionFromUrl(url)
+    if (!session) throw new Error('验证成功，但没有建立登录会话，请返回软件重新登录')
+    window.dispatchEvent(new Event('taskflow-auth-state-changed'))
+    window.dispatchEvent(new Event('taskflow-sync-config-changed'))
+    showToast('邮箱验证成功，已登录云端')
+  } catch (error) {
+    const message = String(error?.message || '邮箱验证失败')
+    showToast(`邮箱验证失败：${message}`)
+  }
+}
+
+async function setupAuthDeepLinks() {
+  if (!window.__TAURI__ || !syncConfig.enabled) return
+  try {
+    const initialUrls = await getDeepLinkUrls()
+    for (const url of initialUrls || []) await handleAuthDeepLink(url)
+    unlistenDeepLink = await onOpenUrl(urls => {
+      for (const url of urls || []) void handleAuthDeepLink(url)
+    })
+  } catch (error) {
+    console.warn('[auth] deep-link setup failed', error)
+  }
 }
 
 // ── Load ─────────────────────────────────────────────
@@ -852,6 +883,11 @@ onMounted(() => {
   }).then(unlisten => {
     unlistenDataChanged = unlisten
   })
+  window.__TAURI__?.event?.listen?.('taskflow-auth-deep-link', event => {
+    void handleAuthDeepLink(event?.payload)
+  }).then(unlisten => {
+    unlistenAuthDeepLink = unlisten
+  })
   window.__TAURI__?.event?.listen?.('open-task', async event => {
     const id = event.payload?.id
     if (!id) return
@@ -864,6 +900,7 @@ onMounted(() => {
   })
   window.addEventListener('taskflow-sync-config-changed', startCloudSync)
   window.addEventListener('keydown', handleKeydown)
+  void setupAuthDeepLinks()
 })
 
 onUnmounted(() => {
@@ -872,6 +909,8 @@ onUnmounted(() => {
   stopCloudSync()
   if (settingsSaveTimer) clearTimeout(settingsSaveTimer)
   if (unlistenDataChanged) unlistenDataChanged()
+  if (unlistenAuthDeepLink) unlistenAuthDeepLink()
+  if (unlistenDeepLink) unlistenDeepLink()
   if (unlistenOpenTask) unlistenOpenTask()
 })
 </script>

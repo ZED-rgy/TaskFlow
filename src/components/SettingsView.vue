@@ -61,6 +61,9 @@ const settingSections = [
   { id: 'diagnostics', label: '诊断' },
 ]
 let sectionObserver = null
+function onAuthStateChanged() {
+  void loadCloudState()
+}
 
 function scrollToSection(id) {
   const target = settingsScrollEl.value?.querySelector(`[data-settings-section="${id}"]`)
@@ -103,9 +106,13 @@ onMounted(() => {
   }, { root, rootMargin: '-76px 0px -62% 0px', threshold: [0, .15, .5] })
   root.querySelectorAll('[data-settings-section]').forEach(node => sectionObserver.observe(node))
   loadCloudState()
+  window.addEventListener('taskflow-auth-state-changed', onAuthStateChanged)
 })
 
-onBeforeUnmount(() => sectionObserver?.disconnect())
+onBeforeUnmount(() => {
+  sectionObserver?.disconnect()
+  window.removeEventListener('taskflow-auth-state-changed', onAuthStateChanged)
+})
 
 const selectedWidgetProject = computed(() => {
   const id = props.widgetConfig?.projectId

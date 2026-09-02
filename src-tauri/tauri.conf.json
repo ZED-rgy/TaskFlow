@@ -23,7 +23,13 @@
   "mainBinaryName": "小光任务",
   "version": "0.2.1",
   "identifier": "com.personal.taskflow-lite",
-  "plugins": {},
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["taskflow"]
+      }
+    }
+  },
   "app": {
     "withGlobalTauri": true,
     "security": {
