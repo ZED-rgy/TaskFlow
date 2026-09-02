@@ -68,6 +68,9 @@ create table if not exists public.sync_events (
 create index if not exists workspace_members_user_idx on public.workspace_members(user_id);
 create index if not exists projects_workspace_idx on public.projects(workspace_id, position);
 create index if not exists tasks_workspace_idx on public.tasks(workspace_id, project_id, position);
+create index if not exists tasks_project_idx on public.tasks(project_id);
+create index if not exists tasks_parent_idx on public.tasks(parent_id) where parent_id is not null;
+create index if not exists workspaces_created_by_idx on public.workspaces(created_by);
 create index if not exists sync_events_workspace_seq_idx on public.sync_events(workspace_id, seq);
 
 create or replace function public.set_updated_at()
@@ -98,106 +101,152 @@ alter table public.projects enable row level security;
 alter table public.tasks enable row level security;
 alter table public.sync_events enable row level security;
 
-create or replace function public.is_workspace_member(target_workspace uuid)
+-- New Supabase projects may require explicit Data API grants. Keep the
+-- browser client authenticated-only; RLS below remains the row-level guard.
+grant usage on schema public to authenticated;
+revoke all on table public.workspaces, public.workspace_members, public.projects,
+  public.tasks, public.sync_events from anon;
+grant select, insert, update on table public.workspaces to authenticated;
+grant select, insert, update on table public.workspace_members to authenticated;
+grant select, insert, update on table public.projects to authenticated;
+grant select, insert, update on table public.tasks to authenticated;
+grant select, insert, update on table public.sync_events to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+
+create schema if not exists private;
+grant usage on schema private to authenticated;
+revoke all on schema private from anon;
+
+create or replace function private.is_workspace_member(target_workspace uuid)
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select exists (
     select 1 from public.workspace_members
-    where workspace_id = target_workspace and user_id = auth.uid()
+    where workspace_id = target_workspace and user_id = (select auth.uid())
   );
 $$;
 
-revoke all on function public.is_workspace_member(uuid) from public;
-grant execute on function public.is_workspace_member(uuid) to authenticated;
+revoke all on function private.is_workspace_member(uuid) from public;
+revoke all on function private.is_workspace_member(uuid) from anon;
+grant execute on function private.is_workspace_member(uuid) to authenticated;
 
-create or replace function public.is_workspace_owner(target_workspace uuid)
+create or replace function private.is_workspace_owner(target_workspace uuid)
 returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select exists (
     select 1 from public.workspaces
-    where id = target_workspace and created_by = auth.uid()
+    where id = target_workspace and created_by = (select auth.uid())
   );
 $$;
 
-revoke all on function public.is_workspace_owner(uuid) from public;
-grant execute on function public.is_workspace_owner(uuid) to authenticated;
+revoke all on function private.is_workspace_owner(uuid) from public;
+revoke all on function private.is_workspace_owner(uuid) from anon;
+grant execute on function private.is_workspace_owner(uuid) to authenticated;
 
-create or replace function public.create_workspace(workspace_name text)
+create or replace function private.create_workspace(workspace_name text)
 returns public.workspaces
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   created_workspace public.workspaces;
 begin
-  if auth.uid() is null then
+  if (select auth.uid()) is null then
     raise exception 'authentication required';
   end if;
   insert into public.workspaces (name, created_by)
-  values (trim(workspace_name), auth.uid())
+  values (trim(workspace_name), (select auth.uid()))
   returning * into created_workspace;
   insert into public.workspace_members (workspace_id, user_id, role)
-  values (created_workspace.id, auth.uid(), 'owner');
+  values (created_workspace.id, (select auth.uid()), 'owner');
   return created_workspace;
 end;
 $$;
 
+revoke all on function private.create_workspace(text) from public;
+revoke all on function private.create_workspace(text) from anon;
+grant execute on function private.create_workspace(text) to authenticated;
+
+-- Keep the RPC endpoint invoker-safe; privileged writes stay in the private schema.
+create or replace function public.create_workspace(workspace_name text)
+returns public.workspaces
+language sql
+security invoker
+set search_path = public, private, pg_temp
+as $$
+  select private.create_workspace(workspace_name);
+$$;
+
 revoke all on function public.create_workspace(text) from public;
+revoke all on function public.create_workspace(text) from anon;
 grant execute on function public.create_workspace(text) to authenticated;
 
 drop policy if exists workspaces_member_select on public.workspaces;
 create policy workspaces_member_select on public.workspaces for select to authenticated
-using (public.is_workspace_member(id) or created_by = auth.uid());
+using (private.is_workspace_member(id) or created_by = (select auth.uid()));
 drop policy if exists workspaces_owner_insert on public.workspaces;
 create policy workspaces_owner_insert on public.workspaces for insert to authenticated
-with check (created_by = auth.uid());
+with check (created_by = (select auth.uid()));
 drop policy if exists workspaces_owner_update on public.workspaces;
 create policy workspaces_owner_update on public.workspaces for update to authenticated
-using (created_by = auth.uid()) with check (created_by = auth.uid());
+using (created_by = (select auth.uid())) with check (created_by = (select auth.uid()));
 
 drop policy if exists workspace_members_member_select on public.workspace_members;
 create policy workspace_members_member_select on public.workspace_members for select to authenticated
-using (public.is_workspace_member(workspace_id) or user_id = auth.uid());
+using (private.is_workspace_member(workspace_id) or user_id = (select auth.uid()));
 drop policy if exists workspace_members_owner_manage on public.workspace_members;
-create policy workspace_members_owner_manage on public.workspace_members for all to authenticated
-using (public.is_workspace_owner(workspace_id))
-with check (public.is_workspace_owner(workspace_id));
+drop policy if exists workspace_members_owner_insert on public.workspace_members;
+drop policy if exists workspace_members_owner_update on public.workspace_members;
+drop policy if exists workspace_members_owner_delete on public.workspace_members;
+create policy workspace_members_owner_insert on public.workspace_members for insert to authenticated
+with check (private.is_workspace_owner(workspace_id));
+create policy workspace_members_owner_update on public.workspace_members for update to authenticated
+using (private.is_workspace_owner(workspace_id))
+with check (private.is_workspace_owner(workspace_id));
+create policy workspace_members_owner_delete on public.workspace_members for delete to authenticated
+using (private.is_workspace_owner(workspace_id));
 
 drop policy if exists projects_member_read on public.projects;
 create policy projects_member_read on public.projects for select to authenticated
-using (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id));
+drop policy if exists projects_member_insert on public.projects;
 drop policy if exists projects_member_write on public.projects;
 create policy projects_member_insert on public.projects for insert to authenticated
-with check (public.is_workspace_member(workspace_id));
+with check (private.is_workspace_member(workspace_id));
 drop policy if exists projects_member_update on public.projects;
 create policy projects_member_update on public.projects for update to authenticated
-using (public.is_workspace_member(workspace_id)) with check (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id)) with check (private.is_workspace_member(workspace_id));
 
 drop policy if exists tasks_member_read on public.tasks;
 create policy tasks_member_read on public.tasks for select to authenticated
-using (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id));
+drop policy if exists tasks_member_insert on public.tasks;
 drop policy if exists tasks_member_write on public.tasks;
 create policy tasks_member_insert on public.tasks for insert to authenticated
-with check (public.is_workspace_member(workspace_id));
+with check (private.is_workspace_member(workspace_id));
 drop policy if exists tasks_member_update on public.tasks;
 create policy tasks_member_update on public.tasks for update to authenticated
-using (public.is_workspace_member(workspace_id)) with check (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id)) with check (private.is_workspace_member(workspace_id));
 
 drop policy if exists sync_events_member_read on public.sync_events;
 create policy sync_events_member_read on public.sync_events for select to authenticated
-using (public.is_workspace_member(workspace_id));
+using (private.is_workspace_member(workspace_id));
 drop policy if exists sync_events_member_insert on public.sync_events;
 create policy sync_events_member_insert on public.sync_events for insert to authenticated
-with check (public.is_workspace_member(workspace_id));
+with check (private.is_workspace_member(workspace_id));
+
+-- Remove legacy exposed helper functions from earlier revisions.
+drop function if exists public.is_workspace_member(uuid);
+drop function if exists public.is_workspace_owner(uuid);
 
 -- Realtime is enabled explicitly for inserts; UPDATE/DELETE are not needed for append-only events.
 alter table public.sync_events replica identity full;
