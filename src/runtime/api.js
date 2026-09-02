@@ -51,3 +51,6 @@ export const api = {
   restoreTasks: tasks => invoke('restore_tasks', { tasks }),
   reorderTasks: data => invoke('reorder_tasks', { data }),
 }
+
+// 云同步是独立于本地 Tauri 命令的可选适配器；未配置 Supabase 时保持禁用。
+export { createSyncRepository, syncConfig, syncRepository } from './sync-repository.js'

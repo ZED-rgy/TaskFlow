@@ -63,6 +63,13 @@ export function createSyncRepository(client = defaultClient) {
       return data || []
     },
 
+    async createWorkspace(name) {
+      const { data, error } = await requireClient(client)
+        .rpc('create_workspace', { workspace_name: String(name || '').trim() })
+      if (error) throw error
+      return data
+    },
+
     async pushOperation({ workspaceId, deviceId, operation }) {
       const row = {
         operation_id: operation.operationId,

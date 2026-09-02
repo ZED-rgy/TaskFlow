@@ -28,7 +28,8 @@ create table if not exists public.projects (
   position integer not null default 0,
   created_at timestamptz not null,
   updated_at timestamptz not null default timezone('utc', now()),
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  unique (id, workspace_id)
 );
 
 create table if not exists public.tasks (
@@ -47,7 +48,8 @@ create table if not exists public.tasks (
   created_at timestamptz not null,
   completed_at timestamptz,
   updated_at timestamptz not null default timezone('utc', now()),
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  foreign key (project_id, workspace_id) references public.projects(id, workspace_id)
 );
 
 create table if not exists public.sync_events (
@@ -112,9 +114,49 @@ $$;
 revoke all on function public.is_workspace_member(uuid) from public;
 grant execute on function public.is_workspace_member(uuid) to authenticated;
 
+create or replace function public.is_workspace_owner(target_workspace uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.workspaces
+    where id = target_workspace and created_by = auth.uid()
+  );
+$$;
+
+revoke all on function public.is_workspace_owner(uuid) from public;
+grant execute on function public.is_workspace_owner(uuid) to authenticated;
+
+create or replace function public.create_workspace(workspace_name text)
+returns public.workspaces
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  created_workspace public.workspaces;
+begin
+  if auth.uid() is null then
+    raise exception 'authentication required';
+  end if;
+  insert into public.workspaces (name, created_by)
+  values (trim(workspace_name), auth.uid())
+  returning * into created_workspace;
+  insert into public.workspace_members (workspace_id, user_id, role)
+  values (created_workspace.id, auth.uid(), 'owner');
+  return created_workspace;
+end;
+$$;
+
+revoke all on function public.create_workspace(text) from public;
+grant execute on function public.create_workspace(text) to authenticated;
+
 drop policy if exists workspaces_member_select on public.workspaces;
 create policy workspaces_member_select on public.workspaces for select to authenticated
-using (public.is_workspace_member(id));
+using (public.is_workspace_member(id) or created_by = auth.uid());
 drop policy if exists workspaces_owner_insert on public.workspaces;
 create policy workspaces_owner_insert on public.workspaces for insert to authenticated
 with check (created_by = auth.uid());
@@ -127,21 +169,27 @@ create policy workspace_members_member_select on public.workspace_members for se
 using (public.is_workspace_member(workspace_id) or user_id = auth.uid());
 drop policy if exists workspace_members_owner_manage on public.workspace_members;
 create policy workspace_members_owner_manage on public.workspace_members for all to authenticated
-using (exists (select 1 from public.workspaces w where w.id = workspace_id and w.created_by = auth.uid()))
-with check (exists (select 1 from public.workspaces w where w.id = workspace_id and w.created_by = auth.uid()));
+using (public.is_workspace_owner(workspace_id))
+with check (public.is_workspace_owner(workspace_id));
 
 drop policy if exists projects_member_read on public.projects;
 create policy projects_member_read on public.projects for select to authenticated
 using (public.is_workspace_member(workspace_id));
 drop policy if exists projects_member_write on public.projects;
-create policy projects_member_write on public.projects for all to authenticated
+create policy projects_member_insert on public.projects for insert to authenticated
+with check (public.is_workspace_member(workspace_id));
+drop policy if exists projects_member_update on public.projects;
+create policy projects_member_update on public.projects for update to authenticated
 using (public.is_workspace_member(workspace_id)) with check (public.is_workspace_member(workspace_id));
 
 drop policy if exists tasks_member_read on public.tasks;
 create policy tasks_member_read on public.tasks for select to authenticated
 using (public.is_workspace_member(workspace_id));
 drop policy if exists tasks_member_write on public.tasks;
-create policy tasks_member_write on public.tasks for all to authenticated
+create policy tasks_member_insert on public.tasks for insert to authenticated
+with check (public.is_workspace_member(workspace_id));
+drop policy if exists tasks_member_update on public.tasks;
+create policy tasks_member_update on public.tasks for update to authenticated
 using (public.is_workspace_member(workspace_id)) with check (public.is_workspace_member(workspace_id));
 
 drop policy if exists sync_events_member_read on public.sync_events;
