@@ -45,6 +45,8 @@ src-tauri/src/main.rs
 
 `src/runtime/api.js` 是前端访问 Rust 的唯一适配器。`taskviews.mjs`、`widget-order.mjs` 和 `quickparse.js` 保存可独立验证的业务规则；主题和字体规则分别位于 `themes.js` 与 `fonts.js`。
 
+云同步适配器位于 `src/runtime/sync-repository.js`，与本地 Tauri 适配器分离：未配置 Supabase 环境变量时保持禁用，配置后提供认证、工作区读取、同步事件入队、增量拉取和 Realtime 订阅接口。
+
 ## Rust 后端
 
 Rust 后端已开始按领域渐进拆分：

@@ -20,3 +20,14 @@ Tauri 命令已暴露为：
 ## 后续阶段边界
 
 P1 再接入认证与云端数据库（工作区成员、实体版本、软删除标记和 RLS）；P2 才启用实时订阅、增量拉取与冲突处理。届时应把快照 outbox 逐步升级为项目/任务级操作，同时保留操作 ID 幂等约束。
+
+## Supabase 配置
+
+复制 `.env.example` 为 `.env`，填入 Supabase 项目 URL 和公开 anon key：
+
+```text
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-public-anon-key
+```
+
+前端只允许使用公开 anon key；`service_role` key 不能进入桌面包、浏览器或 Git。未配置变量时，`syncRepository.enabled` 为 `false`，所有云端方法会给出明确错误而不是静默伪同步。
