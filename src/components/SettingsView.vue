@@ -183,9 +183,17 @@ async function cloudAuth(action) {
       : await syncRepository.signIn(cloudEmail.value.trim(), cloudPassword.value)
     cloudPassword.value = ''
     cloudStatus.value = await api.getSyncStatus()
-    cloudWorkspaces.value = await syncRepository.listWorkspaces()
-    cloudMessage.value = cloudSession.value ? '登录成功' : '注册成功，请先完成邮箱验证'
-    notifySyncChanged()
+    if (cloudSession.value) {
+      cloudWorkspaces.value = await syncRepository.listWorkspaces()
+      cloudMessage.value = '登录成功'
+      notifySyncChanged()
+    } else {
+      // Email confirmation may be required before Supabase creates a session.
+      // Do not query protected tables as anon in that state; it produces a
+      // misleading "permission denied for table workspaces" error.
+      cloudWorkspaces.value = []
+      cloudMessage.value = '注册成功，请先完成邮箱验证，再登录'
+    }
   } catch (error) {
     cloudMessage.value = error?.message || '认证失败'
   } finally {
