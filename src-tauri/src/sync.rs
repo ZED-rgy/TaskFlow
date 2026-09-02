@@ -181,7 +181,17 @@ pub fn set_workspace(path: &Path, workspace_id: Option<String>) -> Result<SyncSt
         .lock()
         .map_err(|_| "同步状态锁异常".to_string())?;
     let mut state = load(path)?;
-    state.workspace_id = workspace_id.map(|value| value.trim().to_string());
+    let next_workspace = workspace_id.and_then(|value| {
+        let value = value.trim().to_string();
+        (!value.is_empty()).then_some(value)
+    });
+    if state.workspace_id != next_workspace {
+        if !state.outbox.is_empty() {
+            return Err("切换同步工作区前请先完成待同步操作".to_string());
+        }
+        state.workspace_id = next_workspace;
+        state.cursor = None;
+    }
     save(path, &state)?;
     status(path)
 }

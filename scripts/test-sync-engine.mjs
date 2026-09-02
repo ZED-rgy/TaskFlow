@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { createSyncEngine } from '../src/runtime/sync-engine.js'
+import { createSyncEngine } from '../src/runtime/sync-engine.mjs'
 
 const disabled = createSyncEngine({ repository: { enabled: false } })
 assert.deepEqual(await disabled.syncOnce(), { kind: 'disabled', pushed: 0, remoteEvents: [] })
@@ -27,7 +27,7 @@ const repository = {
   },
   async pushOperation(input) {
     calls.push(['push', input.operation.operationId])
-    return { seq: 9 }
+    return { seq: 9, operation_id: input.operation.operationId }
   },
 }
 const engine = createSyncEngine({ localApi, repository })
@@ -40,5 +40,7 @@ assert.deepEqual(calls.map(call => Array.isArray(call) ? call[0] : call), [
 ])
 await engine.commitRemoteCursor(result.nextCursor)
 assert.deepEqual(calls.at(-1), ['ack', [], '8'])
+
+await assert.rejects(() => engine.commitRemoteCursor('999'), /最近一次同步/)
 
 console.log('sync engine rules: ok')

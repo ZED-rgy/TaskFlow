@@ -55,4 +55,4 @@ export const api = {
 
 // 云同步是独立于本地 Tauri 命令的可选适配器；未配置 Supabase 时保持禁用。
 export { createSyncRepository, syncConfig, syncRepository } from './sync-repository.js'
-export { createSyncEngine } from './sync-engine.js'
+export { createSyncEngine } from './sync-engine.mjs'

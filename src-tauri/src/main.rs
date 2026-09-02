@@ -1854,7 +1854,10 @@ fn get_sync_outbox(app: AppHandle) -> Result<sync::SyncState, String> {
 }
 
 #[tauri::command]
-fn set_sync_workspace(app: AppHandle, workspace_id: Option<String>) -> Result<sync::SyncStatus, String> {
+fn set_sync_workspace(
+    app: AppHandle,
+    workspace_id: Option<String>,
+) -> Result<sync::SyncStatus, String> {
     sync::set_workspace(&sync_state_path(&app)?, workspace_id)
 }
 
@@ -3287,6 +3290,23 @@ mod tests {
         let next = sync::acknowledge(&path, &[first_id], Some("stale".into())).unwrap();
         assert_eq!(next.cursor, None);
         assert_eq!(next.outbox.len(), 1);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sync_workspace_rebind_resets_cursor_and_rejects_pending_operations() {
+        let path = sync_temp_path("workspace");
+        let first = sync::set_workspace(&path, Some("workspace-a".into())).unwrap();
+        assert_eq!(first.workspace_id.as_deref(), Some("workspace-a"));
+        let state = sync::acknowledge(&path, &[], Some("12".into())).unwrap();
+        assert_eq!(state.cursor.as_deref(), Some("12"));
+
+        let rebound = sync::set_workspace(&path, Some(" workspace-b ".into())).unwrap();
+        assert_eq!(rebound.workspace_id.as_deref(), Some("workspace-b"));
+        assert_eq!(rebound.cursor, None);
+
+        let _ = sync::enqueue(&path, sync::new_snapshot(serde_json::json!({"v": 1}), None));
+        assert!(sync::set_workspace(&path, Some("workspace-c".into())).is_err());
         let _ = fs::remove_file(path);
     }
 }

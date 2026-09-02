@@ -13,6 +13,7 @@ function maxCursor(events) {
  */
 export function createSyncEngine({ localApi, repository, onStateChange } = {}) {
   let running = false
+  let pendingRemoteCursor = null
 
   const emit = state => onStateChange?.(state)
 
@@ -48,11 +49,14 @@ export function createSyncEngine({ localApi, repository, onStateChange } = {}) {
         const pending = Array.isArray(outbox?.outbox) ? outbox.outbox.slice(0, MAX_PUSH_BATCH) : []
         const pushedIds = []
         for (const operation of pending) {
-          await repository.pushOperation({
+          const acknowledgement = await repository.pushOperation({
             workspaceId: status.workspaceId,
             deviceId: status.deviceId,
             operation,
           })
+          if (!acknowledgement || acknowledgement.operation_id !== operation.operationId) {
+            throw new Error(`云端未确认操作：${operation.operationId}`)
+          }
           pushedIds.push(operation.operationId)
         }
         if (pushedIds.length) await localApi.acknowledgeSync(pushedIds)
@@ -63,6 +67,7 @@ export function createSyncEngine({ localApi, repository, onStateChange } = {}) {
           remoteEvents,
           nextCursor: maxCursor(remoteEvents),
         }
+        pendingRemoteCursor = result.nextCursor
         emit(result)
         return result
       } catch (error) {
@@ -76,7 +81,18 @@ export function createSyncEngine({ localApi, repository, onStateChange } = {}) {
 
     async commitRemoteCursor(cursor) {
       if (!localApi || cursor === null || cursor === undefined) return null
-      return localApi.acknowledgeSync([], String(cursor))
+      if (pendingRemoteCursor === null || String(cursor) !== String(pendingRemoteCursor)) {
+        throw new Error('只能确认最近一次同步返回的远端游标')
+      }
+      const status = await localApi.getSyncStatus()
+      const current = status?.cursor === null || status?.cursor === undefined ? null : Number(status.cursor)
+      const next = Number(cursor)
+      if (!Number.isSafeInteger(next) || next < 0 || (current !== null && next < current)) {
+        throw new Error(`同步游标不可回退：${cursor}`)
+      }
+      const result = await localApi.acknowledgeSync([], String(cursor))
+      pendingRemoteCursor = null
+      return result
     },
   }
 }
