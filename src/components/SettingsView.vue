@@ -150,6 +150,10 @@ const cloudWorkspaceName = ref('')
 const cloudBusy = ref(false)
 const cloudMessage = ref('')
 
+function notifySyncChanged() {
+  window.dispatchEvent(new Event('taskflow-sync-config-changed'))
+}
+
 const cloudStateLabel = computed(() => {
   if (!syncConfig.enabled) return '未配置'
   if (cloudBusy.value) return '处理中'
@@ -181,6 +185,7 @@ async function cloudAuth(action) {
     cloudStatus.value = await api.getSyncStatus()
     cloudWorkspaces.value = await syncRepository.listWorkspaces()
     cloudMessage.value = cloudSession.value ? '登录成功' : '注册成功，请先完成邮箱验证'
+    notifySyncChanged()
   } catch (error) {
     cloudMessage.value = error?.message || '认证失败'
   } finally {
@@ -211,6 +216,7 @@ async function bindCloudWorkspace(workspaceId) {
   try {
     cloudStatus.value = await api.setSyncWorkspace(workspaceId)
     cloudMessage.value = '工作区已绑定'
+    notifySyncChanged()
   } catch (error) {
     cloudMessage.value = error?.message || '绑定工作区失败'
   } finally {
@@ -224,6 +230,7 @@ async function unbindCloudWorkspace() {
   try {
     cloudStatus.value = await api.setSyncWorkspace(null)
     cloudMessage.value = '已解除工作区绑定'
+    notifySyncChanged()
   } catch (error) {
     cloudMessage.value = error?.message || '解除绑定失败'
   } finally {
@@ -240,6 +247,7 @@ async function cloudSignOut() {
     cloudSession.value = null
     cloudWorkspaces.value = []
     cloudMessage.value = '已退出登录'
+    notifySyncChanged()
   } catch (error) {
     cloudMessage.value = error?.message || '退出失败'
   } finally {

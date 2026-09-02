@@ -31,6 +31,7 @@ export const api = {
     operationIds,
     cursor,
   }),
+  applySyncSnapshot: data => invoke('apply_sync_snapshot', { data }),
   getLogs: () => invoke('get_logs'),
   clearLogs: () => invoke('clear_logs'),
   exportLogs: () => invoke('export_logs'),

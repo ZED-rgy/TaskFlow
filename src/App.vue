@@ -6,7 +6,7 @@ import TaskDetail from './components/TaskDetail.vue'
 import SettingsView from './components/SettingsView.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import appIconUrl from '../assets/icon.svg'
-import { api } from './runtime/api.js'
+import { api, createSyncEngine, syncConfig, syncRepository } from './runtime/api.js'
 import { normalizeTheme } from './runtime/themes.js'
 import { countSmartViews, localDateKey, matchesSmartView } from './runtime/taskviews.mjs'
 import {
@@ -60,9 +60,15 @@ const paletteOpen = ref(false)
 const logs = ref([])
 const dueSummary = ref(null)
 const widgetConfig = ref(null)
+const cloudSync = ref({ kind: 'disabled', text: '云同步未配置' })
 let toastTimer = null
 let unlistenDataChanged = null
 let unlistenOpenTask = null
+let syncEngine = null
+let syncTimer = null
+let syncUnsubscribe = null
+let syncStartPromise = null
+let syncLastError = ''
 
 // ── Undo stack（Ctrl+Z 撤销删除）────────────────────────
 const undoStack = []
@@ -258,6 +264,127 @@ const selectedTaskProject = computed(() =>
 const selectedTaskSubtasks = computed(() =>
   selectedTask.value ? tasks.value.filter(task => task.parentId === selectedTask.value.id) : []
 )
+
+// ── Cloud sync ───────────────────────────────────────
+function setCloudSyncState(kind, text, detail = '') {
+  cloudSync.value = { kind, text, detail }
+}
+
+function stopCloudSync() {
+  if (syncTimer) {
+    clearInterval(syncTimer)
+    syncTimer = null
+  }
+  if (syncUnsubscribe) {
+    try { syncUnsubscribe() } catch (error) { console.warn('[sync] unsubscribe failed', error) }
+    syncUnsubscribe = null
+  }
+  syncEngine = null
+}
+
+function applySnapshotToView(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.projects) || !Array.isArray(snapshot.tasks)) return
+  projects.value = snapshot.projects
+  tasks.value = snapshot.tasks
+  if (!projects.value.some(project => project.id === selectedId.value)) {
+    selectedId.value = projects.value[0]?.id || null
+  }
+  if (!tasks.value.some(task => task.id === selectedTaskId.value)) {
+    selectedTaskId.value = null
+  }
+}
+
+async function runCloudSync() {
+  if (!syncEngine) return
+  const result = await syncEngine.syncOnce()
+  if (result.kind === 'busy') return
+  if (result.kind === 'disabled') {
+    setCloudSyncState('disabled', '云同步未配置')
+    return
+  }
+  if (result.kind === 'unbound') {
+    setCloudSyncState('unbound', '未绑定工作区')
+    return
+  }
+  if (result.kind === 'error') {
+    const message = String(result.error?.message || '同步失败')
+    setCloudSyncState('error', '同步失败', message)
+    if (message !== syncLastError) {
+      syncLastError = message
+      showToast(`云同步失败：${message}`)
+    }
+    return
+  }
+
+  try {
+    const status = await api.getSyncStatus()
+    for (const event of result.remoteEvents || []) {
+      if (!event || event.client_id === status?.deviceId) continue
+      if (event.entity !== 'workspace' || event.action !== 'snapshot') continue
+      const snapshot = await api.applySyncSnapshot(event.payload)
+      applySnapshotToView(snapshot)
+    }
+    if (result.nextCursor !== null && result.nextCursor !== undefined) {
+      await syncEngine.commitRemoteCursor(result.nextCursor)
+    }
+    const nextStatus = await api.getSyncStatus()
+    syncLastError = ''
+    setCloudSyncState(
+      nextStatus?.pendingCount ? 'pending' : 'ready',
+      nextStatus?.pendingCount ? `同步中 · 待 ${nextStatus.pendingCount}` : '已同步',
+    )
+  } catch (error) {
+    const message = String(error?.message || '远端变更应用失败')
+    setCloudSyncState('error', '同步失败', message)
+    if (message !== syncLastError) {
+      syncLastError = message
+      showToast(`云同步失败：${message}`)
+    }
+  }
+}
+
+async function startCloudSync() {
+  if (syncStartPromise) return syncStartPromise
+  syncStartPromise = (async () => {
+    stopCloudSync()
+    syncLastError = ''
+    if (!syncConfig.enabled) {
+      setCloudSyncState('disabled', '云同步未配置')
+      return
+    }
+    try {
+      const session = await syncRepository.getSession()
+      const status = await api.getSyncStatus()
+      if (!session) {
+        setCloudSyncState('signed-out', '未登录云端')
+        return
+      }
+      if (!status?.workspaceId) {
+        setCloudSyncState('unbound', '未绑定工作区')
+        return
+      }
+      syncEngine = createSyncEngine({
+        localApi: api,
+        repository: syncRepository,
+        onStateChange: state => {
+          if (state?.kind === 'syncing') setCloudSyncState('syncing', '同步中…')
+        },
+      })
+      syncUnsubscribe = await syncRepository.subscribe(status.workspaceId, () => {
+        void runCloudSync()
+      })
+      await runCloudSync()
+      syncTimer = setInterval(() => { void runCloudSync() }, 5000)
+    } catch (error) {
+      const message = String(error?.message || '云同步启动失败')
+      setCloudSyncState('error', '同步不可用', message)
+      showToast(`云同步启动失败：${message}`)
+    }
+  })().finally(() => {
+    syncStartPromise = null
+  })
+  return syncStartPromise
+}
 
 // ── Load ─────────────────────────────────────────────
 async function loadProjects() {
@@ -715,9 +842,14 @@ function onClearLogs() {
 }
 
 onMounted(() => {
-  loadProjects()
+  loadProjects().then(() => startCloudSync()).catch(error => {
+    showToast(`数据加载失败：${error?.message || error}`)
+  })
   refreshWidgetConfig()
-  window.__TAURI__?.event?.listen?.('taskflow-data-changed', loadProjects).then(unlisten => {
+  window.__TAURI__?.event?.listen?.('taskflow-data-changed', async () => {
+    await loadProjects()
+    void runCloudSync()
+  }).then(unlisten => {
     unlistenDataChanged = unlisten
   })
   window.__TAURI__?.event?.listen?.('open-task', async event => {
@@ -730,11 +862,14 @@ onMounted(() => {
   }).then(unlisten => {
     unlistenOpenTask = unlisten
   })
+  window.addEventListener('taskflow-sync-config-changed', startCloudSync)
   window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('taskflow-sync-config-changed', startCloudSync)
+  stopCloudSync()
   if (settingsSaveTimer) clearTimeout(settingsSaveTimer)
   if (unlistenDataChanged) unlistenDataChanged()
   if (unlistenOpenTask) unlistenOpenTask()
@@ -752,6 +887,16 @@ onUnmounted(() => {
         </span>
       </div>
       <div class="titlebar-controls">
+        <span
+          v-if="syncConfig.enabled"
+          class="cloud-sync-indicator"
+          :class="`is-${cloudSync.kind}`"
+          :title="cloudSync.detail || cloudSync.text"
+          aria-live="polite"
+        >
+          <span class="cloud-sync-dot" aria-hidden="true"></span>
+          {{ cloudSync.text }}
+        </span>
         <!-- Theme toggle -->
         <button class="ctrl-btn theme-toggle" aria-label="切换明暗主题" :title="theme === 'midnight' ? '切换到晨雾主题' : '切换到墨蓝主题'" @click="toggleTheme">
           <!-- Sun (show when in dark mode, click to go light) -->
@@ -997,6 +1142,42 @@ onUnmounted(() => {
   gap: 2px;
   padding-right: 6px;
   -webkit-app-region: no-drag;
+}
+.cloud-sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 122px;
+  margin-right: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+}
+.cloud-sync-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+}
+.cloud-sync-indicator.is-syncing .cloud-sync-dot,
+.cloud-sync-indicator.is-pending .cloud-sync-dot {
+  animation: cloud-sync-pulse 1.2s ease-in-out infinite;
+}
+.cloud-sync-indicator.is-ready { color: var(--success); }
+.cloud-sync-indicator.is-pending,
+.cloud-sync-indicator.is-syncing { color: var(--accent); }
+.cloud-sync-indicator.is-error { color: var(--danger); }
+@keyframes cloud-sync-pulse {
+  0%, 100% { transform: scale(.72); opacity: .55; }
+  50% { transform: scale(1.15); opacity: 1; }
 }
 .ctrl-btn {
   width: 34px;

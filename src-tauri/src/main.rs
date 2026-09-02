@@ -1872,6 +1872,38 @@ fn acknowledge_sync(
     sync::status(&path)
 }
 
+/// Apply a validated remote snapshot without creating a new outbox entry.
+/// Remote changes must not echo back to the cloud as a fresh local mutation.
+#[tauri::command]
+fn apply_sync_snapshot(
+    app: AppHandle,
+    window: WebviewWindow,
+    data: TaskFlowData,
+) -> Result<TaskFlowData, String> {
+    let snapshot = normalize_runtime_data(data)?;
+    if let Some(state) = app.try_state::<AppState>() {
+        {
+            let mut guard = state
+                .data
+                .lock()
+                .map_err(|_| "数据状态锁异常".to_string())?;
+            *guard = snapshot.clone();
+        }
+        {
+            let mut dirty = state
+                .dirty_since
+                .lock()
+                .map_err(|_| "数据状态锁异常".to_string())?;
+            *dirty = None;
+        }
+        write_data_file(&app, &snapshot, false)?;
+        emit_data_changed(&app, Some(window.label()));
+    } else {
+        write_data_file(&app, &snapshot, true)?;
+    }
+    Ok(snapshot)
+}
+
 #[tauri::command]
 fn get_widget_config(app: AppHandle) -> WidgetConfig {
     read_widget_config(&app)
@@ -2805,6 +2837,7 @@ fn main() {
             get_sync_outbox,
             set_sync_workspace,
             acknowledge_sync,
+            apply_sync_snapshot,
             get_projects,
             get_tasks,
             create_project,
