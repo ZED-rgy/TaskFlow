@@ -24,6 +24,12 @@ export const api = {
   openQuickAdd: () => invoke('open_quick_add_window'),
 
   getAppInfo: () => invoke('get_app_info'),
+  getSyncStatus: () => invoke('get_sync_status'),
+  getSyncOutbox: () => invoke('get_sync_outbox'),
+  acknowledgeSync: (operationIds, cursor = null) => invoke('acknowledge_sync', {
+    operationIds,
+    cursor,
+  }),
   getLogs: () => invoke('get_logs'),
   clearLogs: () => invoke('clear_logs'),
   exportLogs: () => invoke('export_logs'),

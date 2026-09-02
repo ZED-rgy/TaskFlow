@@ -19,6 +19,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 mod domain;
+mod sync;
 
 use domain::normalize_runtime_data;
 use uuid::Uuid;
@@ -291,6 +292,18 @@ fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn data_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(data_dir(app)?.join("taskflow-data.json"))
+}
+
+fn sync_state_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(data_dir(app)?.join("sync-state.json"))
+}
+
+fn enqueue_workspace_snapshot(app: &AppHandle, data: &TaskFlowData) -> Result<(), String> {
+    let path = sync_state_path(app)?;
+    let state = sync::load(&path)?;
+    let payload = serde_json::to_value(data).map_err(|err| format!("无法生成同步快照：{err}"))?;
+    let operation = sync::new_snapshot(payload, state.cursor);
+    sync::enqueue(&path, operation).map(|_| ())
 }
 
 fn backup_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -882,10 +895,20 @@ fn write_state(app: &AppHandle, data: &TaskFlowData, origin: Option<&str>) -> Re
                     .map_err(|_| "数据状态锁异常".to_string())?;
                 *dirty = Some(Instant::now());
             }
+            // 同步 outbox 是本地增强能力，写入失败不应阻断桌面端本地操作。
+            if let Err(error) = enqueue_workspace_snapshot(app, &data) {
+                let _ = append_log(app, "warn", "sync outbox write failed", Some(error));
+            }
             emit_data_changed(app, origin);
             Ok(())
         }
-        None => write_data_file(app, &data, true),
+        None => {
+            write_data_file(app, &data, true)?;
+            if let Err(error) = enqueue_workspace_snapshot(app, &data) {
+                let _ = append_log(app, "warn", "sync outbox write failed", Some(error));
+            }
+            Ok(())
+        }
     }
 }
 
@@ -1821,6 +1844,27 @@ fn get_app_info(app: AppHandle) -> Result<AppInfo, String> {
 }
 
 #[tauri::command]
+fn get_sync_status(app: AppHandle) -> Result<sync::SyncStatus, String> {
+    sync::status(&sync_state_path(&app)?)
+}
+
+#[tauri::command]
+fn get_sync_outbox(app: AppHandle) -> Result<sync::SyncState, String> {
+    sync::load(&sync_state_path(&app)?)
+}
+
+#[tauri::command]
+fn acknowledge_sync(
+    app: AppHandle,
+    operation_ids: Vec<String>,
+    cursor: Option<String>,
+) -> Result<sync::SyncStatus, String> {
+    let path = sync_state_path(&app)?;
+    sync::acknowledge(&path, &operation_ids, cursor)?;
+    sync::status(&path)
+}
+
+#[tauri::command]
 fn get_widget_config(app: AppHandle) -> WidgetConfig {
     read_widget_config(&app)
 }
@@ -2749,6 +2793,9 @@ fn main() {
             show_widget,
             hide_widget,
             get_app_info,
+            get_sync_status,
+            get_sync_outbox,
+            acknowledge_sync,
             get_projects,
             get_tasks,
             create_project,
@@ -3172,5 +3219,68 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![0, 1]
         );
+    }
+
+    // ── sync outbox ────────────────────────────────────────
+
+    fn sync_temp_path(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("taskflow-sync-{name}-{}.json", new_id()))
+    }
+
+    #[test]
+    fn sync_enqueue_coalesces_workspace_snapshots() {
+        let path = sync_temp_path("coalesce");
+        let first =
+            sync::enqueue(&path, sync::new_snapshot(serde_json::json!({"v": 1}), None)).unwrap();
+        let second = sync::enqueue(
+            &path,
+            sync::new_snapshot(serde_json::json!({"v": 2}), first.cursor.clone()),
+        )
+        .unwrap();
+        assert_eq!(second.outbox.len(), 1);
+        assert_eq!(second.outbox[0].payload["v"], 2);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sync_acknowledge_removes_confirmed_operations_and_advances_cursor() {
+        let path = sync_temp_path("ack");
+        let state =
+            sync::enqueue(&path, sync::new_snapshot(serde_json::json!({"v": 1}), None)).unwrap();
+        let op_id = state.outbox[0].operation_id.clone();
+        let next = sync::acknowledge(&path, &[op_id], Some("42".into())).unwrap();
+        assert!(next.outbox.is_empty());
+        assert_eq!(next.cursor.as_deref(), Some("42"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sync_load_persists_repaired_device_id() {
+        let path = sync_temp_path("normalize");
+        fs::write(
+            &path,
+            r#"{"schemaVersion":0,"deviceId":"","cursor":null,"outbox":[]}"#,
+        )
+        .unwrap();
+        let state = sync::load(&path).unwrap();
+        assert_eq!(state.schema_version, sync::SYNC_SCHEMA_VERSION);
+        assert!(!state.device_id.is_empty());
+        let reloaded = sync::load(&path).unwrap();
+        assert_eq!(state.device_id, reloaded.device_id);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn sync_stale_ack_does_not_advance_cursor_after_snapshot_coalescing() {
+        let path = sync_temp_path("stale-ack");
+        let first =
+            sync::enqueue(&path, sync::new_snapshot(serde_json::json!({"v": 1}), None)).unwrap();
+        let first_id = first.outbox[0].operation_id.clone();
+        let _ =
+            sync::enqueue(&path, sync::new_snapshot(serde_json::json!({"v": 2}), None)).unwrap();
+        let next = sync::acknowledge(&path, &[first_id], Some("stale".into())).unwrap();
+        assert_eq!(next.cursor, None);
+        assert_eq!(next.outbox.len(), 1);
+        let _ = fs::remove_file(path);
     }
 }
