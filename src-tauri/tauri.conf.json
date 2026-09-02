@@ -27,7 +27,7 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; connect-src ipc: http://ipc.localhost https://qbcuiciskagmhnoqmmhy.supabase.co wss://qbcuiciskagmhnoqmmhy.supabase.co"
     },
     "windows": [
       {
