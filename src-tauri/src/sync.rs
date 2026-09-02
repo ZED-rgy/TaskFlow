@@ -34,6 +34,8 @@ pub struct SyncOperation {
 pub struct SyncState {
     pub schema_version: u32,
     pub device_id: String,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
     pub cursor: Option<String>,
     pub outbox: Vec<SyncOperation>,
 }
@@ -42,6 +44,7 @@ pub struct SyncState {
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
     pub device_id: String,
+    pub workspace_id: Option<String>,
     pub cursor: Option<String>,
     pub pending_count: usize,
 }
@@ -51,6 +54,7 @@ impl Default for SyncState {
         Self {
             schema_version: SYNC_SCHEMA_VERSION,
             device_id: Uuid::new_v4().to_string(),
+            workspace_id: None,
             cursor: None,
             outbox: Vec::new(),
         }
@@ -62,6 +66,10 @@ fn normalize(mut state: SyncState) -> SyncState {
     if state.device_id.trim().is_empty() {
         state.device_id = Uuid::new_v4().to_string();
     }
+    state.workspace_id = state.workspace_id.and_then(|value| {
+        let value = value.trim().to_string();
+        (!value.is_empty()).then_some(value)
+    });
     state.outbox.retain(|item| {
         !item.operation_id.trim().is_empty()
             && !item.entity.trim().is_empty()
@@ -161,9 +169,21 @@ pub fn status(path: &Path) -> Result<SyncStatus, String> {
     let state = load(path)?;
     Ok(SyncStatus {
         device_id: state.device_id,
+        workspace_id: state.workspace_id,
         cursor: state.cursor,
         pending_count: state.outbox.len(),
     })
+}
+
+pub fn set_workspace(path: &Path, workspace_id: Option<String>) -> Result<SyncStatus, String> {
+    let _guard = SYNC_MUTATION_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "同步状态锁异常".to_string())?;
+    let mut state = load(path)?;
+    state.workspace_id = workspace_id.map(|value| value.trim().to_string());
+    save(path, &state)?;
+    status(path)
 }
 
 pub fn new_snapshot(payload: Value, base_cursor: Option<String>) -> SyncOperation {

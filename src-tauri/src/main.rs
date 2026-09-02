@@ -1854,6 +1854,11 @@ fn get_sync_outbox(app: AppHandle) -> Result<sync::SyncState, String> {
 }
 
 #[tauri::command]
+fn set_sync_workspace(app: AppHandle, workspace_id: Option<String>) -> Result<sync::SyncStatus, String> {
+    sync::set_workspace(&sync_state_path(&app)?, workspace_id)
+}
+
+#[tauri::command]
 fn acknowledge_sync(
     app: AppHandle,
     operation_ids: Vec<String>,
@@ -2795,6 +2800,7 @@ fn main() {
             get_app_info,
             get_sync_status,
             get_sync_outbox,
+            set_sync_workspace,
             acknowledge_sync,
             get_projects,
             get_tasks,

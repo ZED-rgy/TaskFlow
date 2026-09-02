@@ -31,3 +31,5 @@ VITE_SUPABASE_ANON_KEY=your-public-anon-key
 ```
 
 前端只允许使用公开 anon key；`service_role` key 不能进入桌面包、浏览器或 Git。未配置变量时，`syncRepository.enabled` 为 `false`，所有云端方法会给出明确错误而不是静默伪同步。
+
+`createSyncEngine` 负责一次同步编排：先按游标拉取远端事件，再按批次幂等推送本地 outbox。它不会自动确认远端游标；调用方必须成功应用 `remoteEvents` 后，再调用 `commitRemoteCursor`，这样冲突或校验失败时不会跳过远端数据。当前尚未在 `App.vue` 中自动启动它，避免没有工作区绑定时误同步。

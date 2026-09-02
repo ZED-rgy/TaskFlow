@@ -26,6 +26,7 @@ export const api = {
   getAppInfo: () => invoke('get_app_info'),
   getSyncStatus: () => invoke('get_sync_status'),
   getSyncOutbox: () => invoke('get_sync_outbox'),
+  setSyncWorkspace: workspaceId => invoke('set_sync_workspace', { workspaceId }),
   acknowledgeSync: (operationIds, cursor = null) => invoke('acknowledge_sync', {
     operationIds,
     cursor,
@@ -54,3 +55,4 @@ export const api = {
 
 // 云同步是独立于本地 Tauri 命令的可选适配器；未配置 Supabase 时保持禁用。
 export { createSyncRepository, syncConfig, syncRepository } from './sync-repository.js'
+export { createSyncEngine } from './sync-engine.js'
