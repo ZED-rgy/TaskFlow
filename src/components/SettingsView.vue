@@ -3,7 +3,7 @@
 // 业务逻辑仍由 App.vue 持有，通过 props / 函数 props 注入，行为与原内联实现完全一致。
 // 字体搜索框、字体下拉开关、快捷键录制状态用 v-model 双向同步回父级。
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { api } from '../runtime/api.js'
+import { api, syncConfig, syncRepository } from '../runtime/api.js'
 import { THEMES } from '../runtime/themes.js'
 import { FONT_SIZES } from '../runtime/fonts.js'
 
@@ -102,6 +102,7 @@ onMounted(() => {
     }
   }, { root, rootMargin: '-76px 0px -62% 0px', threshold: [0, .15, .5] })
   root.querySelectorAll('[data-settings-section]').forEach(node => sectionObserver.observe(node))
+  loadCloudState()
 })
 
 onBeforeUnmount(() => sectionObserver?.disconnect())
@@ -139,6 +140,112 @@ const diagnosticSummary = computed(() => {
   const warning = props.logs.filter(log => ['warn', 'warning'].includes(String(log.level || '').toLowerCase())).length
   return { error, warning }
 })
+
+const cloudEmail = ref('')
+const cloudPassword = ref('')
+const cloudSession = ref(null)
+const cloudStatus = ref(null)
+const cloudWorkspaces = ref([])
+const cloudWorkspaceName = ref('')
+const cloudBusy = ref(false)
+const cloudMessage = ref('')
+
+const cloudStateLabel = computed(() => {
+  if (!syncConfig.enabled) return '未配置'
+  if (cloudBusy.value) return '处理中'
+  if (!cloudSession.value) return '未登录'
+  if (!cloudStatus.value?.workspaceId) return '未绑定工作区'
+  return '已连接'
+})
+
+async function loadCloudState() {
+  if (!syncConfig.enabled) return
+  try {
+    cloudSession.value = await syncRepository.getSession()
+    cloudStatus.value = await api.getSyncStatus()
+    if (cloudSession.value) cloudWorkspaces.value = await syncRepository.listWorkspaces()
+  } catch (error) {
+    cloudMessage.value = error?.message || '云同步状态读取失败'
+  }
+}
+
+async function cloudAuth(action) {
+  cloudBusy.value = true
+  cloudMessage.value = ''
+  try {
+    if (!cloudEmail.value.trim() || !cloudPassword.value) throw new Error('请输入邮箱和密码')
+    cloudSession.value = action === 'signup'
+      ? await syncRepository.signUp(cloudEmail.value.trim(), cloudPassword.value)
+      : await syncRepository.signIn(cloudEmail.value.trim(), cloudPassword.value)
+    cloudPassword.value = ''
+    cloudStatus.value = await api.getSyncStatus()
+    cloudWorkspaces.value = await syncRepository.listWorkspaces()
+    cloudMessage.value = cloudSession.value ? '登录成功' : '注册成功，请先完成邮箱验证'
+  } catch (error) {
+    cloudMessage.value = error?.message || '认证失败'
+  } finally {
+    cloudBusy.value = false
+  }
+}
+
+async function createCloudWorkspace() {
+  cloudBusy.value = true
+  cloudMessage.value = ''
+  try {
+    if (!cloudWorkspaceName.value.trim()) throw new Error('请输入工作区名称')
+    const workspace = await syncRepository.createWorkspace(cloudWorkspaceName.value.trim())
+    cloudWorkspaceName.value = ''
+    cloudWorkspaces.value = await syncRepository.listWorkspaces()
+    await bindCloudWorkspace(workspace?.id)
+  } catch (error) {
+    cloudMessage.value = error?.message || '创建工作区失败'
+  } finally {
+    cloudBusy.value = false
+  }
+}
+
+async function bindCloudWorkspace(workspaceId) {
+  if (!workspaceId) return
+  cloudBusy.value = true
+  cloudMessage.value = ''
+  try {
+    cloudStatus.value = await api.setSyncWorkspace(workspaceId)
+    cloudMessage.value = '工作区已绑定'
+  } catch (error) {
+    cloudMessage.value = error?.message || '绑定工作区失败'
+  } finally {
+    cloudBusy.value = false
+  }
+}
+
+async function unbindCloudWorkspace() {
+  cloudBusy.value = true
+  cloudMessage.value = ''
+  try {
+    cloudStatus.value = await api.setSyncWorkspace(null)
+    cloudMessage.value = '已解除工作区绑定'
+  } catch (error) {
+    cloudMessage.value = error?.message || '解除绑定失败'
+  } finally {
+    cloudBusy.value = false
+  }
+}
+
+async function cloudSignOut() {
+  cloudBusy.value = true
+  cloudMessage.value = ''
+  try {
+    await unbindCloudWorkspace()
+    await syncRepository.signOut()
+    cloudSession.value = null
+    cloudWorkspaces.value = []
+    cloudMessage.value = '已退出登录'
+  } catch (error) {
+    cloudMessage.value = error?.message || '退出失败'
+  } finally {
+    cloudBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -172,6 +279,47 @@ const diagnosticSummary = computed(() => {
       <div class="settings-section-heading" data-settings-section="data">
         <span>数据与安全</span>
         <small>任务、备份和运行状态</small>
+      </div>
+      <div class="settings-card cloud-sync-card">
+        <div class="cloud-sync-head">
+          <div>
+            <h2>云端同步</h2>
+            <p>登录后绑定工作区，让电脑和手机共享任务数据。</p>
+          </div>
+          <span class="cloud-state-pill" :class="{ active: cloudStateLabel === '已连接' }">{{ cloudStateLabel }}</span>
+        </div>
+        <p v-if="!syncConfig.enabled" class="cloud-hint">当前未配置 Supabase。复制 .env.example 为 .env 并填写项目 URL 与 anon key 后启用。</p>
+        <template v-else-if="!cloudSession">
+          <div class="cloud-auth-grid">
+            <input v-model="cloudEmail" type="email" autocomplete="email" placeholder="邮箱" aria-label="邮箱" />
+            <input v-model="cloudPassword" type="password" autocomplete="current-password" placeholder="密码" aria-label="密码" />
+          </div>
+          <div class="settings-actions cloud-actions">
+            <button class="secondary-btn" :disabled="cloudBusy" @click="cloudAuth('signup')">注册</button>
+            <button class="primary-btn" :disabled="cloudBusy" @click="cloudAuth('signin')">登录</button>
+          </div>
+        </template>
+        <template v-else>
+          <p class="cloud-account">已登录：{{ cloudSession.user?.email || '当前账户' }}</p>
+          <div class="cloud-workspace-row">
+            <select
+              :value="cloudStatus?.workspaceId || ''"
+              :disabled="cloudBusy"
+              aria-label="云端工作区"
+              @change="bindCloudWorkspace($event.target.value)"
+            >
+              <option value="">选择工作区</option>
+              <option v-for="workspace in cloudWorkspaces" :key="workspace.id" :value="workspace.id">{{ workspace.name }}</option>
+            </select>
+            <button class="secondary-btn" :disabled="cloudBusy" @click="cloudSignOut">退出登录</button>
+          </div>
+          <div class="cloud-workspace-create">
+            <input v-model="cloudWorkspaceName" type="text" maxlength="80" placeholder="新建工作区…" aria-label="新建工作区名称" />
+            <button class="primary-btn" :disabled="cloudBusy" @click="createCloudWorkspace">创建并绑定</button>
+          </div>
+          <p class="cloud-hint">待同步 {{ cloudStatus?.pendingCount || 0 }} 条 · 云端同步 worker 将在绑定后启用</p>
+        </template>
+        <p v-if="cloudMessage" class="cloud-message" role="status" aria-live="polite">{{ cloudMessage }}</p>
       </div>
       <div class="settings-card data-card">
         <h2>数据备份</h2>

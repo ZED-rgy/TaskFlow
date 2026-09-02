@@ -562,6 +562,23 @@ body.widget-mode #app {
 .settings-card:hover::before { opacity: .9; }
 .data-card,
 .settings-card.data-card { grid-column: span 3; }
+.cloud-sync-card { grid-column: 1 / -1; }
+.cloud-sync-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.cloud-state-pill { flex: 0 0 auto; padding: 5px 9px; border: 1px solid var(--border-soft); border-radius: 999px; color: var(--text-muted); background: var(--bg-elevated); font-size: 10px; }
+.cloud-state-pill.active { color: var(--success); border-color: color-mix(in srgb, var(--success) 32%, var(--border)); background: color-mix(in srgb, var(--success) 8%, transparent); }
+.cloud-auth-grid,
+.cloud-workspace-row,
+.cloud-workspace-create { display: flex; gap: 8px; margin-top: 14px; }
+.cloud-auth-grid input,
+.cloud-workspace-row select,
+.cloud-workspace-create input { min-width: 0; height: 32px; padding: 0 10px; color: var(--text-primary); background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; font-size: 12px; }
+.cloud-auth-grid input { flex: 1; }
+.cloud-workspace-row select { flex: 1; }
+.cloud-workspace-create input { flex: 1; }
+.cloud-actions { margin-top: 12px; }
+.cloud-account { margin-top: 12px; }
+.cloud-hint { margin-top: 12px; color: var(--text-muted); font-size: 11px; }
+.cloud-message { margin-top: 10px; color: var(--accent); font-size: 11px; }
 .workflow-shortcut-card,
 .workflow-delete-card { grid-column: span 6; }
 .diagnostic-version-card { grid-column: span 3; }
