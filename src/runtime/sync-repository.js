@@ -98,7 +98,6 @@ export function createSyncRepository(client = defaultClient) {
       const workspaces = await this.listWorkspaces()
       const owned = workspaces.find(workspace => workspace.createdBy === session.user.id)
       if (owned) return owned
-      if (workspaces[0]) return workspaces[0]
       return this.createWorkspace('我的任务')
     },
 
