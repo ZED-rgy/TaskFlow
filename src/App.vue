@@ -271,6 +271,9 @@ const selectedTaskSubtasks = computed(() =>
 // ── Cloud sync ───────────────────────────────────────
 function setCloudSyncState(kind, text, detail = '') {
   cloudSync.value = { kind, text, detail }
+  window.dispatchEvent(new CustomEvent('taskflow-cloud-sync-state-changed', {
+    detail: { kind, text, detail },
+  }))
 }
 
 function stopCloudSync() {

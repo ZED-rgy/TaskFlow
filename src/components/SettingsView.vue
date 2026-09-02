@@ -107,11 +107,13 @@ onMounted(() => {
   root.querySelectorAll('[data-settings-section]').forEach(node => sectionObserver.observe(node))
   loadCloudState()
   window.addEventListener('taskflow-auth-state-changed', onAuthStateChanged)
+  window.addEventListener('taskflow-cloud-sync-state-changed', onCloudSyncStateChanged)
 })
 
 onBeforeUnmount(() => {
   sectionObserver?.disconnect()
   window.removeEventListener('taskflow-auth-state-changed', onAuthStateChanged)
+  window.removeEventListener('taskflow-cloud-sync-state-changed', onCloudSyncStateChanged)
 })
 
 const selectedWidgetProject = computed(() => {
@@ -156,6 +158,7 @@ const cloudWorkspaces = ref([])
 const cloudWorkspaceName = ref('')
 const cloudBusy = ref(false)
 const cloudMessage = ref('')
+const cloudRuntimeState = ref(null)
 
 function notifySyncChanged() {
   window.dispatchEvent(new Event('taskflow-sync-config-changed'))
@@ -165,17 +168,25 @@ const cloudStateLabel = computed(() => {
   if (!syncConfig.enabled) return '未配置'
   if (cloudBusy.value) return '处理中'
   if (!cloudSession.value) return '未登录'
+  if (cloudRuntimeState.value?.kind === 'error') return '同步异常'
   if (!cloudStatus.value?.workspaceId) return '正在准备同步'
-  if (cloudStatus.value.pendingCount) return '正在同步'
-  return '实时同步正常'
+  if (cloudRuntimeState.value?.kind === 'syncing' || cloudStatus.value.pendingCount) return '正在同步'
+  return cloudRuntimeState.value?.kind === 'ready' ? '实时同步正常' : '已连接'
 })
 
 const cloudSyncLabel = computed(() => {
   if (!cloudSession.value) return '登录后自动开启云端同步'
+  if (cloudRuntimeState.value?.kind === 'error') return cloudRuntimeState.value.text || '云端同步异常'
+  if (cloudRuntimeState.value?.kind === 'syncing') return '正在连接云端实时同步'
+  if (cloudRuntimeState.value?.kind === 'pending') return cloudRuntimeState.value.text || '正在上传变更'
   if (!cloudStatus.value?.workspaceId) return '正在准备个人同步空间'
   if (cloudStatus.value.pendingCount) return `正在上传 ${cloudStatus.value.pendingCount} 条变更`
-  return '云端实时同步正常'
+  return cloudRuntimeState.value?.text || '云端实时同步正常'
 })
+
+function onCloudSyncStateChanged(event) {
+  cloudRuntimeState.value = event?.detail || null
+}
 
 async function loadCloudState() {
   if (!syncConfig.enabled) return
@@ -330,7 +341,7 @@ async function cloudSignOut() {
             <h2>云端同步</h2>
             <p>登录后绑定工作区，让电脑和手机共享任务数据。</p>
           </div>
-          <span class="cloud-state-pill" :class="{ active: cloudSession && cloudStatus?.workspaceId }">{{ cloudStateLabel }}</span>
+          <span class="cloud-state-pill" :class="{ active: cloudSession && cloudStatus?.workspaceId && cloudRuntimeState?.kind !== 'error' }">{{ cloudStateLabel }}</span>
         </div>
         <p v-if="!syncConfig.enabled" class="cloud-hint">当前未配置 Supabase。复制 .env.example 为 .env 并填写项目 URL 与 anon key 后启用。</p>
         <template v-else-if="!cloudSession">
