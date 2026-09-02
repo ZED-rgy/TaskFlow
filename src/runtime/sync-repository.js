@@ -89,6 +89,19 @@ export function createSyncRepository(client = defaultClient) {
       return data || []
     },
 
+    // Workspaces are an implementation detail for the desktop client. Every
+    // signed-in user gets one personal space automatically; existing shared
+    // spaces remain available and an owned space is preferred when present.
+    async ensurePersonalWorkspace() {
+      const session = await this.getSession()
+      if (!session?.user?.id) throw new Error('请先登录云端账户')
+      const workspaces = await this.listWorkspaces()
+      const owned = workspaces.find(workspace => workspace.createdBy === session.user.id)
+      if (owned) return owned
+      if (workspaces[0]) return workspaces[0]
+      return this.createWorkspace('我的任务')
+    },
+
     async createWorkspace(name) {
       const { data, error } = await requireClient(client)
         .rpc('create_workspace', { workspace_name: String(name || '').trim() })

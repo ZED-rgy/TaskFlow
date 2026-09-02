@@ -566,6 +566,15 @@ body.widget-mode #app {
 .cloud-sync-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .cloud-state-pill { flex: 0 0 auto; padding: 5px 9px; border: 1px solid var(--border-soft); border-radius: 999px; color: var(--text-muted); background: var(--bg-elevated); font-size: 10px; }
 .cloud-state-pill.active { color: var(--success); border-color: color-mix(in srgb, var(--success) 32%, var(--border)); background: color-mix(in srgb, var(--success) 8%, transparent); }
+.cloud-connected-summary { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--success) 22%, var(--border-soft)); border-radius: var(--radius-md); background: color-mix(in srgb, var(--success) 5%, var(--bg-base)); }
+.cloud-connected-summary > div { min-width: 0; flex: 1; }
+.cloud-connected-summary strong { display: block; color: var(--success); font-size: 12px; }
+.cloud-connected-summary p { margin-top: 3px; color: var(--text-muted); font-size: 11px; }
+.cloud-live-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 13%, transparent); }
+.cloud-advanced { margin-top: 12px; border-top: 1px solid var(--border-soft); padding-top: 10px; }
+.cloud-advanced summary { cursor: pointer; color: var(--text-muted); font-size: 11px; user-select: none; }
+.cloud-advanced summary:hover { color: var(--text-primary); }
+.cloud-advanced[open] summary { color: var(--accent); }
 .cloud-auth-grid,
 .cloud-workspace-row,
 .cloud-workspace-create { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }

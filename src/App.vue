@@ -334,7 +334,10 @@ async function runCloudSync() {
     syncLastError = ''
     setCloudSyncState(
       nextStatus?.pendingCount ? 'pending' : 'ready',
-      nextStatus?.pendingCount ? `同步中 · 待 ${nextStatus.pendingCount}` : '已同步',
+      nextStatus?.pendingCount ? `正在同步 · 待 ${nextStatus.pendingCount}` : '实时已同步',
+      nextStatus?.pendingCount
+        ? `还有 ${nextStatus.pendingCount} 条本地变更正在上传`
+        : '云端实时连接正常，最新数据已同步',
     )
   } catch (error) {
     const message = String(error?.message || '远端变更应用失败')
@@ -357,14 +360,18 @@ async function startCloudSync() {
     }
     try {
       const session = await syncRepository.getSession()
-      const status = await api.getSyncStatus()
       if (!session) {
         setCloudSyncState('signed-out', '未登录云端')
         return
       }
-      if (!status?.workspaceId) {
-        setCloudSyncState('unbound', '未绑定工作区')
-        return
+      setCloudSyncState('syncing', '准备实时同步', '正在为当前账户准备个人同步空间')
+      const workspace = await syncRepository.ensurePersonalWorkspace()
+      let status = await api.getSyncStatus()
+      if (!workspace?.id) {
+        throw new Error('云端同步空间创建失败')
+      }
+      if (status?.workspaceId !== workspace.id) {
+        status = await api.setSyncWorkspace(workspace.id)
       }
       syncEngine = createSyncEngine({
         localApi: api,
