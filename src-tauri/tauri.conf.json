@@ -27,7 +27,13 @@
     "deep-link": {
       "desktop": {
         "schemes": ["taskflow"]
-      }
+      },
+      "mobile": [
+        {
+          "scheme": ["taskflow"],
+          "appLink": false
+        }
+      ]
     }
   },
   "app": {

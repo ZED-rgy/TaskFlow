@@ -10,12 +10,14 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent};
+#[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
 };
+#[cfg(desktop)]
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 mod domain;
@@ -23,6 +25,7 @@ mod sync;
 
 use domain::normalize_runtime_data;
 use uuid::Uuid;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
 
 const SCHEMA_VERSION: u32 = 3;
@@ -806,6 +809,7 @@ fn write_app_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), Str
     fs::write(path, raw).map_err(|err| err.to_string())
 }
 
+#[cfg(desktop)]
 fn open_quick_add(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("quickadd") {
         let _ = window.show();
@@ -831,6 +835,7 @@ fn open_quick_add(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn apply_quick_add_shortcut(app: &AppHandle, accelerator: &str) -> Result<(), String> {
     let manager = app.global_shortcut();
     let _ = manager.unregister_all();
@@ -848,6 +853,16 @@ fn apply_quick_add_shortcut(app: &AppHandle, accelerator: &str) -> Result<(), St
             }
         })
         .map_err(|err| err.to_string())
+}
+
+#[cfg(mobile)]
+fn open_quick_add(_app: &AppHandle) -> Result<(), String> {
+    Err("移动端请直接使用页面内的添加任务入口".into())
+}
+
+#[cfg(mobile)]
+fn apply_quick_add_shortcut(_app: &AppHandle, _accelerator: &str) -> Result<(), String> {
+    Err("移动端不支持全局快捷键".into())
 }
 
 const FLUSH_DEBOUNCE: Duration = Duration::from_millis(500);
@@ -1278,6 +1293,7 @@ fn effective_widget_size(config: &WidgetConfig) -> (f64, f64) {
     }
 }
 
+#[cfg(desktop)]
 fn apply_widget_bounds(window: &WebviewWindow, config: &WidgetConfig) {
     let _ = window.set_resizable(false);
     // The widget is rendered inside a transparent window. Keep the native
@@ -1455,6 +1471,7 @@ fn write_widget_config_to_disk(app: &AppHandle, config: &WidgetConfig) -> Result
     fs::write(path, raw).map_err(|err| err.to_string())
 }
 
+#[cfg(desktop)]
 fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<WidgetConfig, String> {
     let mut config = read_widget_config(app);
     let previous = config.clone();
@@ -1554,6 +1571,7 @@ fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<Widg
     Ok(config)
 }
 
+#[cfg(desktop)]
 fn save_widget_mini_position(app: &AppHandle, x: i32, y: i32) {
     let mut config = read_widget_config(app);
     if !config.mini {
@@ -1583,6 +1601,7 @@ fn save_widget_mini_position(app: &AppHandle, x: i32, y: i32) {
     };
 }
 
+#[cfg(desktop)]
 fn maybe_destroy_widget(app: &AppHandle) {
     let Some(window) = app.get_webview_window("widget") else {
         return;
@@ -1610,6 +1629,7 @@ fn maybe_destroy_widget(app: &AppHandle) {
     let _ = append_log(app, "info", "widget window destroyed after idle", None);
 }
 
+#[cfg(desktop)]
 fn maybe_snap_mini(app: &AppHandle) {
     let due = {
         let Some(state) = app.try_state::<WidgetConfigState>() else {
@@ -1663,6 +1683,7 @@ fn save_widget_position(
     let _ = write_widget_config(app, &config);
 }
 
+#[cfg(desktop)]
 fn ensure_widget_window(app: &AppHandle) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window("widget") {
         return Ok(window);
@@ -1692,6 +1713,7 @@ fn ensure_widget_window(app: &AppHandle) -> Result<WebviewWindow, String> {
         .map_err(|err| err.to_string())
 }
 
+#[cfg(desktop)]
 fn ensure_main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window("main") {
         return Ok(window);
@@ -1708,6 +1730,7 @@ fn ensure_main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
         .map_err(|err| err.to_string())
 }
 
+#[cfg(desktop)]
 fn show_main(app: &AppHandle) -> Result<(), String> {
     let window = ensure_main_window(app)?;
     let _ = window.unminimize();
@@ -1720,6 +1743,7 @@ fn show_main(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(desktop)]
 fn show_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
     if let Some(state) = app.try_state::<WidgetConfigState>() {
         if let Ok(mut hidden) = state.hidden_at.lock() {
@@ -1750,6 +1774,7 @@ fn show_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
     Ok(config)
 }
 
+#[cfg(desktop)]
 fn hide_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
     if let Some(state) = app.try_state::<WidgetConfigState>() {
         if let Ok(mut hidden) = state.hidden_at.lock() {
@@ -1765,6 +1790,45 @@ fn hide_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
     Ok(config)
 }
 
+#[cfg(mobile)]
+fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<WidgetConfig, String> {
+    let mut config = read_widget_config(app);
+    if let Some(project_id) = patch.project_id {
+        config.project_id = project_id.filter(|item| !item.is_empty());
+    }
+    if let Some(visible) = patch.visible { config.visible = visible; }
+    if let Some(compact) = patch.compact { config.compact = compact; }
+    if let Some(collapsed) = patch.collapsed { config.collapsed = collapsed; }
+    if let Some(mini) = patch.mini { config.mini = mini; }
+    if let Some(status_filter) = patch.status_filter { config.status_filter = status_filter; }
+    if let Some(opacity) = patch.opacity { config.opacity = opacity; }
+    if let Some(limit) = patch.limit { config.limit = limit; }
+    write_widget_config(app, &config)?;
+    Ok(config)
+}
+
+#[cfg(mobile)]
+fn show_main(_app: &AppHandle) -> Result<(), String> { Ok(()) }
+
+#[cfg(mobile)]
+fn show_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
+    patch_widget_config(app, WidgetConfigPatch {
+        project_id: None, visible: Some(true), always_on_top: None, compact: None,
+        collapsed: None, mini: None, status_filter: None, opacity: None, limit: None,
+        x: None, y: None, width: None, height: None,
+    })
+}
+
+#[cfg(mobile)]
+fn hide_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
+    patch_widget_config(app, WidgetConfigPatch {
+        project_id: None, visible: Some(false), always_on_top: None, compact: None,
+        collapsed: None, mini: None, status_filter: None, opacity: None, limit: None,
+        x: None, y: None, width: None, height: None,
+    })
+}
+
+#[cfg(desktop)]
 fn handle_tray_menu(app: &AppHandle, id: &str) {
     match id {
         "show_main" => {
@@ -1788,6 +1852,7 @@ fn handle_tray_menu(app: &AppHandle, id: &str) {
     }
 }
 
+#[cfg(desktop)]
 fn build_system_tray(app: &AppHandle) -> Result<(), String> {
     let show_main_item = MenuItem::with_id(app, "show_main", "显示主窗口", true, None::<&str>)
         .map_err(|err| err.to_string())?;
@@ -2366,6 +2431,7 @@ fn clear_logs(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn export_data(app: AppHandle) -> Result<ExportResult, String> {
     let default_name = format!(
         "taskflow-backup-{}.json",
@@ -2397,6 +2463,7 @@ fn export_data(app: AppHandle) -> Result<ExportResult, String> {
 }
 
 #[tauri::command]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn import_data(app: AppHandle, window: WebviewWindow) -> Result<ImportResult, String> {
     let Some(path) = rfd::FileDialog::new()
         .set_title("导入小光任务备份")
@@ -2427,6 +2494,7 @@ fn import_data(app: AppHandle, window: WebviewWindow) -> Result<ImportResult, St
 }
 
 #[tauri::command]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn export_logs(app: AppHandle) -> Result<ExportResult, String> {
     let default_name = format!("taskflow-log-{}.log", Utc::now().format("%Y%m%d-%H%M%S"));
     let Some(path) = rfd::FileDialog::new()
@@ -2457,6 +2525,27 @@ fn export_logs(app: AppHandle) -> Result<ExportResult, String> {
         file_path: Some(path.to_string_lossy().to_string()),
     })
 }
+
+// Android uses the platform document picker from the mobile UI.  Keep the
+// command names available so the shared frontend can report a clear message
+// instead of failing to register the invoke handler.
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[tauri::command]
+fn export_data(_app: AppHandle) -> Result<ExportResult, String> {
+    Err("请使用移动端文件选择器导出备份".into())
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[tauri::command]
+fn import_data(_app: AppHandle, _window: WebviewWindow) -> Result<ImportResult, String> {
+    Err("请使用移动端文件选择器导入备份".into())
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[tauri::command]
+fn export_logs(_app: AppHandle) -> Result<ExportResult, String> {
+    Err("移动端暂不支持导出日志文件".into())
+}
 #[tauri::command]
 fn get_system_fonts() -> Vec<SystemFont> {
     let fallback_fonts = [
@@ -2486,6 +2575,7 @@ fn get_system_fonts() -> Vec<SystemFont> {
         );
     }
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if let Ok(font_key) = RegKey::predef(HKEY_LOCAL_MACHINE)
         .open_subkey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts")
     {
@@ -2524,6 +2614,7 @@ fn get_system_fonts() -> Vec<SystemFont> {
     fonts.into_values().collect()
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn reg_value_to_string(value: &winreg::RegValue) -> String {
     let utf16: Vec<u16> = value
         .bytes
@@ -2560,10 +2651,12 @@ fn open_quick_add_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[cfg(desktop)]
 fn win_minimize(window: WebviewWindow) -> Result<(), String> {
     window.minimize().map_err(|err| err.to_string())
 }
 #[tauri::command]
+#[cfg(desktop)]
 fn win_maximize(window: WebviewWindow) -> Result<(), String> {
     if window.is_maximized().map_err(|err| err.to_string())? {
         window.unmaximize().map_err(|err| err.to_string())
@@ -2572,6 +2665,7 @@ fn win_maximize(window: WebviewWindow) -> Result<(), String> {
     }
 }
 #[tauri::command]
+#[cfg(desktop)]
 fn win_close(window: WebviewWindow) -> Result<(), String> {
     if window.label() == "main" {
         let _ = window.set_skip_taskbar(true);
@@ -2579,6 +2673,20 @@ fn win_close(window: WebviewWindow) -> Result<(), String> {
     } else {
         window.close().map_err(|err| err.to_string())
     }
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+fn win_minimize(_window: WebviewWindow) -> Result<(), String> { Ok(()) }
+
+#[cfg(mobile)]
+#[tauri::command]
+fn win_maximize(_window: WebviewWindow) -> Result<(), String> { Ok(()) }
+
+#[cfg(mobile)]
+#[tauri::command]
+fn win_close(window: WebviewWindow) -> Result<(), String> {
+    window.close().map_err(|err| err.to_string())
 }
 
 fn collect_task_tree(tasks: &[Task], id: &str) -> Vec<String> {
@@ -2635,6 +2743,7 @@ fn try_signal_existing_instance(deep_link: Option<&str>) -> bool {
     }
 }
 
+#[cfg(desktop)]
 fn main() {
     let deep_link = std::env::args()
         .skip(1)
@@ -2893,6 +3002,73 @@ fn main() {
                 flush_all(app_handle, true);
             }
         });
+}
+
+#[cfg(mobile)]
+#[tauri::mobile_entry_point]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .setup(|app| {
+            let handle = app.handle();
+            let initial = read_data(handle).unwrap_or_else(|_| default_data());
+            app.manage(AppState {
+                data: Mutex::new(initial),
+                dirty_since: Mutex::new(None),
+            });
+            app.manage(WidgetConfigState {
+                config: Mutex::new(None),
+                dirty_since: Mutex::new(None),
+                mini_snap_at: Mutex::new(None),
+                hidden_at: Mutex::new(None),
+                allow_destroy: Mutex::new(false),
+            });
+            app.manage(AppSettingsState { settings: Mutex::new(None) });
+            let _ = append_log(handle, "info", "小光任务 Android started", None);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_widget_config,
+            health_check,
+            update_widget_config,
+            show_main_window,
+            show_widget,
+            hide_widget,
+            get_app_info,
+            get_sync_status,
+            get_sync_outbox,
+            set_sync_workspace,
+            acknowledge_sync,
+            apply_sync_snapshot,
+            get_projects,
+            get_tasks,
+            create_project,
+            update_project,
+            delete_project,
+            restore_project,
+            reorder_projects,
+            create_task,
+            update_task,
+            delete_task,
+            restore_tasks,
+            reorder_tasks,
+            get_due_summary,
+            get_logs,
+            clear_logs,
+            export_data,
+            import_data,
+            export_logs,
+            get_system_fonts,
+            get_app_settings,
+            set_quick_add_shortcut,
+            open_quick_add_window,
+            win_minimize,
+            win_maximize,
+            win_close
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running 小光任务 Android");
 }
 
 // 纯函数单元测试：运行 `npm run test:rust`（或 cargo test --manifest-path src-tauri/Cargo.toml）

@@ -1167,3 +1167,81 @@ body.widget-mode #app {
   .app-brand-icon { width: 18px; height: 18px; }
   .main-area { min-width: 0; }
 }
+
+/* Android / phone layout. Tauri mobile uses the same Vue surface, but the
+   narrow viewport needs a compact icon rail so the task canvas stays usable
+   for touch. Desktop keeps the full project names and window controls. */
+@media (max-width: 600px) {
+  .app-shell { --sidebar-w: 70px; --titlebar-h: 44px; }
+  .titlebar { height: var(--titlebar-h); }
+  .titlebar-drag { padding-left: 10px; }
+  .app-brand { gap: 0; }
+  .app-brand > span:last-child { display: none; }
+  .titlebar-controls { padding-right: 4px; }
+  .titlebar-controls .cloud-sync-indicator,
+  .titlebar-controls .ctrl-divider,
+  .titlebar-controls .ctrl-btn:not(.theme-toggle) { display: none; }
+  .titlebar-controls .theme-toggle { width: 34px; height: 32px; }
+
+  .sidebar { width: var(--sidebar-w); }
+  .project-list { padding: 10px 6px 8px; scrollbar-width: none; }
+  .project-list::-webkit-scrollbar { display: none; }
+  .section-label {
+    height: 20px;
+    padding: 4px 0 2px;
+    font-size: 0;
+    text-align: center;
+  }
+  .section-label::after {
+    content: '•';
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1;
+  }
+  .smart-row,
+  .project-row {
+    justify-content: center;
+    gap: 0;
+    min-height: 44px;
+    padding: 6px;
+    border-radius: 10px;
+  }
+  .smart-name,
+  .proj-name,
+  .proj-name-input,
+  .proj-count,
+  .proj-stripe { display: none; }
+  .smart-icon,
+  .proj-icon { width: 32px; height: 32px; border-radius: 10px; }
+  .smart-icon svg { width: 18px; height: 18px; }
+  .add-project-btn {
+    justify-content: center;
+    gap: 0;
+    height: 46px;
+    padding: 0;
+    font-size: 0;
+  }
+  .add-project-btn svg { width: 18px; height: 18px; }
+  .utility-bar { height: 48px; }
+  .utility-btn { min-width: 0; height: 48px; }
+
+  .list-header { padding: 18px 16px 12px !important; }
+  .list-header h1 { font-size: 24px !important; }
+  .header-right { display: none; }
+  .filter-bar {
+    display: flex !important;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 16px 10px !important;
+  }
+  .search-box { width: 100%; }
+  .segmented { width: 100%; }
+  .segmented button { flex: 1; min-height: 38px; }
+  .filter-pickers { width: 100%; justify-content: space-between; }
+  .filter-select { min-width: 0; flex: 1; }
+  .add-task-bar { padding: 10px 16px !important; }
+  .add-task-inner { min-height: 48px; }
+  .task-scroll { padding: 8px 10px 24px !important; }
+  .task-row { min-height: 56px; padding-inline: 8px; }
+  .task-title { font-size: 15px !important; }
+}
