@@ -601,8 +601,10 @@ function initSortable() {
     handle: '.task-row',
     filter: 'button, input, textarea, select, label, .task-actions, .inline-date-label, .task-title-input',
     preventOnFilter: false,
-    forceFallback: true,
-    fallbackOnBody: true,
+    // 使用浏览器原生拖拽，避免 fallback clone 被挂到 body 后丢失主题变量，
+    // 导致拖拽中的任务出现黑底或结束后残留在页面上。
+    forceFallback: false,
+    fallbackOnBody: false,
     fallbackTolerance: 5,
     ghostClass: 'task-ghost',
     chosenClass: 'task-chosen',
