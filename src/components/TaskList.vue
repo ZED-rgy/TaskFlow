@@ -601,9 +601,9 @@ function initSortable() {
     handle: '.task-row',
     filter: 'button, input, textarea, select, label, .task-actions, .inline-date-label, .task-title-input',
     preventOnFilter: false,
-    // 使用浏览器原生拖拽，避免 fallback clone 被挂到 body 后丢失主题变量，
-    // 导致拖拽中的任务出现黑底或结束后残留在页面上。
-    forceFallback: false,
+    // 保留 Sortable 的 fallback 拖拽（Tauri WebView 对原生 HTML5 drag
+    // 支持不稳定），但让临时克隆留在主题容器内，避免挂到 body 后变黑。
+    forceFallback: true,
     fallbackOnBody: false,
     fallbackTolerance: 5,
     ghostClass: 'task-ghost',
