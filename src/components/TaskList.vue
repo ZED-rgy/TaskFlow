@@ -606,6 +606,8 @@ function initSortable() {
     forceFallback: true,
     fallbackOnBody: false,
     fallbackTolerance: 5,
+    // 预览副本只用于计算拖拽位置，避免在右下角显示一条重复任务。
+    fallbackClass: 'task-fallback',
     ghostClass: 'task-ghost',
     chosenClass: 'task-chosen',
     dragClass: 'task-dragging',
@@ -1869,6 +1871,14 @@ onUnmounted(() => {
   border-color: transparent;
   box-shadow: none;
   background: transparent;
+}
+
+/* Tauri WebView 的 fallback 拖拽会创建一个跟随指针的副本。
+   保留副本参与命中计算，但不再把它绘制成右下角的悬浮任务栏。 */
+:deep(.task-fallback) {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 @keyframes drop-target-pulse {
   0%, 100% { opacity: .42; }
