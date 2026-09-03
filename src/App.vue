@@ -1033,6 +1033,7 @@ onUnmounted(() => {
             @delete="onDeleteTask"
             @reorder="onReorderTasks"
             @selectTask="selectTask"
+            @openMobileNav="mobileNavOpen = true"
           />
           <SettingsView
             v-else-if="currentView === 'settings'"
