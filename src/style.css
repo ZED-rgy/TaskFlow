@@ -1245,3 +1245,186 @@ body.widget-mode #app {
   .task-row { min-height: 56px; padding-inline: 8px; }
   .task-title { font-size: 15px !important; }
 }
+
+/* Android phone canvas ---------------------------------------------------
+   Some Android WebViews report a wide CSS viewport even when the device is
+   held in portrait.  The platform class is added from the UA so the layout
+   remains phone-first instead of compressing the desktop three-column grid. */
+.platform-android .app-shell {
+  --titlebar-h: 54px;
+  --sidebar-w: min(86vw, 300px);
+  min-width: 0;
+}
+.platform-android .titlebar {
+  height: var(--titlebar-h);
+  padding-top: env(safe-area-inset-top, 0px);
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+}
+.platform-android .titlebar-drag { padding-left: 10px; }
+.platform-android .mobile-menu-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-right: 4px;
+  color: var(--text-secondary);
+  border-radius: 12px;
+  transition: color .18s var(--ease-standard), background .18s var(--ease-standard), transform .18s var(--ease-standard);
+}
+.platform-android .mobile-menu-btn:active { transform: scale(.92); }
+.platform-android .mobile-menu-btn:hover,
+.platform-android .mobile-menu-btn[aria-expanded='true'] { color: var(--accent); background: var(--accent-soft); }
+.platform-android .mobile-menu-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.platform-android .app-brand { gap: 7px; font-size: 14px; }
+.platform-android .app-brand-icon { width: 22px; height: 22px; border-radius: 7px; }
+.platform-android .titlebar-controls { padding-right: 8px; }
+.platform-android .titlebar-controls .cloud-sync-indicator { max-width: 92px; padding: 5px 7px; font-size: 9px; }
+.platform-android .titlebar-controls .ctrl-divider,
+.platform-android .titlebar-controls .ctrl-btn:not(.theme-toggle) { display: none; }
+.platform-android .titlebar-controls .theme-toggle { width: 38px; height: 38px; }
+
+.platform-android .layout { position: relative; display: flex; }
+.platform-android .main-area { width: 100%; min-width: 0; }
+.platform-android .sidebar {
+  position: absolute;
+  z-index: 50;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-w);
+  transform: translateX(-104%);
+  transition: transform .3s var(--ease-spring), box-shadow .3s var(--ease-standard);
+  box-shadow: none;
+  will-change: transform;
+}
+.platform-android.mobile-nav-open .sidebar {
+  transform: translateX(0);
+  box-shadow: 20px 0 48px rgba(18, 33, 46, .18);
+}
+.platform-android .mobile-nav-scrim {
+  display: block;
+  position: absolute;
+  z-index: 40;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(14, 26, 36, .26);
+  backdrop-filter: blur(2px);
+  animation: mobile-scrim-in .24s ease both;
+}
+@keyframes mobile-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+.platform-android .project-list { padding: 18px 12px 12px; }
+.platform-android .utility-bar { height: 56px; }
+.platform-android .utility-btn { min-height: 56px; }
+
+/* Task canvas: title, progress and controls stack into clear touch zones. */
+.platform-android .list-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  width: 100%;
+  padding: 22px 18px 12px;
+}
+.platform-android .header-left { align-items: flex-start; gap: 12px; }
+.platform-android .project-icon { width: 48px; height: 48px; border-radius: 16px; }
+.platform-android .header-copy { min-width: 0; }
+.platform-android .header-eyebrow { margin-top: 1px; font-size: 9px; }
+.platform-android .project-title { font-size: 30px !important; line-height: 1.12; white-space: nowrap; }
+.platform-android .header-subtitle { margin-top: 6px; font-size: 12px; }
+.platform-android .header-stats { flex-wrap: wrap; gap: 6px; }
+.platform-android .header-stats span + span::before { margin-right: 6px; }
+.platform-android .header-right {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+}
+.platform-android .progress-copy { min-width: 0; }
+.platform-android .progress-copy strong { font-size: 20px; }
+.platform-android .filter-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  padding: 0 18px 14px;
+}
+.platform-android .search-box {
+  width: 100%;
+  height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 76%, transparent);
+}
+.platform-android .search-box input { font-size: 14px; }
+.platform-android .search-shortcut { display: none; }
+.platform-android .segmented {
+  width: 100%;
+  height: 42px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.platform-android .segmented button { min-height: 42px; font-size: 12px; }
+.platform-android .filter-pickers {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.platform-android .filter-pickers::-webkit-scrollbar { display: none; }
+.platform-android .filter-control { flex: 1 0 auto; min-width: 116px; height: 38px; padding-left: 9px; border-left: 0; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--bg-surface) 74%, transparent); }
+.platform-android .filter-control > span { font-size: 10px; }
+.platform-android .filter-select-trigger { min-height: 36px; font-size: 12px; }
+.platform-android .group-mode-btn { min-height: 38px; padding-inline: 11px; white-space: nowrap; }
+.platform-android .filter-summary,
+.platform-android .save-view-row,
+.platform-android .saved-views { padding-inline: 18px; }
+.platform-android .add-task-bar { width: 100%; padding: 8px 18px 16px; }
+.platform-android .add-task-inner { min-height: 58px; padding: 10px 12px; gap: 8px; border-radius: 15px; }
+.platform-android .add-input { min-width: 80px; font-size: 14px; }
+.platform-android .add-hint { display: none; }
+.platform-android .priority-quick-btn { width: 34px; height: 32px; border-radius: 8px; }
+.platform-android .due-btn-label { min-height: 32px; padding-left: 8px; }
+.platform-android .add-submit-btn { height: 34px; padding-inline: 12px; border-radius: 9px; }
+.platform-android .parse-preview { padding-inline: 2px; }
+.platform-android .task-scroll { padding: 10px 14px 30px; }
+.platform-android .task-items { max-width: none; }
+.platform-android .task-row { min-height: 64px; gap: 10px; padding: 13px 8px; border-radius: 12px; }
+.platform-android .task-title { font-size: 16px !important; }
+.platform-android .task-meta { font-size: 11px; }
+.platform-android .checkbox,
+.platform-android .checkbox-svg { width: 26px; height: 26px; }
+.platform-android .drag-handle { width: 20px; opacity: .42; }
+.platform-android .task-actions { opacity: 1; transform: none; }
+.platform-android .action-btn { width: 34px; height: 34px; }
+.platform-android .group-header { padding-inline: 4px; }
+
+/* Settings and detail drawer use the same single-column rhythm. */
+.platform-android .settings-view { padding: 22px 18px 36px; }
+.platform-android .settings-header { align-items: flex-start; margin-bottom: 18px; }
+.platform-android .settings-header h1 { font-size: 30px !important; }
+.platform-android .settings-nav { width: 100%; overflow-x: auto; scrollbar-width: none; }
+.platform-android .settings-nav::-webkit-scrollbar { display: none; }
+.platform-android .settings-nav-item { flex: 1 0 auto; min-height: 42px; padding-inline: 15px; }
+.platform-android .settings-grid { grid-template-columns: 1fr; gap: 14px; }
+.platform-android .settings-card,
+.platform-android .data-card,
+.platform-android .workflow-shortcut-card,
+.platform-android .workflow-delete-card,
+.platform-android .diagnostic-version-card,
+.platform-android .logs-card { grid-column: 1 / -1 !important; }
+.platform-android .cloud-auth-grid,
+.platform-android .cloud-workspace-row,
+.platform-android .cloud-workspace-create { flex-direction: column; }
+.platform-android .cloud-auth-grid input,
+.platform-android .cloud-workspace-row select,
+.platform-android .cloud-workspace-create input,
+.platform-android .cloud-workspace-row button,
+.platform-android .cloud-workspace-create button { width: 100%; }
+.platform-android .detail-panel.open { width: 100%; max-width: none; box-shadow: -12px 0 32px rgba(16, 33, 46, .2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .platform-android .sidebar,
+  .platform-android .mobile-nav-scrim { transition: none; animation: none; }
+}

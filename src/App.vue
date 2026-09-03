@@ -23,6 +23,7 @@ const projects = ref([])
 const tasks    = ref([])
 const selectedId = ref(null)
 const currentView = ref('project')
+const mobileNavOpen = ref(false)
 const appInfo = ref(null)
 const toast = ref(null)
 const settingsSaveState = ref({ kind: 'idle', text: '自动保存' })
@@ -131,6 +132,29 @@ function setTheme(nextTheme) {
 
 function toggleTheme() {
   setTheme(theme.value === 'midnight' ? 'morning' : 'midnight')
+}
+
+function toggleMobileNav() {
+  mobileNavOpen.value = !mobileNavOpen.value
+}
+
+function closeMobileNav() {
+  mobileNavOpen.value = false
+}
+
+function handleSidebarSelect(id) {
+  closeMobileNav()
+  return selectProject(id)
+}
+
+function handleSidebarView(view) {
+  closeMobileNav()
+  return selectView(view)
+}
+
+function handleSidebarSettings() {
+  closeMobileNav()
+  selectView('settings')
 }
 
 // ── Window controls ───────────────────────────────────
@@ -926,10 +950,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-shell" :class="`theme-${theme}`" :style="fontStyles">
+  <div class="app-shell" :class="[`theme-${theme}`, { 'mobile-nav-open': mobileNavOpen }]" :style="fontStyles">
     <!-- Titlebar -->
     <div class="titlebar" data-tauri-drag-region @dragstart.prevent>
       <div class="titlebar-drag" data-tauri-drag-region>
+        <button class="mobile-menu-btn" type="button" aria-label="打开项目导航" :aria-expanded="mobileNavOpen" @click.stop="toggleMobileNav">
+          <svg v-if="!mobileNavOpen" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" /></svg>
+          <svg v-else viewBox="0 0 18 18" aria-hidden="true"><path d="m4 4 10 10M14 4 4 14" /></svg>
+        </button>
         <span class="app-brand">
           <img draggable="false" class="app-brand-icon" :src="appIconUrl" alt="" />
           <span>小光任务</span>
@@ -973,21 +1001,22 @@ onUnmounted(() => {
 
     <!-- Layout -->
     <div class="layout">
+      <button v-if="mobileNavOpen" class="mobile-nav-scrim" type="button" aria-label="关闭项目导航" @click="closeMobileNav" />
       <Sidebar
         :projects="projects"
         :selectedId="selectedId"
         :currentView="currentView"
         :tasks="tasks"
         :smartCounts="smartCounts"
-        @select="selectProject"
-        @selectView="selectView"
+        @select="handleSidebarSelect"
+        @selectView="handleSidebarView"
         @create="onCreateProject"
         @update="onUpdateProject"
         @delete="onDeleteProject"
         @reorder="onReorderProjects"
         @exportData="onExportData"
         @importData="onImportData"
-        @showSettings="selectView('settings')"
+        @showSettings="handleSidebarSettings"
       />
 
       <main class="main-area">
@@ -1165,6 +1194,8 @@ onUnmounted(() => {
   padding-left: 14px;
   height: 100%;
 }
+.mobile-menu-btn,
+.mobile-nav-scrim { display: none; }
 .app-brand {
   display: inline-flex;
   align-items: center;
