@@ -24,6 +24,7 @@
         "build": "npm run build:portable",
         "build:portable": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-tauri.ps1 -Target portable",
         "build:installer": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-tauri.ps1 -Target installer",
+        "build:android": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1",
         "scan:release": "node scripts/scan-release-privacy.mjs",
         "preview": "vite preview",
         "test": "npm run test:unit && npm run test:rust",
