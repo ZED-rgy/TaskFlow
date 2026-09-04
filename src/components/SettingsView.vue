@@ -160,8 +160,8 @@ const cloudBusy = ref(false)
 const cloudMessage = ref('')
 const cloudRuntimeState = ref(null)
 
-function notifySyncChanged() {
-  window.dispatchEvent(new Event('taskflow-sync-config-changed'))
+function notifySyncChanged(detail = {}) {
+  window.dispatchEvent(new CustomEvent('taskflow-sync-config-changed', { detail }))
 }
 
 const cloudStateLabel = computed(() => {
@@ -186,6 +186,10 @@ const cloudSyncLabel = computed(() => {
 
 function onCloudSyncStateChanged(event) {
   cloudRuntimeState.value = event?.detail || null
+  // 主窗口完成绑定后本地状态（workspaceId / pendingCount）会变化，这里跟着刷新。
+  if (syncConfig.enabled) {
+    api.getSyncStatus().then(status => { cloudStatus.value = status }).catch(() => {})
+  }
 }
 
 async function loadCloudState() {
@@ -194,12 +198,10 @@ async function loadCloudState() {
     cloudSession.value = await syncRepository.getSession()
     cloudStatus.value = await api.getSyncStatus()
     if (cloudSession.value) {
-      const workspace = await syncRepository.ensurePersonalWorkspace()
+      // 工作区的准备与绑定统一由主窗口 startCloudSync 负责：
+      // 它会在首次绑定时检查本机/云端数据冲突并征求用户选择。
+      // 这里只读取列表用于展示，不直接绑定，避免绕过那道检查。
       cloudWorkspaces.value = await syncRepository.listWorkspaces()
-      if (workspace?.id && cloudStatus.value?.workspaceId !== workspace.id) {
-        cloudStatus.value = await api.setSyncWorkspace(workspace.id)
-        notifySyncChanged()
-      }
     } else {
       cloudWorkspaces.value = []
     }
@@ -219,12 +221,9 @@ async function cloudAuth(action) {
     cloudPassword.value = ''
     cloudStatus.value = await api.getSyncStatus()
     if (cloudSession.value) {
-      const workspace = await syncRepository.ensurePersonalWorkspace()
       cloudWorkspaces.value = await syncRepository.listWorkspaces()
-      if (workspace?.id && cloudStatus.value?.workspaceId !== workspace.id) {
-        cloudStatus.value = await api.setSyncWorkspace(workspace.id)
-      }
-      cloudMessage.value = '登录成功，云端实时同步已开启'
+      cloudMessage.value = '登录成功，正在准备云端同步'
+      // 绑定与首次数据冲突处理交给主窗口。
       notifySyncChanged()
     } else {
       // Email confirmation may be required before Supabase creates a session.
@@ -261,9 +260,10 @@ async function bindCloudWorkspace(workspaceId) {
   cloudBusy.value = true
   cloudMessage.value = ''
   try {
-    cloudStatus.value = await api.setSyncWorkspace(workspaceId)
-    cloudMessage.value = '工作区已绑定'
-    notifySyncChanged()
+    // 由主窗口统一完成首次绑定检查、备份和本机/云端数据取舍。
+    // 设置页直接写 workspaceId 会绕过这些保护。
+    cloudMessage.value = '正在检查工作区数据…'
+    notifySyncChanged({ workspaceId })
   } catch (error) {
     cloudMessage.value = error?.message || '绑定工作区失败'
   } finally {
@@ -277,7 +277,7 @@ async function unbindCloudWorkspace() {
   try {
     cloudStatus.value = await api.setSyncWorkspace(null)
     cloudMessage.value = '已解除工作区绑定'
-    notifySyncChanged()
+    notifySyncChanged({ stop: true })
   } catch (error) {
     cloudMessage.value = error?.message || '解除绑定失败'
   } finally {
@@ -294,7 +294,7 @@ async function cloudSignOut() {
     cloudSession.value = null
     cloudWorkspaces.value = []
     cloudMessage.value = '已退出登录'
-    notifySyncChanged()
+    notifySyncChanged({ stop: true })
   } catch (error) {
     cloudMessage.value = error?.message || '退出失败'
   } finally {

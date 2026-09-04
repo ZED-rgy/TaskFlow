@@ -78,26 +78,59 @@ fn normalize(mut state: SyncState) -> SyncState {
     state
 }
 
+fn read_raw(path: &Path) -> Result<SyncState, String> {
+    let raw = fs::read_to_string(path).map_err(|err| err.to_string())?;
+    serde_json::from_str::<SyncState>(raw.trim_start_matches('\u{feff}'))
+        .map_err(|err| format!("同步状态损坏：{err}"))
+}
+
+fn read_valid(path: &Path) -> Result<SyncState, String> {
+    read_raw(path).map(normalize)
+}
+
 pub fn load(path: &Path) -> Result<SyncState, String> {
+    let tmp = path.with_extension("json.tmp");
+    let previous = path.with_extension("json.prev");
+    let previous_old = path.with_extension("json.prev.old");
+    let primary_error = if path.exists() {
+        match read_raw(path) {
+            Ok(state) => {
+                let normalized = normalize(state.clone());
+                if normalized != state {
+                    save(path, &normalized)?;
+                }
+                return Ok(normalized);
+            }
+            Err(error) => Some(error),
+        }
+    } else {
+        None
+    };
+
+    for recovery in [&tmp, &previous, &previous_old] {
+        if !recovery.exists() {
+            continue;
+        }
+        if let Ok(state) = read_valid(recovery) {
+            save(path, &state)?;
+            return Ok(state);
+        }
+    }
+
     if !path.exists() {
         let state = SyncState::default();
         save(path, &state)?;
         return Ok(state);
     }
-    let raw = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    let state = serde_json::from_str::<SyncState>(raw.trim_start_matches('\u{feff}'))
-        .map_err(|err| format!("同步状态损坏：{err}"))?;
-    let normalized = normalize(state.clone());
-    if normalized != state {
-        save(path, &normalized)?;
-    }
-    Ok(normalized)
+    Err(primary_error.unwrap_or_else(|| "同步状态无法读取".into()))
 }
 
 pub fn save(path: &Path, state: &SyncState) -> Result<(), String> {
     let normalized = normalize(state.clone());
     let raw = serde_json::to_string_pretty(&normalized).map_err(|err| err.to_string())?;
-    let tmp = path.with_extension(format!("json.{}.tmp", Uuid::new_v4()));
+    let tmp = path.with_extension("json.tmp");
+    let previous = path.with_extension("json.prev");
+    let _ = fs::remove_file(&tmp);
     let mut file = fs::OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -107,12 +140,35 @@ pub fn save(path: &Path, state: &SyncState) -> Result<(), String> {
         .map_err(|err| err.to_string())?;
     file.sync_all().map_err(|err| err.to_string())?;
     drop(file);
-    fs::rename(&tmp, path).or_else(|_| {
-        fs::copy(&tmp, path)
-            .map(|_| ())
-            .map_err(|err| err.to_string())
-    })?;
-    let _ = fs::remove_file(tmp);
+
+    // 只用可解析的当前主文件刷新 .prev，避免一次损坏覆盖最后的可恢复副本。
+    if path.exists() && read_valid(path).is_ok() {
+        let previous_tmp = path.with_extension("json.prev.tmp");
+        let previous_old = path.with_extension("json.prev.old");
+        let _ = fs::remove_file(&previous_tmp);
+        fs::copy(path, &previous_tmp).map_err(|err| err.to_string())?;
+        let _ = fs::remove_file(&previous_old);
+        if previous.exists() {
+            fs::rename(&previous, &previous_old).map_err(|err| err.to_string())?;
+        }
+        if let Err(error) = fs::rename(&previous_tmp, &previous) {
+            if previous_old.exists() {
+                let _ = fs::rename(&previous_old, &previous);
+            }
+            return Err(error.to_string());
+        }
+        let _ = fs::remove_file(previous_old);
+    }
+
+    if path.exists() {
+        fs::remove_file(path).map_err(|err| err.to_string())?;
+    }
+    if let Err(error) = fs::rename(&tmp, path) {
+        if previous.exists() {
+            let _ = fs::copy(&previous, path);
+        }
+        return Err(error.to_string());
+    }
     Ok(())
 }
 

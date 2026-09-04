@@ -32,6 +32,8 @@ export const api = {
     cursor,
   }),
   applySyncSnapshot: data => invoke('apply_sync_snapshot', { data }),
+  enqueueLocalSnapshot: () => invoke('enqueue_local_snapshot'),
+  backupLocalData: reason => invoke('backup_local_data', { reason }),
   getLogs: () => invoke('get_logs'),
   clearLogs: () => invoke('clear_logs'),
   exportLogs: () => invoke('export_logs'),

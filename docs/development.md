@@ -42,7 +42,29 @@ npm.cmd run build
 
 `release/小光任务.exe`
 
+如果正在运行的便携版锁住了 `release/小光任务.exe`，可先只验证编译产物而不覆盖运行版本：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-tauri.ps1 -Target portable -SkipReleaseCopy
+```
+
 > 说明：项目已完全迁移到 Tauri，Electron 版已于 2026-06-11 移除；桌面运行时已于 2026-08-25 升级到 Tauri 2（历史均可在 git 中找回）。
+
+---
+
+## Android 调试 APK
+
+Android 客户端与桌面端共用 Vue 业务层，运行时会切换到移动时间线布局。构建前需要安装 Android SDK、NDK、JDK 和 Rust Android target，并确保 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT` 已指向 SDK 目录。
+
+```powershell
+npm.cmd run build:android
+```
+
+脚本会生成 arm64 调试 APK：
+
+`release/小光任务-android-arm64-debug.apk`
+
+Android 构建脚本会把 Cargo 临时产物放在 ASCII 路径，并在 Windows 无法创建符号链接时回退为复制，避免中文工作区路径或系统开发者模式设置导致构建失败。浏览器中的移动端预览（例如 Playwright 设备模拟）仅用于布局与交互回归，不替代真机 APK 验收。
 
 ---
 

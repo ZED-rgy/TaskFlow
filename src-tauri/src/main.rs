@@ -10,12 +10,14 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent};
 #[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
 };
 #[cfg(desktop)]
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -741,9 +743,49 @@ fn read_data(app: &AppHandle) -> Result<TaskFlowData, String> {
     }
 }
 
+#[derive(Debug, Default)]
+struct ChangeTracker {
+    dirty_since: Option<Instant>,
+    revision: u64,
+    synced_revision: u64,
+}
+
+impl ChangeTracker {
+    fn mark_changed(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
+        self.dirty_since = Some(Instant::now());
+    }
+
+    fn sync_due(&self) -> bool {
+        self.revision > self.synced_revision
+    }
+
+    fn mark_data_flushed(&mut self, marked: Option<Instant>) {
+        if self.dirty_since == marked {
+            self.dirty_since = None;
+        }
+    }
+
+    fn mark_sync_enqueued(&mut self, revision: u64) {
+        self.synced_revision = self.synced_revision.max(revision);
+    }
+
+    fn mark_remote_applied(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
+        self.synced_revision = self.revision;
+        self.dirty_since = None;
+    }
+}
+
+struct AppStateData {
+    data: TaskFlowData,
+    tracker: ChangeTracker,
+}
+
 struct AppState {
-    data: Mutex<TaskFlowData>,
-    dirty_since: Mutex<Option<Instant>>,
+    inner: Mutex<AppStateData>,
+    /// 串行化本地持久化、outbox 生成和远端快照应用，避免交错写入旧快照。
+    persist_lock: Mutex<()>,
 }
 
 struct WidgetConfigState {
@@ -870,11 +912,11 @@ const FLUSH_DEBOUNCE: Duration = Duration::from_millis(500);
 fn read_state(app: &AppHandle) -> Result<TaskFlowData, String> {
     match app.try_state::<AppState>() {
         Some(state) => {
-            let data = state
-                .data
+            let inner = state
+                .inner
                 .lock()
                 .map_err(|_| "数据状态锁异常".to_string())?;
-            Ok(data.clone())
+            Ok(inner.data.clone())
         }
         None => read_data(app),
     }
@@ -896,29 +938,23 @@ fn write_state(app: &AppHandle, data: &TaskFlowData, origin: Option<&str>) -> Re
     let data = normalize_runtime_data(data.clone())?;
     match app.try_state::<AppState>() {
         Some(state) => {
-            {
-                let mut guard = state
-                    .data
-                    .lock()
-                    .map_err(|_| "数据状态锁异常".to_string())?;
-                *guard = data.clone();
-            }
-            {
-                let mut dirty = state
-                    .dirty_since
-                    .lock()
-                    .map_err(|_| "数据状态锁异常".to_string())?;
-                *dirty = Some(Instant::now());
-            }
-            // 同步 outbox 是本地增强能力，写入失败不应阻断桌面端本地操作。
-            if let Err(error) = enqueue_workspace_snapshot(app, &data) {
-                let _ = append_log(app, "warn", "sync outbox write failed", Some(error));
-            }
+            let _persist = state
+                .persist_lock
+                .lock()
+                .map_err(|_| "数据持久化锁异常".to_string())?;
+            let mut inner = state
+                .inner
+                .lock()
+                .map_err(|_| "数据状态锁异常".to_string())?;
+            inner.data = data;
+            inner.tracker.mark_changed();
+            drop(inner);
             emit_data_changed(app, origin);
             Ok(())
         }
         None => {
             write_data_file(app, &data, true)?;
+            // 同步 outbox 是本地增强能力，写入失败不应阻断本地操作。
             if let Err(error) = enqueue_workspace_snapshot(app, &data) {
                 let _ = append_log(app, "warn", "sync outbox write failed", Some(error));
             }
@@ -931,34 +967,53 @@ fn flush_state(app: &AppHandle, force: bool) -> Result<bool, String> {
     let Some(state) = app.try_state::<AppState>() else {
         return Ok(false);
     };
-    let marked = {
-        let dirty = state
-            .dirty_since
+    let _persist = state
+        .persist_lock
+        .lock()
+        .map_err(|_| "数据持久化锁异常".to_string())?;
+    let (snapshot, marked, revision, data_due, sync_due) = {
+        let inner = state
+            .inner
             .lock()
             .map_err(|_| "数据状态锁异常".to_string())?;
-        *dirty
+        let marked = inner.tracker.dirty_since;
+        let data_due = match marked {
+            Some(changed_at) => force || changed_at.elapsed() >= FLUSH_DEBOUNCE,
+            None => false,
+        };
+        (
+            inner.data.clone(),
+            marked,
+            inner.tracker.revision,
+            data_due,
+            inner.tracker.sync_due() && (data_due || marked.is_none()),
+        )
     };
-    let should_flush = match marked {
-        Some(changed_at) => force || changed_at.elapsed() >= FLUSH_DEBOUNCE,
-        None => false,
-    };
-    if !should_flush {
+    if !data_due && !sync_due {
         return Ok(false);
     }
-    let snapshot = {
-        let data = state
-            .data
-            .lock()
-            .map_err(|_| "数据状态锁异常".to_string())?;
-        data.clone()
-    };
-    write_data_file(app, &snapshot, false)?;
-    let mut dirty = state
-        .dirty_since
+    if data_due {
+        write_data_file(app, &snapshot, false)?;
+    }
+    let mut sync_enqueued = false;
+    if sync_due {
+        match enqueue_workspace_snapshot(app, &snapshot) {
+            Ok(()) => sync_enqueued = true,
+            Err(error) => {
+                // synced_revision 不前移；即使数据已落盘，下一轮也仍会重试 outbox。
+                let _ = append_log(app, "warn", "sync outbox write failed", Some(error));
+            }
+        }
+    }
+    let mut inner = state
+        .inner
         .lock()
         .map_err(|_| "数据状态锁异常".to_string())?;
-    if *dirty == marked {
-        *dirty = None;
+    if data_due {
+        inner.tracker.mark_data_flushed(marked);
+    }
+    if sync_enqueued {
+        inner.tracker.mark_sync_enqueued(revision);
     }
     Ok(true)
 }
@@ -1796,36 +1851,78 @@ fn patch_widget_config(app: &AppHandle, patch: WidgetConfigPatch) -> Result<Widg
     if let Some(project_id) = patch.project_id {
         config.project_id = project_id.filter(|item| !item.is_empty());
     }
-    if let Some(visible) = patch.visible { config.visible = visible; }
-    if let Some(compact) = patch.compact { config.compact = compact; }
-    if let Some(collapsed) = patch.collapsed { config.collapsed = collapsed; }
-    if let Some(mini) = patch.mini { config.mini = mini; }
-    if let Some(status_filter) = patch.status_filter { config.status_filter = status_filter; }
-    if let Some(opacity) = patch.opacity { config.opacity = opacity; }
-    if let Some(limit) = patch.limit { config.limit = limit; }
+    if let Some(visible) = patch.visible {
+        config.visible = visible;
+    }
+    if let Some(compact) = patch.compact {
+        config.compact = compact;
+    }
+    if let Some(collapsed) = patch.collapsed {
+        config.collapsed = collapsed;
+    }
+    if let Some(mini) = patch.mini {
+        config.mini = mini;
+    }
+    if let Some(status_filter) = patch.status_filter {
+        config.status_filter = status_filter;
+    }
+    if let Some(opacity) = patch.opacity {
+        config.opacity = opacity;
+    }
+    if let Some(limit) = patch.limit {
+        config.limit = limit;
+    }
     write_widget_config(app, &config)?;
     Ok(config)
 }
 
 #[cfg(mobile)]
-fn show_main(_app: &AppHandle) -> Result<(), String> { Ok(()) }
+fn show_main(_app: &AppHandle) -> Result<(), String> {
+    Ok(())
+}
 
 #[cfg(mobile)]
 fn show_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
-    patch_widget_config(app, WidgetConfigPatch {
-        project_id: None, visible: Some(true), always_on_top: None, compact: None,
-        collapsed: None, mini: None, status_filter: None, opacity: None, limit: None,
-        x: None, y: None, width: None, height: None,
-    })
+    patch_widget_config(
+        app,
+        WidgetConfigPatch {
+            project_id: None,
+            visible: Some(true),
+            always_on_top: None,
+            compact: None,
+            collapsed: None,
+            mini: None,
+            status_filter: None,
+            opacity: None,
+            limit: None,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+        },
+    )
 }
 
 #[cfg(mobile)]
 fn hide_widget_window(app: &AppHandle) -> Result<WidgetConfig, String> {
-    patch_widget_config(app, WidgetConfigPatch {
-        project_id: None, visible: Some(false), always_on_top: None, compact: None,
-        collapsed: None, mini: None, status_filter: None, opacity: None, limit: None,
-        x: None, y: None, width: None, height: None,
-    })
+    patch_widget_config(
+        app,
+        WidgetConfigPatch {
+            project_id: None,
+            visible: Some(false),
+            always_on_top: None,
+            compact: None,
+            collapsed: None,
+            mini: None,
+            status_filter: None,
+            opacity: None,
+            limit: None,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+        },
+    )
 }
 
 #[cfg(desktop)]
@@ -1937,6 +2034,35 @@ fn acknowledge_sync(
     sync::status(&path)
 }
 
+/// Force the current local workspace into the outbox as a fresh snapshot.
+/// Used when the user chooses to keep or merge local data during the first
+/// binding; without an edit nothing would otherwise be uploaded.
+#[tauri::command]
+fn enqueue_local_snapshot(app: AppHandle) -> Result<sync::SyncStatus, String> {
+    let data = read_state(&app)?;
+    enqueue_workspace_snapshot(&app, &data)?;
+    sync::status(&sync_state_path(&app)?)
+}
+
+/// Create a named backup of the on-disk data file before a destructive
+/// operation such as adopting a remote snapshot. The reason is restricted to
+/// a safe file-name fragment so the frontend cannot influence the path.
+#[tauri::command]
+fn backup_local_data(app: AppHandle, reason: String) -> Result<Option<String>, String> {
+    let safe: String = reason
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .take(40)
+        .collect();
+    let reason = if safe.is_empty() {
+        "manual"
+    } else {
+        safe.as_str()
+    };
+    let path = backup_raw_data_file(&app, reason)?;
+    Ok(path.map(|p| p.to_string_lossy().to_string()))
+}
+
 /// Apply a validated remote snapshot without creating a new outbox entry.
 /// Remote changes must not echo back to the cloud as a fresh local mutation.
 #[tauri::command]
@@ -1947,21 +2073,19 @@ fn apply_sync_snapshot(
 ) -> Result<TaskFlowData, String> {
     let snapshot = normalize_runtime_data(data)?;
     if let Some(state) = app.try_state::<AppState>() {
-        {
-            let mut guard = state
-                .data
-                .lock()
-                .map_err(|_| "数据状态锁异常".to_string())?;
-            *guard = snapshot.clone();
-        }
-        {
-            let mut dirty = state
-                .dirty_since
-                .lock()
-                .map_err(|_| "数据状态锁异常".to_string())?;
-            *dirty = None;
-        }
+        let _persist = state
+            .persist_lock
+            .lock()
+            .map_err(|_| "数据持久化锁异常".to_string())?;
         write_data_file(&app, &snapshot, false)?;
+        let mut inner = state
+            .inner
+            .lock()
+            .map_err(|_| "数据状态锁异常".to_string())?;
+        inner.data = snapshot.clone();
+        // 云端状态已经是权威版本，不生成新的 outbox 操作，避免同步回声。
+        inner.tracker.mark_remote_applied();
+        drop(inner);
         emit_data_changed(&app, Some(window.label()));
     } else {
         write_data_file(&app, &snapshot, true)?;
@@ -2677,11 +2801,15 @@ fn win_close(window: WebviewWindow) -> Result<(), String> {
 
 #[cfg(mobile)]
 #[tauri::command]
-fn win_minimize(_window: WebviewWindow) -> Result<(), String> { Ok(()) }
+fn win_minimize(_window: WebviewWindow) -> Result<(), String> {
+    Ok(())
+}
 
 #[cfg(mobile)]
 #[tauri::command]
-fn win_maximize(_window: WebviewWindow) -> Result<(), String> { Ok(()) }
+fn win_maximize(_window: WebviewWindow) -> Result<(), String> {
+    Ok(())
+}
 
 #[cfg(mobile)]
 #[tauri::command]
@@ -2770,7 +2898,12 @@ fn main() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 if let Err(error) = app.deep_link().register_all() {
-                    let _ = append_log(&handle, "warn", "deep-link registration failed", Some(error.to_string()));
+                    let _ = append_log(
+                        &handle,
+                        "warn",
+                        "deep-link registration failed",
+                        Some(error.to_string()),
+                    );
                 }
             }
             build_system_tray(&handle)?;
@@ -2783,8 +2916,11 @@ fn main() {
                 }
             };
             app.manage(AppState {
-                data: Mutex::new(initial),
-                dirty_since: Mutex::new(None),
+                inner: Mutex::new(AppStateData {
+                    data: initial,
+                    tracker: ChangeTracker::default(),
+                }),
+                persist_lock: Mutex::new(()),
             });
             app.manage(WidgetConfigState {
                 config: Mutex::new(None),
@@ -2968,6 +3104,8 @@ fn main() {
             get_sync_outbox,
             set_sync_workspace,
             acknowledge_sync,
+            enqueue_local_snapshot,
+            backup_local_data,
             apply_sync_snapshot,
             get_projects,
             get_tasks,
@@ -3014,8 +3152,11 @@ pub fn run() {
             let handle = app.handle();
             let initial = read_data(handle).unwrap_or_else(|_| default_data());
             app.manage(AppState {
-                data: Mutex::new(initial),
-                dirty_since: Mutex::new(None),
+                inner: Mutex::new(AppStateData {
+                    data: initial,
+                    tracker: ChangeTracker::default(),
+                }),
+                persist_lock: Mutex::new(()),
             });
             app.manage(WidgetConfigState {
                 config: Mutex::new(None),
@@ -3024,7 +3165,16 @@ pub fn run() {
                 hidden_at: Mutex::new(None),
                 allow_destroy: Mutex::new(false),
             });
-            app.manage(AppSettingsState { settings: Mutex::new(None) });
+            app.manage(AppSettingsState {
+                settings: Mutex::new(None),
+            });
+            // 移动端同样需要后台防抖落盘：没有这条线程，write_state 只会更新内存，
+            // 数据要等到备份/导入才会写入文件，进程被系统回收时会丢失。
+            let flush_handle = handle.clone();
+            thread::spawn(move || loop {
+                thread::sleep(Duration::from_millis(250));
+                flush_all(&flush_handle, false);
+            });
             let _ = append_log(handle, "info", "小光任务 Android started", None);
             Ok(())
         })
@@ -3040,6 +3190,8 @@ pub fn run() {
             get_sync_outbox,
             set_sync_workspace,
             acknowledge_sync,
+            enqueue_local_snapshot,
+            backup_local_data,
             apply_sync_snapshot,
             get_projects,
             get_tasks,
@@ -3067,8 +3219,13 @@ pub fn run() {
             win_maximize,
             win_close
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running 小光任务 Android");
+        .build(tauri::generate_context!())
+        .expect("error while running 小光任务 Android")
+        .run(|app_handle, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                flush_all(app_handle, true);
+            }
+        });
 }
 
 // 纯函数单元测试：运行 `npm run test:rust`（或 cargo test --manifest-path src-tauri/Cargo.toml）
@@ -3546,5 +3703,39 @@ mod tests {
         let _ = sync::enqueue(&path, sync::new_snapshot(serde_json::json!({"v": 1}), None));
         assert!(sync::set_workspace(&path, Some("workspace-c".into())).is_err());
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn failed_sync_enqueue_remains_due_after_data_is_flushed() {
+        let mut tracker = ChangeTracker::default();
+        tracker.mark_changed();
+        let revision = tracker.revision;
+
+        tracker.mark_data_flushed(tracker.dirty_since);
+        assert_eq!(tracker.dirty_since, None);
+        assert!(tracker.sync_due(), "outbox 写入失败后必须继续重试");
+
+        tracker.mark_sync_enqueued(revision);
+        assert!(!tracker.sync_due());
+
+        tracker.mark_changed();
+        assert!(tracker.sync_due(), "确认旧快照不能清除更新版本的待同步状态");
+    }
+
+    #[test]
+    fn corrupt_sync_state_recovers_previous_file() {
+        let path = sync_temp_path("recovery");
+        let previous = path.with_extension("json.prev");
+        let mut expected = sync::SyncState::default();
+        expected.workspace_id = Some("workspace-safe".into());
+        fs::write(&previous, serde_json::to_string_pretty(&expected).unwrap()).unwrap();
+        fs::write(&path, "{broken").unwrap();
+
+        let recovered = sync::load(&path).expect("应从同步状态备份恢复");
+
+        assert_eq!(recovered.workspace_id.as_deref(), Some("workspace-safe"));
+        assert!(sync::load(&path).is_ok(), "恢复后主文件也应可再次读取");
+        let _ = fs::remove_file(path);
+        let _ = fs::remove_file(previous);
     }
 }

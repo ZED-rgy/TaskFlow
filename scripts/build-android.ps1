@@ -99,9 +99,34 @@ try {
     New-Item -ItemType Directory -Force -Path $jniDir | Out-Null
     Copy-Item -LiteralPath $rustLibrary -Destination (Join-Path $jniDir 'libtaskflow_lite.so') -Force
 
+    # When the Tauri CLI stops at the Windows symlink step, it also skips
+    # copying the web bundle into the generated Android project.  Keep the
+    # fallback build fully usable by copying the already-built frontend into
+    # the standard Android assets directory before Gradle packages the APK.
+    $webDist = Join-Path $projectRoot 'dist'
+    $androidAssets = Join-Path $androidRoot 'app\src\main\assets'
+    if (-not (Test-Path -LiteralPath (Join-Path $webDist 'index.html'))) {
+        throw "Frontend bundle was not found: $webDist"
+    }
+    New-Item -ItemType Directory -Force -Path $androidAssets | Out-Null
+    Get-ChildItem -LiteralPath $androidAssets -Force -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force
+    Copy-Item -Path (Join-Path $webDist '*') -Destination $androidAssets -Recurse -Force
+
     Push-Location $androidRoot
     try {
-        Invoke-Native '.\gradlew.bat' @('clean', 'assembleArm64Debug', '-x', 'rustBuildArm64Debug', '-x', 'rustBuildUniversalDebug')
+        # Kotlin incremental caches store absolute source roots. Building this
+        # generated project through an ASCII fallback path can otherwise make
+        # the daemon compare different drive roots and fall back after errors.
+        Invoke-Native '.\gradlew.bat' @(
+            'clean',
+            'assembleArm64Debug',
+            '-Pkotlin.incremental=false',
+            '-Dkotlin.compiler.execution.strategy=in-process',
+            '--no-daemon',
+            '-x', 'rustBuildArm64Debug',
+            '-x', 'rustBuildUniversalDebug'
+        )
     }
     finally {
         Pop-Location

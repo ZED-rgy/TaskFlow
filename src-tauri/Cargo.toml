@@ -5,11 +5,11 @@ description = "小光任务 desktop app"
 authors = ["小光任务"]
 edition = "2021"
 
-# Tauri mobile builds link the Rust entrypoint as a library.  Keep the
-# existing source layout while exposing the same module as the mobile lib
-# target; the desktop binary continues to use `main.rs` as before.
+# Tauri mobile builds link the Rust entrypoint as a library. Desktop builds
+# keep using the binary directly, so the large app module is not compiled and
+# tested twice on Windows.
 [lib]
-path = "src/main.rs"
+path = "src/lib.rs"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

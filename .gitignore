@@ -17,6 +17,11 @@ coverage/
 .env.*
 !.env.example
 
+# Local browser/device verification traces
+.playwright-cli/
+output/playwright/
+supabase/.temp/
+
 # 编辑器与系统文件
 .idea/
 .vscode/

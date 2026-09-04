@@ -47,13 +47,47 @@ export function createSyncEngine({ localApi, repository, onStateChange } = {}) {
 
         const outbox = await localApi.getSyncOutbox()
         const pending = Array.isArray(outbox?.outbox) ? outbox.outbox.slice(0, MAX_PUSH_BATCH) : []
+        const foreignRemoteEvents = remoteEvents.filter(event => event?.client_id !== status.deviceId)
+        if (pending.length && foreignRemoteEvents.length) {
+          const result = {
+            kind: 'conflict',
+            pushed: 0,
+            remoteEvents,
+            nextCursor: maxCursor(remoteEvents),
+            pendingCount: pending.length,
+          }
+          pendingRemoteCursor = null
+          emit(result)
+          return result
+        }
         const pushedIds = []
         for (const operation of pending) {
-          const acknowledgement = await repository.pushOperation({
-            workspaceId: status.workspaceId,
-            deviceId: status.deviceId,
-            operation,
-          })
+          let acknowledgement
+          try {
+            acknowledgement = await repository.pushOperation({
+              workspaceId: status.workspaceId,
+              deviceId: status.deviceId,
+              operation,
+            })
+          } catch (error) {
+            if (String(error?.code || '') !== '40001') throw error
+            // 另一台设备可能恰好在本轮 pull 之后写入。服务端 CAS 拒绝本机快照后
+            // 重新拉取，让调用方走与普通冲突完全相同的数据取舍流程。
+            const racingEvents = await repository.pullChanges({
+              workspaceId: status.workspaceId,
+              cursor: status.cursor,
+            })
+            const result = {
+              kind: 'conflict',
+              pushed: 0,
+              remoteEvents: racingEvents,
+              nextCursor: maxCursor(racingEvents),
+              pendingCount: pending.length,
+            }
+            pendingRemoteCursor = null
+            emit(result)
+            return result
+          }
           if (!acknowledgement || acknowledgement.operation_id !== operation.operationId) {
             throw new Error(`云端未确认操作：${operation.operationId}`)
           }

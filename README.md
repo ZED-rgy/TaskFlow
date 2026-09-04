@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/icon.svg" width="96" alt="小光任务图标" />
   <h1>TaskFlow · 小光任务</h1>
-  <p>一个本地优先、支持云端同步的 Windows 桌面任务管理器。</p>
+  <p>一个本地优先、支持云端同步的 Windows 桌面与 Android 任务管理器。</p>
 </div>
 
 ## 功能
@@ -23,7 +23,7 @@
 - Tauri 2 + Rust：桌面窗口、本地存储、系统托盘和通知
 - SortableJS：任务拖拽排序
 
-当前主要面向 Windows。Rust 后端使用了 Windows 注册表读取能力，其他平台尚未完成适配与验证。
+当前桌面端主要面向 Windows；Android 端复用 Vue 业务层与 Supabase 同步能力，并提供独立的移动时间线布局。Rust 后端的桌面能力（窗口、托盘、通知等）不应视为 Android 已完成适配。
 
 ## 快速开始
 
@@ -49,6 +49,7 @@ npm.cmd run dev
 | `npm.cmd run verify` | 运行规则测试、前端构建、Rust 检查和单元测试 |
 | `npm.cmd run build` | 生成本地便携版 exe |
 | `npm.cmd run build:installer` | 生成 NSIS 安装包 |
+| `npm.cmd run build:android` | 生成 Android arm64 调试 APK（需 Android SDK/NDK） |
 | `npm.cmd run generate:icon` | 重新生成 Windows 图标与网页 favicon |
 
 更完整的开发、构建和桌面验收步骤见 [docs/development.md](docs/development.md)。
@@ -87,7 +88,7 @@ TaskFlow/
 
 启动和导入前会自动创建备份，默认保留最近 30 份。云同步为可选功能，仅使用 Supabase 公共 anon key；服务端通过用户身份和 RLS 隔离数据，不把 `service_role` key 放入客户端。
 
-登录后系统会自动准备个人同步空间，普通用户不需要手动创建工作区。云端同步状态会显示在窗口顶部；断网时变更先进入本地待同步队列，恢复网络后自动补传。实现边界和 Supabase 配置见 [docs/sync.md](docs/sync.md)。
+登录后系统会自动准备个人同步空间，也会保留用户明确选择的已有/共享工作区。云端同步状态会显示在窗口顶部；断网时变更先进入本地待同步队列，恢复网络后自动补传。两台设备并发修改时会暂停上传，让用户选择合并、使用云端或使用本机，并在覆盖前自动备份。实现边界和 Supabase 配置见 [docs/sync.md](docs/sync.md)。
 
 ## 质量检查
 
@@ -96,7 +97,7 @@ TaskFlow/
 - 智能视图和桌面组件排序规则测试
 - Vite 生产构建
 - `cargo check`
-- 24 个 Rust 数据恢复、规范化、导入、重复任务和任务树单元测试
+- 32 个 Rust 数据恢复、规范化、导入、重复任务、任务树和同步队列单元测试
 - GitHub Actions 的 Windows 全链路构建与 RustSec 依赖审计
 
 提交改动前请运行：

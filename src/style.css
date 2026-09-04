@@ -1049,6 +1049,7 @@ body.widget-mode #app {
 .confirm-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 14px;
 }
@@ -1083,6 +1084,10 @@ body.widget-mode #app {
   color: var(--text-primary);
   border-color: var(--text-muted);
   transform: translateY(-1px);
+}
+.secondary-btn.danger {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 .shortcut-input {
   min-width: 190px;
@@ -1299,6 +1304,28 @@ body.widget-mode #app {
   transform: translateX(0);
   box-shadow: 20px 0 48px rgba(18, 33, 46, .18);
 }
+/* The closed phone rail is icon-only, but the opened drawer is a full
+   project navigator. Restore the labels and comfortable tap targets while
+   the drawer is visible. */
+.platform-android.mobile-nav-open .sidebar .project-list { padding: 18px 10px 12px; }
+.platform-android.mobile-nav-open .sidebar .section-label {
+  height: auto;
+  padding: 13px 10px 8px;
+  font-size: 10.5px;
+  text-align: left;
+}
+.platform-android.mobile-nav-open .sidebar .section-label::after { content: none; }
+.platform-android.mobile-nav-open .sidebar .smart-row,
+.platform-android.mobile-nav-open .sidebar .project-row {
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 38px;
+  padding: 7px 10px;
+}
+.platform-android.mobile-nav-open .sidebar .smart-name,
+.platform-android.mobile-nav-open .sidebar .proj-name,
+.platform-android.mobile-nav-open .sidebar .proj-name-input { display: block; }
+.platform-android.mobile-nav-open .sidebar .proj-count { display: block; }
 .platform-android .mobile-nav-scrim {
   display: block;
   position: absolute;

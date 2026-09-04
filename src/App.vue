@@ -9,7 +9,10 @@ import appIconUrl from '../assets/icon.svg'
 import { api, createSyncEngine, syncConfig, syncRepository } from './runtime/api.js'
 import { getCurrent as getDeepLinkUrls, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { normalizeTheme } from './runtime/themes.js'
+import { isAndroid } from './runtime/platform.js'
 import { countSmartViews, localDateKey, matchesSmartView } from './runtime/taskviews.mjs'
+import { hasMeaningfulData, mergeWorkspaces } from './runtime/sync-merge.mjs'
+import { selectAccessibleWorkspace } from './runtime/sync-workspace.mjs'
 import {
   FONT_SIZES,
   FALLBACK_FONTS,
@@ -73,6 +76,8 @@ let syncTimer = null
 let syncUnsubscribe = null
 let syncStartPromise = null
 let syncLastError = ''
+let deferredConflictCursor = null
+let syncConflictPromise = null
 
 // ── Undo stack（Ctrl+Z 撤销删除）────────────────────────
 const undoStack = []
@@ -346,12 +351,39 @@ async function runCloudSync() {
     return
   }
 
+  if (result.kind === 'conflict') {
+    const cursor = result.nextCursor === null || result.nextCursor === undefined
+      ? null
+      : String(result.nextCursor)
+    if (cursor && cursor === deferredConflictCursor) {
+      setCloudSyncState('conflict', '等待处理同步冲突', '本机和另一台设备都修改了任务，请重新连接同步后选择处理方式')
+      return
+    }
+    if (!syncConflictPromise) {
+      syncConflictPromise = resolveSyncConflict(result)
+        .finally(() => { syncConflictPromise = null })
+    }
+    try {
+      await syncConflictPromise
+    } catch (error) {
+      const message = String(error?.message || '同步冲突处理失败')
+      setCloudSyncState('error', '冲突处理失败', message)
+      if (message !== syncLastError) {
+        syncLastError = message
+        showToast(`同步冲突处理失败：${message}`)
+      }
+    }
+    return
+  }
+
   try {
     const status = await api.getSyncStatus()
-    for (const event of result.remoteEvents || []) {
-      if (!event || event.client_id === status?.deviceId) continue
-      if (event.entity !== 'workspace' || event.action !== 'snapshot') continue
-      const snapshot = await api.applySyncSnapshot(event.payload)
+    const latestSnapshot = [...(result.remoteEvents || [])]
+      .reverse()
+      .find(event => event && event.client_id !== status?.deviceId &&
+        event.entity === 'workspace' && event.action === 'snapshot')
+    if (latestSnapshot) {
+      const snapshot = await api.applySyncSnapshot(latestSnapshot.payload)
       applySnapshotToView(snapshot)
     }
     if (result.nextCursor !== null && result.nextCursor !== undefined) {
@@ -376,8 +408,121 @@ async function runCloudSync() {
   }
 }
 
-async function startCloudSync() {
-  if (syncStartPromise) return syncStartPromise
+async function resolveSyncConflict(result) {
+  const status = await api.getSyncStatus()
+  const latest = [...(result.remoteEvents || [])]
+    .reverse()
+    .find(event => event && event.client_id !== status?.deviceId &&
+      event.entity === 'workspace' && event.action === 'snapshot')
+  const cursor = result.nextCursor === null || result.nextCursor === undefined
+    ? null
+    : String(result.nextCursor)
+  if (!latest?.payload) {
+    if (cursor) await api.acknowledgeSync([], cursor)
+    return
+  }
+
+  setCloudSyncState('conflict', '发现同步冲突', '本机和另一台设备在上次同步后都修改了任务')
+  const localData = { projects: projects.value, tasks: tasks.value }
+  const choice = await askSyncDataChoice({
+    title: '两台设备都有新修改',
+    localCount: localData.tasks.length,
+    remoteCount: Array.isArray(latest.payload.tasks) ? latest.payload.tasks.length : 0,
+  })
+  if (choice === 'cancel') {
+    deferredConflictCursor = cursor
+    setCloudSyncState('conflict', '同步已暂停', '数据保持不变；重新连接同步时可再次选择')
+    return
+  }
+
+  if (hasMeaningfulData(localData)) await api.backupLocalData('before-sync-conflict')
+  const outbox = await api.getSyncOutbox()
+  const staleIds = (outbox?.outbox || []).map(operation => operation.operationId).filter(Boolean)
+  if (choice === 'remote') {
+    applySnapshotToView(await api.applySyncSnapshot(latest.payload))
+    await api.acknowledgeSync(staleIds, cursor)
+  } else {
+    if (choice === 'merge') {
+      applySnapshotToView(await api.applySyncSnapshot(mergeWorkspaces(localData, latest.payload)))
+      await api.acknowledgeSync(staleIds, cursor)
+    } else if (cursor) {
+      await api.acknowledgeSync([], cursor)
+    }
+    await api.enqueueLocalSnapshot()
+  }
+  deferredConflictCursor = null
+  setCloudSyncState('pending', '冲突已处理，等待同步', '下一轮同步会提交选择后的完整快照')
+}
+
+// 首次把本机绑定到云端工作区时，本地和云端可能各自已有数据。
+// 当前同步是"整库快照最后写入覆盖"，无提示地接受任何一方都会静默丢数据，
+// 所以这里让用户显式选择，并在覆盖本地前先落一份备份。
+function askSyncDataChoice({ title = '云端已有任务数据', localCount, remoteCount }) {
+  return new Promise(resolve => {
+    askConfirm({
+      title,
+      body: `本机有 ${localCount} 条任务，云端已有 ${remoteCount} 条。请选择如何处理：合并会保留两边所有任务；` +
+        '使用云端会用云端数据替换本机（替换前自动备份）；使用本机会用本机数据覆盖云端。',
+      confirmText: '合并两边数据',
+      danger: false,
+      choices: [
+        { key: 'remote', label: '使用云端数据', danger: true },
+        { key: 'local', label: '使用本机数据', danger: true },
+      ],
+      onConfirm: () => { closeConfirm(); resolve('merge') },
+      onChoice: key => { closeConfirm(); resolve(key) },
+      onCancel: () => { closeConfirm(); resolve('cancel') },
+    })
+  })
+}
+
+// 决定首次绑定时采用哪份数据。choice 为 'merge' | 'local' | 'remote' | 'cancel'。
+async function decideFirstBind(workspaceId, localData) {
+  const localHasData = hasMeaningfulData(localData)
+  const latest = await syncRepository.fetchLatestSnapshot(workspaceId)
+  const latestSeq = latest?.seq ?? null
+  const remoteData = latest?.payload
+  const remoteHasData = hasMeaningfulData(remoteData)
+
+  // 云端为空或只有示例：把本机数据作为初始快照推上去，避免"未编辑就不上传"。
+  if (!remoteHasData) return { choice: localHasData ? 'local' : 'remote', remoteData, latestSeq }
+  // 本机是全新安装：直接采用云端。
+  if (!localHasData) return { choice: 'remote', remoteData, latestSeq }
+
+  const choice = await askSyncDataChoice({
+    localCount: localData.tasks.length,
+    remoteCount: Array.isArray(remoteData?.tasks) ? remoteData.tasks.length : 0,
+  })
+  return { choice, remoteData, latestSeq }
+}
+
+// 绑定之后按选择落实。三种选择最终都把游标推到云端最新事件：
+// 本机/合并方案如果不推游标，常规同步会先把旧的云端快照拉下来覆盖掉刚保留的数据；
+// 云端方案直接应用最新快照，避免逐条重放历史快照。
+async function applyFirstBindChoice(workspaceId, { choice, remoteData, latestSeq }, localData) {
+  const cursor = latestSeq !== null && latestSeq !== undefined ? String(latestSeq) : null
+  if (choice === 'remote') {
+    if (remoteData) applySnapshotToView(await api.applySyncSnapshot(remoteData))
+    // 登录前的本地编辑已经在 outbox 里排队；选择云端后必须丢弃它们，
+    // 否则下一轮同步会把旧的本机快照推上去覆盖云端。
+    const outbox = await api.getSyncOutbox()
+    const staleIds = (outbox?.outbox || []).map(op => op.operationId).filter(Boolean)
+    if (staleIds.length || cursor) await api.acknowledgeSync(staleIds, cursor)
+    return
+  }
+  if (choice === 'merge') {
+    applySnapshotToView(await api.applySyncSnapshot(mergeWorkspaces(localData, remoteData)))
+  }
+  if (cursor) await api.acknowledgeSync([], cursor)
+  await api.enqueueLocalSnapshot()
+}
+
+async function startCloudSync(requestedWorkspaceId = null) {
+  if (syncStartPromise) {
+    await syncStartPromise
+    if (requestedWorkspaceId) return startCloudSync(requestedWorkspaceId)
+    return
+  }
   syncStartPromise = (async () => {
     stopCloudSync()
     syncLastError = ''
@@ -391,14 +536,28 @@ async function startCloudSync() {
         setCloudSyncState('signed-out', '未登录云端')
         return
       }
-      setCloudSyncState('syncing', '准备实时同步', '正在为当前账户准备个人同步空间')
-      const workspace = await syncRepository.ensurePersonalWorkspace()
       let status = await api.getSyncStatus()
+      const workspaces = await syncRepository.listWorkspaces()
+      let workspace = selectAccessibleWorkspace(workspaces, status?.workspaceId, requestedWorkspaceId)
+      if (!workspace) {
+        setCloudSyncState('syncing', '准备实时同步', '正在为当前账户准备个人同步空间')
+        workspace = await syncRepository.ensurePersonalWorkspace()
+      } else {
+        setCloudSyncState('syncing', '准备实时同步', `正在连接工作区「${workspace.name || '未命名'}」`)
+      }
       if (!workspace?.id) {
         throw new Error('云端同步空间创建失败')
       }
       if (status?.workspaceId !== workspace.id) {
+        const localData = { projects: projects.value, tasks: tasks.value }
+        const decision = await decideFirstBind(workspace.id, localData)
+        if (decision.choice === 'cancel') {
+          setCloudSyncState('signed-out', '未开启同步', '已取消绑定云端工作区，本机数据保持不变')
+          return
+        }
+        if (hasMeaningfulData(localData)) await api.backupLocalData('before-cloud-bind')
         status = await api.setSyncWorkspace(workspace.id)
+        await applyFirstBindChoice(workspace.id, decision, localData)
       }
       syncEngine = createSyncEngine({
         localApi: api,
@@ -421,6 +580,16 @@ async function startCloudSync() {
     syncStartPromise = null
   })
   return syncStartPromise
+}
+
+function handleSyncConfigChanged(event) {
+  if (event?.detail?.stop) {
+    stopCloudSync()
+    setCloudSyncState('unbound', '未绑定工作区')
+    return
+  }
+  deferredConflictCursor = null
+  void startCloudSync(event?.detail?.workspaceId || null)
 }
 
 async function handleAuthDeepLink(rawUrl) {
@@ -572,7 +741,7 @@ function handleKeydown(event) {
     }
   }
   if (event.key === 'Escape') {
-    if (confirmState.value) closeConfirm()
+    if (confirmState.value) cancelConfirm()
     else if (paletteOpen.value) paletteOpen.value = false
     else closeTaskDetail()
   }
@@ -645,6 +814,14 @@ function askConfirm(options) {
 
 function closeConfirm() {
   confirmState.value = null
+}
+
+// 用户主动取消（取消按钮 / Escape）。带 onCancel 的对话框需要收到通知，
+// 否则等待它的 Promise 会一直挂起。
+function cancelConfirm() {
+  const current = confirmState.value
+  closeConfirm()
+  current?.onCancel?.()
 }
 
 // ── Project handlers ──────────────────────────────────
@@ -730,8 +907,26 @@ async function onCreateTask(data) {
   }
 }
 
+// 每个任务的最新一次更新请求序号。批量操作（全部完成、全部顺延）会同时发出多条
+// update，Rust 侧各命令独立处理，返回顺序不保证与发出顺序一致；只接受最新序号的
+// 响应，避免先发后回的旧响应把已经确认的新状态覆盖回去。
+const taskUpdateSeq = new Map()
+let taskUpdateCounter = 0
+
+function nextTaskUpdateSeq(id) {
+  // 全局单调递增，避免某个任务的序号被清理后重新从 1 开始与仍在途的旧请求撞号。
+  const seq = ++taskUpdateCounter
+  taskUpdateSeq.set(id, seq)
+  return seq
+}
+
+function isLatestTaskUpdate(id, seq) {
+  return taskUpdateSeq.get(id) === seq
+}
+
 async function onUpdateTask(data) {
   // 乐观更新：先改界面，后台落库，失败回滚
+  const seq = nextTaskUpdateSeq(data.id)
   const i = tasks.value.findIndex(t => t.id === data.id)
   const prev = i !== -1 ? { ...tasks.value[i] } : null
   if (prev) {
@@ -742,7 +937,8 @@ async function onUpdateTask(data) {
     tasks.value[i] = patched
   }
   const rollback = () => {
-    if (!prev) return
+    // 已经有更新的请求发出，界面上是更新的乐观状态，不能用旧值覆盖。
+    if (!prev || !isLatestTaskUpdate(data.id, seq)) return
     const j = tasks.value.findIndex(t => t.id === data.id)
     if (j !== -1) tasks.value[j] = prev
   }
@@ -755,14 +951,27 @@ async function onUpdateTask(data) {
       return
     }
     if (Array.isArray(result?.tasks)) {
-      tasks.value = result.tasks
+      // 重复任务完成后生成了下一期，后端回传完整列表。列表里其他任务
+      // 可能还有在途的乐观更新（序号表里仍有记录），保留它们当前的界面状态。
+      const current = tasks.value
+      const keepCurrent = id => id !== data.id
+        ? taskUpdateSeq.has(id)
+        : !isLatestTaskUpdate(data.id, seq)
+      tasks.value = result.tasks.map(task => {
+        if (!keepCurrent(task.id)) return task
+        return current.find(t => t.id === task.id) || task
+      })
       return
     }
+    if (!isLatestTaskUpdate(data.id, seq)) return
     const j = tasks.value.findIndex(t => t.id === data.id)
     if (j !== -1) tasks.value[j] = updated
   } catch (error) {
     rollback()
     showToast(`任务更新失败：${error.message || '未知错误'}`)
+  } finally {
+    // 最后一个在途请求结束后清掉序号，避免 Map 随任务数无限增长。
+    if (isLatestTaskUpdate(data.id, seq)) taskUpdateSeq.delete(data.id)
   }
 }
 
@@ -806,7 +1015,9 @@ async function onDeleteTask(id) {
 }
 
 async function onReorderTasks(data) {
-  await api.reorderTasks(data)
+  // Sortable 已经改了 DOM。先同步模型（乐观），失败时回滚模型；
+  // 回滚会让列表按旧 position 重新渲染，DOM 随之复原。
+  const previousTasks = tasks.value
   const order = new Map(data.orderedIds.map((id, index) => [id, index]))
   tasks.value = tasks.value.map(task => {
     if (!order.has(task.id)) return task
@@ -816,6 +1027,12 @@ async function onReorderTasks(data) {
       parentId: data.parentId ?? task.parentId,
     }
   })
+  try {
+    await api.reorderTasks(data)
+  } catch (error) {
+    tasks.value = previousTasks
+    showToast(`任务排序失败：${error.message || '未知错误'}`)
+  }
 }
 
 async function onExportData() {
@@ -932,14 +1149,14 @@ onMounted(() => {
   }).then(unlisten => {
     unlistenOpenTask = unlisten
   })
-  window.addEventListener('taskflow-sync-config-changed', startCloudSync)
+  window.addEventListener('taskflow-sync-config-changed', handleSyncConfigChanged)
   window.addEventListener('keydown', handleKeydown)
   void setupAuthDeepLinks()
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
-  window.removeEventListener('taskflow-sync-config-changed', startCloudSync)
+  window.removeEventListener('taskflow-sync-config-changed', handleSyncConfigChanged)
   stopCloudSync()
   if (settingsSaveTimer) clearTimeout(settingsSaveTimer)
   if (unlistenDataChanged) unlistenDataChanged()
@@ -950,11 +1167,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-shell" :class="[`theme-${theme}`, { 'mobile-nav-open': mobileNavOpen }]" :style="fontStyles">
+  <div class="app-shell" :class="[`theme-${theme}`, { 'platform-android': isAndroid, 'mobile-nav-open': mobileNavOpen }]" :style="fontStyles">
     <!-- Titlebar -->
     <div class="titlebar" data-tauri-drag-region @dragstart.prevent>
       <div class="titlebar-drag" data-tauri-drag-region>
-        <button class="mobile-menu-btn" type="button" aria-label="打开项目导航" :aria-expanded="mobileNavOpen" @click.stop="toggleMobileNav">
+        <button class="mobile-menu-btn" type="button" :aria-label="mobileNavOpen ? '关闭项目导航' : '打开项目导航'" :aria-expanded="mobileNavOpen" @click.stop="toggleMobileNav">
           <svg v-if="!mobileNavOpen" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" /></svg>
           <svg v-else viewBox="0 0 18 18" aria-hidden="true"><path d="m4 4 10 10M14 4 4 14" /></svg>
         </button>
@@ -1028,6 +1245,7 @@ onUnmounted(() => {
             :tasks="projectTasks"
             :projects="projects"
             :today="todayKey"
+            :cloud-sync="cloudSync"
             @create="onCreateTask"
             @update="onUpdateTask"
             @delete="onDeleteTask"
@@ -1119,7 +1337,16 @@ onUnmounted(() => {
             不再提醒
           </label>
           <div class="confirm-actions">
-            <button class="secondary-btn" @click="closeConfirm">取消</button>
+            <button class="secondary-btn" @click="cancelConfirm">取消</button>
+            <button
+              v-for="choice in confirmState.choices || []"
+              :key="choice.key"
+              class="secondary-btn"
+              :class="{ danger: choice.danger }"
+              @click="confirmState.onChoice?.(choice.key)"
+            >
+              {{ choice.label }}
+            </button>
             <button
               class="primary-btn"
               :class="{ danger: confirmState.danger }"

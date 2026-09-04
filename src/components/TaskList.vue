@@ -4,16 +4,19 @@ import Sortable from 'sortablejs'
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/vue'
 import TaskItem from './TaskItem.vue'
 import ProjectIcon from './ProjectIcon.vue'
+import TaskListMobile from './TaskListMobile.vue'
 import { parseQuickInput, friendlyDate } from '../runtime/quickparse.js'
 import { dateState as getDateState } from '../runtime/taskviews.mjs'
+import { isAndroid } from '../runtime/platform.js'
 
 const props = defineProps({
   project: { type: Object, required: true },
   tasks:   { type: Array,  default: () => [] },
   projects:{ type: Array,  default: () => [] },
   today:   { type: String, default: '' },
+  cloudSync: { type: Object, default: null },
 })
-const emit = defineEmits(['create', 'update', 'delete', 'reorder', 'selectTask'])
+const emit = defineEmits(['create', 'update', 'delete', 'reorder', 'selectTask', 'openMobileNav'])
 
 // ── Derived lists ─────────────────────────────────────
 const searchQuery = ref('')
@@ -29,7 +32,6 @@ const collapsedGroups = ref(new Set())
 const savedViews = ref([])
 const saveViewOpen = ref(false)
 const saveViewName = ref('')
-const mobileFilterOpen = ref(false)
 const dueTriggerEl = ref(null)
 const duePopoverEl = ref(null)
 const priorityTriggerEl = ref(null)
@@ -129,36 +131,6 @@ function resetFilters() {
   priorityFilter.value = 'all'
 }
 
-function toggleMobileFilter() {
-  mobileFilterOpen.value = !mobileFilterOpen.value
-}
-
-function formatMobileDate(dateKey) {
-  if (!dateKey) return '未设置日期'
-  const date = new Date(`${dateKey}T00:00:00`)
-  if (Number.isNaN(date.getTime())) return dateKey
-  const weekdays = ['日', '一', '二', '三', '四', '五', '六']
-  return `${date.getMonth() + 1}月${date.getDate()}日 周${weekdays[date.getDay()]}`
-}
-
-function mobileTimelineTime(task, index) {
-  if (!task.dueDate) return '全天'
-  if (task.dueDate !== props.today) return formatDueShort(task.dueDate)
-  const slots = ['09:00', '10:45', '12:00', '14:30', '16:00', '18:00']
-  return slots[index % slots.length]
-}
-
-function mobileTaskMeta(task) {
-  const priority = task.priority === 'high' ? '高优先级' : task.priority === 'low' ? '低优先级' : '普通'
-  const projectName = props.project.readonlyProject ? taskProjectName(task.projectId) : props.project.name
-  return `${projectName || '未分组'} · ${priority}`
-}
-
-const mobileCurrentTime = computed(() => {
-  const now = new Date()
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-})
-
 function savedViewsKey() {
   return `taskflow-saved-views:${encodeURIComponent(String(props.project.id))}`
 }
@@ -226,7 +198,7 @@ function cycleGroupMode() {
     console.warn('[task-list] save grouping mode failed', error)
   }
   collapsedGroups.value = new Set()
-  scheduleSortableRefresh()
+  // groupMode 影响 sortableEnabled（shouldGroupByDate），由其 watch 自动同步 Sortable。
 }
 
 const groupModeLabel = computed(() => ({ smart: '智能分组', date: '按日期', none: '无分组' }[groupMode.value] || '智能分组'))
@@ -253,8 +225,27 @@ function cycleNewPriority() {
   newPriority.value = PRIORITY_CYCLE[(idx + 1) % PRIORITY_CYCLE.length]
 }
 
+// 项目名与子任务按 id 预建索引：模板逐行调用时是 O(1) 查找，
+// 而不是每行都对整个 tasks/projects 数组做 find/filter。
+const projectNameById = computed(() => new Map(props.projects.map(p => [p.id, p.name])))
 function taskProjectName(projectId) {
-  return props.projects.find(p => p.id === projectId)?.name || ''
+  return projectNameById.value.get(projectId) || ''
+}
+
+const subtasksByParent = computed(() => {
+  const map = new Map()
+  for (const task of props.tasks) {
+    if (!task.parentId) continue
+    const list = map.get(task.parentId)
+    if (list) list.push(task)
+    else map.set(task.parentId, [task])
+  }
+  for (const list of map.values()) list.sort((a, b) => a.position - b.position)
+  return map
+})
+const EMPTY_SUBTASKS = Object.freeze([])
+function subtasksOf(parentId) {
+  return subtasksByParent.value.get(parentId) || EMPTY_SUBTASKS
 }
 
 function dateState(dateKey) {
@@ -272,10 +263,7 @@ const filteredRootSource = computed(() => {
     if (dueFilter.value === 'none' && task.dueDate) return false
     if (priorityFilter.value !== 'all' && (task.priority || 'normal') !== priorityFilter.value) return false
     if (!query) return true
-    const childHit = props.tasks.some(child =>
-      child.parentId === task.id &&
-      child.title.toLowerCase().includes(query)
-    )
+    const childHit = subtasksOf(task.id).some(child => child.title.toLowerCase().includes(query))
     const tagHit = (task.tags || []).some(tag => tag.toLowerCase().includes(query))
     return task.title.toLowerCase().includes(query) ||
       taskProjectName(task.projectId).toLowerCase().includes(query) ||
@@ -290,12 +278,6 @@ const rootTasks = computed(() => {
   const sort = (arr) => [...arr].sort((a, b) => a.position - b.position)
   return [...sort(active), ...sort(completed)]
 })
-
-function subtasksOf(parentId) {
-  return props.tasks
-    .filter(t => t.parentId === parentId)
-    .sort((a, b) => a.position - b.position)
-}
 
 const completedCount = computed(() =>
   props.tasks.filter(t => t.completed && !t.parentId).length
@@ -373,18 +355,19 @@ function postponeAllOverdue() {
 }
 
 const visibleTasks = computed(() => rootTasks.value)
-const mobileOpenTasks = computed(() => visibleTasks.value.filter(task => !task.completed))
-const mobileDoneTasks = computed(() => visibleTasks.value.filter(task => task.completed))
-const mobileHighCount = computed(() => visibleTasks.value.filter(task => task.priority === 'high').length)
-const mobileTodayTasks = computed(() => mobileOpenTasks.value.filter(task => task.dueDate === props.today))
-const mobileUnscheduledTasks = computed(() => mobileOpenTasks.value.filter(task => !task.dueDate || task.dueDate !== props.today))
 
-const androidAddInput = ref(null)
-const androidComposerOpen = ref(false)
-async function openAndroidComposer() {
-  androidComposerOpen.value = true
-  await nextTick()
-  androidAddInput.value?.focus()
+// Android 布局提交的是纯标题，仍走同一套自然语言解析。
+function submitMobileAdd(rawTitle) {
+  const parsed = parseQuickInput(rawTitle, props.today)
+  const title = (parsed.title || rawTitle).trim()
+  if (!title) return
+  emit('create', {
+    title,
+    parentId: null,
+    dueDate: parsed.dueDate || null,
+    priority: parsed.priority || 'normal',
+    tags: parsed.tags.length ? parsed.tags : undefined,
+  })
 }
 
 // ── Add task ──────────────────────────────────────────
@@ -563,7 +546,6 @@ async function handleKeydown(event) {
 // ── Drag & drop sort ──────────────────────────────────
 const listEl = ref(null)
 let sortable  = null
-let sortableRefreshQueued = false
 
 const sortableEnabled = computed(() =>
   Boolean(
@@ -576,12 +558,6 @@ const sortableEnabled = computed(() =>
     !shouldGroupByDate() &&
     visibleTasks.value.length > 1
   )
-)
-
-const visibleTaskSignature = computed(() =>
-  visibleTasks.value
-    .map(task => `${task.id}:${task.position}:${task.completed ? 1 : 0}`)
-    .join('|')
 )
 
 function destroySortable() {
@@ -616,10 +592,7 @@ function initSortable() {
       const ordered = [...listEl.value.children]
         .map(el => el.dataset.id)
         .filter(Boolean)
-      if (ordered.length < 2) {
-        scheduleSortableRefresh()
-        return
-      }
+      if (ordered.length < 2) return
       emit('reorder', {
         projectId: props.project.id,
         orderedIds: ordered,
@@ -629,21 +602,19 @@ function initSortable() {
   })
 }
 
-function scheduleSortableRefresh() {
-  if (sortableRefreshQueued) return
-  sortableRefreshQueued = true
-  nextTick(() => {
-    sortableRefreshQueued = false
-    initSortable()
-  })
-}
-
-function refreshSortableWhenVisible() {
-  if (document.visibilityState === 'visible') scheduleSortableRefresh()
+// Sortable 绑定在容器元素上，Vue 对子节点的增删/排序不会让它失效，
+// 因此只需在"是否允许拖拽"翻转、或容器元素被替换时同步一次；
+// 勾选完成、编辑标题等常规更新不再销毁重建实例。
+function syncSortable() {
+  const enabled = sortableEnabled.value
+  const boundToCurrentEl = sortable && sortable.el === listEl.value
+  if (enabled && boundToCurrentEl) return
+  if (!enabled) { destroySortable(); return }
+  initSortable()
 }
 
 function ensureSortableReady() {
-  if (!sortable && sortableEnabled.value) initSortable()
+  syncSortable()
 }
 
 function focusAddFromCommandPalette() {
@@ -660,11 +631,9 @@ function toggleGroupingFromCommandPalette() {
 
 onMounted(() => {
   loadSavedViews()
-  scheduleSortableRefresh()
+  nextTick(syncSortable)
   focusAdd()
   window.addEventListener('keydown', handleKeydown)
-  window.addEventListener('focus', scheduleSortableRefresh)
-  document.addEventListener('visibilitychange', refreshSortableWhenVisible)
   document.addEventListener('pointerdown', onDocumentPointerdown)
   window.addEventListener('taskflow-focus-add', focusAddFromCommandPalette)
   window.addEventListener('taskflow-focus-search', focusSearchFromCommandPalette)
@@ -674,24 +643,15 @@ onMounted(() => {
 watch(() => props.project.id, () => {
   focusedId.value = null
   clearSelection()
-  scheduleSortableRefresh()
 })
 
-watch([searchQuery, statusFilter, dueFilter, priorityFilter, visibleTaskSignature], () => {
-  scheduleSortableRefresh()
-})
-
-// 任务增删、导入恢复后 DOM 重渲染会使 Sortable 失去绑定，需要重新初始化
-watch(() => props.tasks.length, () => {
-  scheduleSortableRefresh()
-})
+watch([sortableEnabled, listEl], () => nextTick(syncSortable), { flush: 'post' })
 
 onUnmounted(() => {
   destroySortable()
   if (progressTimer) clearTimeout(progressTimer)
+  if (celebrateTimer) clearTimeout(celebrateTimer)
   window.removeEventListener('keydown', handleKeydown)
-  window.removeEventListener('focus', scheduleSortableRefresh)
-  document.removeEventListener('visibilitychange', refreshSortableWhenVisible)
   document.removeEventListener('pointerdown', onDocumentPointerdown)
   window.removeEventListener('taskflow-focus-add', focusAddFromCommandPalette)
   window.removeEventListener('taskflow-focus-search', focusSearchFromCommandPalette)
@@ -700,129 +660,36 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="task-list-view">
-
-    <!-- Android timeline view: a focused, touch-first layout based on the selected concept -->
-    <div class="android-timeline-view">
-      <header class="android-timeline-header">
-        <div class="android-timeline-heading">
-          <span class="android-timeline-kicker">FOCUS / TODAY</span>
-          <div class="android-timeline-title-row">
-            <button class="android-timeline-menu" type="button" aria-label="打开导航" @click="$emit('openMobileNav')">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            </button>
-            <h1>今天</h1>
-            <button class="android-date-button" type="button" :aria-pressed="dueFilter === 'today'" @click="dueFilter = dueFilter === 'today' ? 'all' : 'today'">
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3.5" width="12" height="10" rx="2" stroke="currentColor" stroke-width="1.35"/><path d="M2 6.5h12M5 2v3M11 2v3" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>
-              <span>{{ formatMobileDate(today) }}</span>
-              <svg class="android-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="m3 4.5 3 3 3-3" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </button>
-          </div>
-          <p>{{ totalCount }} 个任务 <i>·</i> {{ openRootCount }} 待完成 <i>·</i> {{ completedCount }} 已完成</p>
-        </div>
-        <div class="android-sync-status" aria-label="同步状态"><span></span>已同步</div>
-      </header>
-
-      <section class="android-timeline-summary" aria-label="今日进度">
-        <div class="android-summary-progress">
-          <svg class="android-progress-ring" width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">
-            <circle cx="24" cy="24" r="19" fill="none" stroke="var(--border)" stroke-width="5"/>
-            <circle cx="24" cy="24" r="19" fill="none" :stroke="project.color || 'var(--accent)'" stroke-width="5" stroke-linecap="round" :stroke-dasharray="2 * Math.PI * 19" :stroke-dashoffset="2 * Math.PI * 19 * (1 - completionPercent / 100)" transform="rotate(-90 24 24)"/>
-          </svg>
-          <div><strong>{{ completionPercent }}%</strong><small>今日进度</small></div>
-        </div>
-        <div class="android-summary-stat"><strong>{{ mobileOpenTasks.length }}</strong><small>待完成</small></div>
-        <div class="android-summary-stat"><strong>{{ mobileHighCount }}</strong><small>高优先级</small></div>
-        <div class="android-summary-stat"><strong>{{ overdueCount }}</strong><small>已逾期</small></div>
-      </section>
-
-      <div class="android-timeline-toolbar">
-        <label class="android-timeline-search">
-          <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="7.8" cy="7.8" r="5.4" stroke="currentColor" stroke-width="1.6"/><path d="m11.8 11.8 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          <input v-model="searchQuery" aria-label="搜索任务" placeholder="搜索任务、项目或标签" />
-        </label>
-        <div class="android-timeline-tabs" role="tablist" aria-label="任务状态">
-          <button type="button" role="tab" :aria-selected="statusFilter === 'open'" :class="{ active: statusFilter === 'open' }" @click="statusFilter = 'open'">未完成 <small>{{ statusCounts.open }}</small></button>
-          <button type="button" role="tab" :aria-selected="statusFilter === 'all'" :class="{ active: statusFilter === 'all' }" @click="statusFilter = 'all'">全部 <small>{{ statusCounts.all }}</small></button>
-          <button type="button" role="tab" :aria-selected="statusFilter === 'done'" :class="{ active: statusFilter === 'done' }" @click="statusFilter = 'done'">已完成 <small>{{ statusCounts.done }}</small></button>
-        </div>
-      </div>
-
-      <div class="android-timeline-scroll">
-        <section class="android-time-section" aria-label="今天的任务">
-          <div class="android-time-label">今天</div>
-          <div class="android-time-track"><span class="android-time-dot"></span></div>
-          <div class="android-time-content">
-            <div class="android-current-time"><span>{{ mobileCurrentTime }}</span><i></i><strong>现在</strong></div>
-            <article v-for="(task, index) in mobileTodayTasks" :key="task.id" class="android-time-task" :class="{ overdue: isOverdueTask(task) }">
-              <button class="android-time-check" type="button" :aria-label="`完成任务：${task.title}`" @click.stop="$emit('update', { id: task.id, completed: !task.completed })"><span></span></button>
-              <button class="android-time-task-main" type="button" @click="handleTaskSelect(task.id)">
-                <strong>{{ task.title }}</strong>
-                <small><i :style="{ background: task.color || project.color || 'var(--accent)' }"></i>{{ mobileTaskMeta(task) }}</small>
-              </button>
-              <time>{{ mobileTimelineTime(task, index) }}</time>
-            </article>
-            <div v-if="!mobileTodayTasks.length" class="android-time-empty">今天还没有安排任务</div>
-          </div>
-        </section>
-
-        <section class="android-time-section android-unscheduled-section" aria-label="未安排时间的任务">
-          <div class="android-time-label">稍后</div>
-          <div class="android-time-track"><span class="android-time-dot muted"></span></div>
-          <div class="android-time-content">
-            <article v-for="(task, index) in mobileUnscheduledTasks" :key="task.id" class="android-time-task" :class="{ overdue: isOverdueTask(task) }">
-              <button class="android-time-check" type="button" :aria-label="`完成任务：${task.title}`" @click.stop="$emit('update', { id: task.id, completed: !task.completed })"><span></span></button>
-              <button class="android-time-task-main" type="button" @click="handleTaskSelect(task.id)">
-                <strong>{{ task.title }}</strong>
-                <small><i :style="{ background: task.color || project.color || 'var(--accent)' }"></i>{{ mobileTaskMeta(task) }}</small>
-              </button>
-              <time>{{ mobileTimelineTime(task, index) }}</time>
-            </article>
-            <div v-if="!mobileUnscheduledTasks.length" class="android-time-empty">没有稍后任务</div>
-          </div>
-        </section>
-
-        <section v-if="mobileDoneTasks.length" class="android-done-section" aria-label="已完成任务">
-          <div class="android-done-heading"><span>已完成</span><small>{{ mobileDoneTasks.length }} 项</small></div>
-          <article v-for="task in mobileDoneTasks" :key="task.id" class="android-time-task completed">
-            <button class="android-time-check checked" type="button" :aria-label="`取消完成：${task.title}`" @click.stop="$emit('update', { id: task.id, completed: false })"><span>✓</span></button>
-            <button class="android-time-task-main" type="button" @click="handleTaskSelect(task.id)">
-              <strong>{{ task.title }}</strong>
-              <small>{{ mobileTaskMeta(task) }}</small>
-            </button>
-          </article>
-        </section>
-      </div>
-
-      <div class="android-timeline-bottom">
-        <div v-if="!project.readonlyProject" class="android-timeline-composer" :class="{ active: androidComposerOpen || addingTitle }">
-          <span aria-hidden="true">＋</span>
-          <input ref="androidAddInput" v-model="addingTitle" aria-label="添加任务" placeholder="添加任务，试试「明天 交报告」" @focus="androidComposerOpen = true" @keydown.enter="submitAdd" @keydown.escape="androidComposerOpen = false; addingTitle = ''" />
-          <button v-if="addingTitle.trim()" type="button" @click="submitAdd">添加</button>
-        </div>
-        <div class="android-bottom-actions">
-          <button v-if="!project.readonlyProject" class="android-add-button" type="button" @click="openAndroidComposer">＋ 添加任务</button>
-          <button class="android-filter-button" :class="{ active: hasActiveFilters }" type="button" @click="toggleMobileFilter">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4h11M4.5 8h7M6.5 12h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-            筛选<span v-if="activeFilterItems.length">{{ activeFilterItems.length }}</span>
-          </button>
-        </div>
-      </div>
-
-      <Transition name="android-sheet">
-        <div v-if="mobileFilterOpen" class="android-filter-sheet" role="presentation">
-          <div class="android-filter-scrim" @click="mobileFilterOpen = false"></div>
-          <section class="android-filter-panel" role="dialog" aria-modal="true" aria-label="筛选任务">
-            <div class="android-sheet-handle"></div>
-            <header><strong>筛选任务</strong><button type="button" aria-label="关闭筛选" @click="mobileFilterOpen = false">×</button></header>
-            <div class="android-filter-group"><span>状态</span><div><button v-for="option in [{value:'open',label:'未完成'},{value:'all',label:'全部'},{value:'done',label:'已完成'}]" :key="option.value" type="button" :class="{ active: statusFilter === option.value }" @click="statusFilter = option.value">{{ option.label }}</button></div></div>
-            <div class="android-filter-group"><span>日期</span><div><button v-for="option in FILTER_OPTIONS.due" :key="option.value" type="button" :class="{ active: dueFilter === option.value }" @click="dueFilter = option.value">{{ option.label }}</button></div></div>
-            <div class="android-filter-group"><span>优先级</span><div><button v-for="option in FILTER_OPTIONS.priority" :key="option.value" type="button" :class="{ active: priorityFilter === option.value }" @click="priorityFilter = option.value">{{ option.label }}</button></div></div>
-            <button class="android-filter-clear" type="button" @click="resetFilters(); mobileFilterOpen = false">清除筛选</button>
-          </section>
-        </div>
-      </Transition>
-    </div>
+  <TaskListMobile
+    v-if="isAndroid"
+    :project="project"
+    :projects="projects"
+    :tasks="visibleTasks"
+    :today="today"
+    :total-count="totalCount"
+    :open-root-count="openRootCount"
+    :completed-count="completedCount"
+    :overdue-count="overdueCount"
+    :completion-percent="completionPercent"
+    :status-counts="statusCounts"
+    :status-filter="statusFilter"
+    :due-filter="dueFilter"
+    :priority-filter="priorityFilter"
+    :search-query="searchQuery"
+    :filter-options="FILTER_OPTIONS"
+    :active-filter-count="activeFilterItems.length"
+    :cloud-sync="cloudSync"
+    @update:status-filter="statusFilter = $event"
+    @update:due-filter="dueFilter = $event"
+    @update:priority-filter="priorityFilter = $event"
+    @update:search-query="searchQuery = $event"
+    @reset-filters="resetFilters"
+    @update="$emit('update', $event)"
+    @select="$emit('selectTask', $event)"
+    @create="submitMobileAdd"
+    @open-mobile-nav="$emit('openMobileNav')"
+  />
+  <div v-else class="task-list-view">
 
     <!-- Header -->
     <div class="list-header">
@@ -2009,183 +1876,5 @@ onUnmounted(() => {
   .task-scroll {
     padding: 10px 18px 22px;
   }
-}
-
-/* ── Android timeline concept ───────────────────────── */
-.android-timeline-view { display: none; }
-.platform-android .task-list-view > .list-header,
-.platform-android .task-list-view > .filter-bar,
-.platform-android .task-list-view > .filter-summary,
-.platform-android .task-list-view > .save-view-row,
-.platform-android .task-list-view > .saved-views,
-.platform-android .task-list-view > .add-task-bar,
-.platform-android .task-list-view > .task-scroll { display: none; }
-.platform-android .android-timeline-view {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-  color: var(--text-primary);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 88%, transparent), var(--bg-base));
-}
-.android-timeline-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 18px 18px 8px;
-}
-.android-timeline-heading { min-width: 0; }
-.android-timeline-kicker {
-  display: block;
-  margin: 0 0 5px 48px;
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .16em;
-}
-.android-timeline-title-row { display: flex; align-items: center; gap: 10px; }
-.android-timeline-title-row h1 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 32px;
-  line-height: 1;
-  letter-spacing: -.045em;
-}
-.android-timeline-menu {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-soft);
-}
-.android-timeline-menu:active { transform: scale(.95); }
-.android-date-button {
-  min-height: 32px;
-  max-width: 170px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: 2px;
-  padding: 0 9px;
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--bg-elevated) 62%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  font-size: 10px;
-  white-space: nowrap;
-}
-.android-date-button[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 54%, var(--border)); background: var(--accent-soft); }
-.android-date-button .android-chevron { margin-left: auto; }
-.android-timeline-heading > p { margin: 8px 0 0 48px; color: var(--text-muted); font-size: 11px; }
-.android-timeline-heading > p i { margin: 0 4px; color: var(--border-strong); font-style: normal; }
-.android-sync-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 9px;
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--bg-surface) 72%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 10px;
-  white-space: nowrap;
-}
-.android-sync-status span { width: 6px; height: 6px; border-radius: 50%; background: #4f9b78; box-shadow: 0 0 0 3px color-mix(in srgb, #4f9b78 18%, transparent); }
-.android-timeline-summary {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin: 5px 18px 12px;
-  padding: 12px 14px;
-  background: color-mix(in srgb, var(--bg-surface) 86%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow-soft);
-}
-.android-summary-progress { display: flex; align-items: center; gap: 8px; min-width: 116px; }
-.android-progress-ring { flex: 0 0 auto; filter: drop-shadow(0 3px 5px color-mix(in srgb, var(--accent) 18%, transparent)); }
-.android-summary-progress div { display: flex; flex-direction: column; gap: 2px; }
-.android-summary-progress strong { font-size: 20px; letter-spacing: -.04em; }
-.android-summary-progress small, .android-summary-stat small { color: var(--text-muted); font-size: 10px; }
-.android-summary-stat { display: flex; min-width: 45px; flex-direction: column; gap: 2px; padding-left: 12px; border-left: 1px solid var(--border-soft); }
-.android-summary-stat strong { font-size: 17px; }
-.android-timeline-toolbar { display: flex; flex-direction: column; gap: 10px; padding: 0 18px 12px; }
-.android-timeline-search { height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 13px; color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--border); border-radius: 13px; box-shadow: inset 0 1px rgba(255,255,255,.45); }
-.android-timeline-search:focus-within { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 64%, var(--border)); box-shadow: var(--focus-ring); }
-.android-timeline-search input { flex: 1; min-width: 0; color: var(--text-primary); font-size: 13px; }
-.android-timeline-tabs { display: grid; grid-template-columns: repeat(3, 1fr); height: 39px; padding: 3px; gap: 2px; background: color-mix(in srgb, var(--bg-elevated) 72%, transparent); border: 1px solid var(--border); border-radius: 12px; }
-.android-timeline-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; color: var(--text-muted); border-radius: 9px; font-size: 11px; }
-.android-timeline-tabs button.active { color: var(--text-primary); background: var(--bg-surface); box-shadow: 0 2px 6px color-mix(in srgb, var(--bg-deep) 10%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); }
-.android-timeline-tabs small { color: var(--text-muted); font-size: 9px; }
-.android-timeline-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 18px 12px; }
-.android-time-section { display: grid; grid-template-columns: 43px 15px minmax(0, 1fr); column-gap: 8px; min-height: 90px; }
-.android-time-label { padding-top: 9px; color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-align: right; }
-.android-time-track { position: relative; min-height: 100%; display: flex; justify-content: center; }
-.android-time-track::before { content: ''; position: absolute; top: 12px; bottom: -10px; width: 1px; background: linear-gradient(var(--border-strong), var(--border-soft)); }
-.android-time-dot { z-index: 1; width: 9px; height: 9px; margin-top: 11px; border: 2px solid var(--bg-surface); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.android-time-dot.muted { background: var(--text-muted); box-shadow: 0 0 0 3px var(--bg-elevated); }
-.android-time-content { display: flex; flex-direction: column; gap: 8px; padding-bottom: 15px; }
-.android-current-time { display: flex; align-items: center; gap: 7px; height: 22px; color: var(--accent); font-size: 10px; font-weight: 700; }
-.android-current-time i { height: 1px; flex: 1; background: var(--accent); opacity: .65; }
-.android-current-time strong { font-size: 9px; font-weight: 700; }
-.android-time-task { display: flex; align-items: center; gap: 10px; min-height: 70px; padding: 10px 11px; background: color-mix(in srgb, var(--bg-surface) 92%, transparent); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 5px 14px color-mix(in srgb, var(--bg-deep) 7%, transparent); transition: border-color .16s, transform .16s, box-shadow .16s; }
-.android-time-task:active { transform: scale(.985); border-color: color-mix(in srgb, var(--accent) 54%, var(--border)); }
-.android-time-task.overdue { border-color: color-mix(in srgb, var(--danger) 48%, var(--border)); }
-.android-time-check { width: 25px; height: 25px; flex: 0 0 auto; display: grid; place-items: center; border: 1.5px solid color-mix(in srgb, var(--accent) 48%, var(--border-strong)); border-radius: 8px; background: transparent; }
-.android-time-check span { width: 6px; height: 6px; border-radius: 50%; background: transparent; }
-.android-time-check.checked { color: #fff; background: var(--accent); border-color: var(--accent); }
-.android-time-check.checked span { width: auto; height: auto; background: none; font-size: 14px; line-height: 1; }
-.android-time-task-main { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; text-align: left; }
-.android-time-task-main strong { overflow: hidden; max-width: 100%; color: var(--text-primary); font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.android-time-task-main small { display: flex; align-items: center; gap: 5px; overflow: hidden; max-width: 100%; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.android-time-task-main small i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; }
-.android-time-task time { flex: 0 0 auto; align-self: flex-start; padding-top: 1px; color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
-.android-time-empty { padding: 14px 12px; color: var(--text-muted); background: color-mix(in srgb, var(--bg-elevated) 55%, transparent); border: 1px dashed var(--border); border-radius: 12px; font-size: 11px; }
-.android-done-section { margin: 4px 0 8px 66px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
-.android-done-heading { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; color: var(--text-secondary); font-size: 11px; font-weight: 700; }
-.android-done-heading small { color: var(--text-muted); font-size: 10px; font-weight: 500; }
-.android-time-task.completed { min-height: 58px; padding-block: 8px; opacity: .72; box-shadow: none; }
-.android-time-task.completed .android-time-task-main strong { color: var(--text-muted); text-decoration: line-through; }
-.android-timeline-bottom { position: relative; z-index: 4; display: flex; flex-direction: column; gap: 8px; padding: 10px 18px calc(13px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--bg-base) 92%, transparent); border-top: 1px solid var(--border-soft); backdrop-filter: blur(15px) saturate(120%); }
-.android-timeline-composer { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 13px; box-shadow: var(--shadow-soft); transition: border-color .16s, box-shadow .16s; }
-.android-timeline-composer:focus-within, .android-timeline-composer.active { border-color: color-mix(in srgb, var(--accent) 58%, var(--border)); box-shadow: var(--focus-ring); }
-.android-timeline-composer > span { color: var(--accent); font-size: 21px; line-height: 1; }
-.android-timeline-composer input { min-width: 0; flex: 1; color: var(--text-primary); font-size: 12px; }
-.android-timeline-composer button { height: 28px; padding: 0 10px; color: #1a1000; background: var(--accent); border-radius: 8px; font-size: 11px; font-weight: 700; }
-.android-bottom-actions { display: flex; gap: 8px; }
-.android-add-button, .android-filter-button { height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 11px; font-size: 11px; font-weight: 650; }
-.android-add-button { flex: 1; color: #1a1000; background: var(--accent); box-shadow: 0 5px 12px color-mix(in srgb, var(--accent) 22%, transparent); }
-.android-filter-button { min-width: 94px; padding: 0 12px; color: var(--text-secondary); background: var(--bg-surface); border: 1px solid var(--border); }
-.android-filter-button.active { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); background: var(--accent-soft); }
-.android-filter-button span { min-width: 16px; height: 16px; display: inline-grid; place-items: center; padding: 0 4px; color: #1a1000; background: var(--accent); border-radius: 999px; font-size: 9px; }
-.android-filter-sheet { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
-.android-filter-scrim { position: absolute; inset: 0; background: rgba(15, 25, 34, .38); pointer-events: auto; }
-.android-filter-panel { position: absolute; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; gap: 15px; padding: 10px 18px calc(20px + env(safe-area-inset-bottom)); color: var(--text-primary); background: var(--bg-surface); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 34px rgba(20,30,40,.2); pointer-events: auto; }
-.android-sheet-handle { width: 36px; height: 4px; align-self: center; background: var(--border-strong); border-radius: 999px; }
-.android-filter-panel > header { display: flex; align-items: center; justify-content: space-between; }
-.android-filter-panel > header strong { font-size: 16px; }
-.android-filter-panel > header button { width: 30px; height: 30px; color: var(--text-muted); border-radius: 8px; font-size: 22px; }
-.android-filter-group { display: flex; flex-direction: column; gap: 8px; }
-.android-filter-group > span { color: var(--text-muted); font-size: 10px; font-weight: 700; }
-.android-filter-group > div { display: flex; flex-wrap: wrap; gap: 7px; }
-.android-filter-group button, .android-filter-clear { min-height: 34px; padding: 0 12px; color: var(--text-secondary); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 9px; font-size: 11px; }
-.android-filter-group button.active { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 52%, var(--border)); }
-.android-filter-clear { margin-top: 2px; color: var(--accent); background: transparent; border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
-.android-sheet-enter-active, .android-sheet-leave-active { transition: opacity .22s ease; }
-.android-sheet-enter-active .android-filter-panel, .android-sheet-leave-active .android-filter-panel { transition: transform .26s var(--ease-standard); }
-.android-sheet-enter-from, .android-sheet-leave-to { opacity: 0; }
-.android-sheet-enter-from .android-filter-panel, .android-sheet-leave-to .android-filter-panel { transform: translateY(100%); }
-
-@media (max-width: 360px) {
-  .android-timeline-header { padding-inline: 14px; }
-  .android-timeline-summary, .android-timeline-toolbar, .android-timeline-scroll, .android-timeline-bottom { margin-inline: 0; padding-inline: 14px; }
-  .android-summary-stat { min-width: 39px; padding-left: 8px; }
-  .android-summary-progress { min-width: 104px; }
-  .android-timeline-kicker, .android-timeline-heading > p { margin-left: 44px; }
 }
 </style>

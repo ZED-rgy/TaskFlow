@@ -23,7 +23,10 @@ const repository = {
   enabled: true,
   async pullChanges(input) {
     calls.push(['pull', input])
-    return [{ seq: 6, operation_id: 'remote-1' }, { seq: 8, operation_id: 'remote-2' }]
+    return [
+      { seq: 6, operation_id: 'remote-1', client_id: 'device-1' },
+      { seq: 8, operation_id: 'remote-2', client_id: 'device-1' },
+    ]
   },
   async pushOperation(input) {
     calls.push(['push', input.operation.operationId])
@@ -42,5 +45,68 @@ await engine.commitRemoteCursor(result.nextCursor)
 assert.deepEqual(calls.at(-1), ['ack', [], '8'])
 
 await assert.rejects(() => engine.commitRemoteCursor('999'), /最近一次同步/)
+
+const conflictCalls = []
+const conflictEngine = createSyncEngine({
+  localApi: {
+    async getSyncStatus() {
+      return { workspaceId: 'workspace-1', deviceId: 'device-local', cursor: '10' }
+    },
+    async getSyncOutbox() {
+      return { outbox: [{ operationId: 'local-pending' }] }
+    },
+    async acknowledgeSync() {
+      conflictCalls.push('ack')
+    },
+  },
+  repository: {
+    enabled: true,
+    async pullChanges() {
+      return [{ seq: 11, client_id: 'device-remote', entity: 'workspace', action: 'snapshot' }]
+    },
+    async pushOperation() {
+      conflictCalls.push('push')
+      return { operation_id: 'local-pending' }
+    },
+  },
+})
+const conflict = await conflictEngine.syncOnce()
+assert.equal(conflict.kind, 'conflict')
+assert.equal(conflict.nextCursor, 11)
+assert.equal(conflict.pendingCount, 1)
+assert.deepEqual(conflictCalls, [], '冲突时不得上传或确认任一方')
+
+let racePullCount = 0
+const raceEngine = createSyncEngine({
+  localApi: {
+    async getSyncStatus() {
+      return { workspaceId: 'workspace-1', deviceId: 'device-local', cursor: '20' }
+    },
+    async getSyncOutbox() {
+      return { outbox: [{ operationId: 'racing-local' }] }
+    },
+    async acknowledgeSync() {
+      assert.fail('CAS 冲突不得确认本地操作')
+    },
+  },
+  repository: {
+    enabled: true,
+    async pullChanges() {
+      racePullCount += 1
+      return racePullCount === 1
+        ? []
+        : [{ seq: 21, client_id: 'device-racer', entity: 'workspace', action: 'snapshot' }]
+    },
+    async pushOperation() {
+      const error = new Error('sync_conflict')
+      error.code = '40001'
+      throw error
+    },
+  },
+})
+const racingConflict = await raceEngine.syncOnce()
+assert.equal(racingConflict.kind, 'conflict', '拉取后发生的并发写入也必须进入冲突处理')
+assert.equal(racingConflict.nextCursor, 21)
+assert.equal(racePullCount, 2)
 
 console.log('sync engine rules: ok')

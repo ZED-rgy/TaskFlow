@@ -2,11 +2,11 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import Widget from './Widget.vue'
 import QuickAdd from './QuickAdd.vue'
+import { isAndroid } from './runtime/platform.js'
 import './style.css'
 
 const params = new URLSearchParams(window.location.search)
 const isDev = import.meta.env.DEV
-const isAndroid = /Android/i.test(navigator.userAgent)
 if (isAndroid) document.documentElement.classList.add('platform-android')
 if (params.has('widget') || params.has('quickadd')) {
   document.documentElement.classList.add('widget-mode')

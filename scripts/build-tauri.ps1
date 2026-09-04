@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [ValidateSet('portable', 'installer')]
-    [string]$Target = 'portable'
+    [string]$Target = 'portable',
+    [switch]$SkipReleaseCopy
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,7 +39,7 @@ try {
         throw "Tauri $Target build failed with exit code $LASTEXITCODE"
     }
 
-    if ($Target -eq 'portable') {
+    if ($Target -eq 'portable' -and -not $SkipReleaseCopy) {
         & node scripts/copy-portable-release.js
         if ($LASTEXITCODE -ne 0) {
             throw "Portable release copy failed with exit code $LASTEXITCODE"

@@ -28,17 +28,17 @@
         "scan:release": "node scripts/scan-release-privacy.mjs",
         "preview": "vite preview",
         "test": "npm run test:unit && npm run test:rust",
-        "test:unit": "node scripts/test-taskviews.mjs && node scripts/test-widget-order.mjs && node scripts/test-widget-visibility.mjs && node scripts/test-widget-drag.mjs && node scripts/test-widget-snap.mjs && node scripts/test-widget-collapse.mjs && node scripts/test-project-icons.mjs && node scripts/test-sync-engine.mjs",
+        "test:unit": "node scripts/test-taskviews.mjs && node scripts/test-widget-order.mjs && node scripts/test-widget-visibility.mjs && node scripts/test-widget-drag.mjs && node scripts/test-widget-snap.mjs && node scripts/test-widget-collapse.mjs && node scripts/test-project-icons.mjs && node scripts/test-sync-engine.mjs && node scripts/test-sync-merge.mjs && node scripts/test-sync-repository.mjs && node scripts/test-sync-workspace.mjs && node scripts/test-csp.mjs",
         "test:rust": "npm run build:web && cargo test --manifest-path src-tauri/Cargo.toml",
         "check": "npm run test:unit && npm run build:web && cargo check --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
         "verify": "npm run check"
     },
     "dependencies": {
         "@floating-ui/vue": "^2.0.1",
-        "@supabase/supabase-js": "^2.57.0",
+        "@supabase/supabase-js": "^2.115.0",
         "@tauri-apps/plugin-deep-link": "^2.4.10",
         "sortablejs": "^1.15.7",
-        "vue": "^3.5.41"
+        "vue": "^3.5.42"
     },
     "devDependencies": {
         "@tauri-apps/cli": "^2.11.4",
