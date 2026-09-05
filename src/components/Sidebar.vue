@@ -358,11 +358,13 @@ function selectProject(p) {
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M6 1v6M3.5 4.5L6 7l2.5-2.5M2 10.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
+        <span class="utility-label">导出</span>
       </button>
       <button class="utility-btn" title="导入备份" @click="$emit('importData')">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M6 11V5M3.5 7.5L6 5l2.5 2.5M2 1.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
+        <span class="utility-label">导入</span>
       </button>
       <button
         class="utility-btn"
@@ -374,6 +376,7 @@ function selectProject(p) {
           <path d="M6 7.7A1.7 1.7 0 1 0 6 4.3a1.7 1.7 0 0 0 0 3.4Z" stroke="currentColor" stroke-width="1.2"/>
           <path d="M6 1v1.2M6 9.8V11M1 6h1.2M9.8 6H11M2.45 2.45l.85.85M8.7 8.7l.85.85M9.55 2.45l-.85.85M3.3 8.7l-.85.85" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
         </svg>
+        <span class="utility-label">设置</span>
       </button>
     </div>
 
@@ -694,6 +697,7 @@ function selectProject(p) {
 }
 
 /* Context menu */
+.utility-label { display: none; }
 .ctx-overlay {
   position: fixed;
   inset: 0;

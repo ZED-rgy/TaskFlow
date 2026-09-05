@@ -145,10 +145,6 @@ function cancelComposer() {
   addingTitle.value = ''
 }
 
-function toggleTodayFilter() {
-  emit('update:dueFilter', props.dueFilter === 'today' ? 'all' : 'today')
-}
-
 function resetMobileFilters() {
   emit('resetFilters')
   mobileFilterOpen.value = false
@@ -166,18 +162,11 @@ watch(() => props.statusFilter, value => {
       <div class="android-project-lockup">
         <span class="android-project-icon" aria-hidden="true"><ProjectIcon :icon="project.icon" /></span>
         <div class="android-timeline-heading">
-          <span class="android-timeline-kicker">{{ project.readonlyProject ? '智能视图' : '项目清单' }}</span>
           <h1>{{ project.name }}</h1>
+          <p class="android-date-line">{{ formatDate(today) }}</p>
         </div>
       </div>
       <div class="android-sync-status" :class="`tone-${syncLabel.tone}`" aria-label="同步状态" :title="cloudSync?.detail || cloudSync?.text || ''"><span></span>{{ syncLabel.text }}</div>
-      <div class="android-header-context">
-        <button class="android-date-button" type="button" :aria-pressed="dueFilter === 'today'" aria-label="切换今天到期任务筛选" @click="toggleTodayFilter">
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3.5" width="12" height="10" rx="2" stroke="currentColor" stroke-width="1.35"/><path d="M2 6.5h12M5 2v3M11 2v3" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>
-          <span>{{ formatDate(today) }}</span>
-        </button>
-        <span class="android-date-hint">按自己的节奏来</span>
-      </div>
     </header>
 
     <section class="android-progress-card" aria-label="项目进度">
@@ -187,8 +176,8 @@ watch(() => props.statusFilter, value => {
       </div>
       <div class="android-progress-track" role="progressbar" aria-label="任务完成进度" :aria-valuenow="completionPercent" aria-valuemin="0" aria-valuemax="100"><i :style="{ width: `${completionPercent}%` }"></i></div>
       <div v-if="highPriorityCount || overdueCount" class="android-progress-foot">
-        <button v-if="overdueCount" class="danger" type="button" :aria-pressed="dueFilter === 'overdue'" @click="emit('update:dueFilter', dueFilter === 'overdue' ? 'all' : 'overdue')"><i></i>{{ overdueCount }} 项逾期 <span aria-hidden="true">›</span></button>
-        <button v-if="highPriorityCount" type="button" :aria-pressed="priorityFilter === 'high'" @click="emit('update:priorityFilter', priorityFilter === 'high' ? 'all' : 'high')"><i></i>{{ highPriorityCount }} 项高优先级 <span aria-hidden="true">›</span></button>
+        <button v-if="overdueCount" class="danger" type="button" :aria-pressed="dueFilter === 'overdue'" @click="emit('update:dueFilter', dueFilter === 'overdue' ? 'all' : 'overdue')"><i></i>逾期 {{ overdueCount }}</button>
+        <button v-if="highPriorityCount" type="button" :aria-pressed="priorityFilter === 'high'" @click="emit('update:priorityFilter', priorityFilter === 'high' ? 'all' : 'high')"><i></i>高优先 {{ highPriorityCount }}</button>
       </div>
     </section>
 
@@ -196,7 +185,7 @@ watch(() => props.statusFilter, value => {
       <div class="android-search-row">
         <label class="android-timeline-search">
           <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="7.8" cy="7.8" r="5.4" stroke="currentColor" stroke-width="1.6"/><path d="m11.8 11.8 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          <input type="search" :value="searchQuery" aria-label="搜索任务" placeholder="搜索标题、标签或备注" @input="emit('update:searchQuery', $event.target.value)" />
+          <input type="search" :value="searchQuery" aria-label="搜索任务" placeholder="搜索任务" @input="emit('update:searchQuery', $event.target.value)" />
           <button v-if="searchQuery" type="button" class="android-search-clear" aria-label="清除搜索" @click="emit('update:searchQuery', '')">×</button>
         </label>
         <button ref="filterTrigger" class="android-filter-button" :class="{ active: activeFilterCount > 0 }" type="button" aria-label="筛选任务" @click="mobileFilterOpen = true">
@@ -316,37 +305,33 @@ watch(() => props.statusFilter, value => {
   display: flex; flex: 1; min-height: 0; min-width: 0; flex-direction: column;
   color: var(--text-primary); background: var(--bg-base);
 }
-.android-timeline-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 20px 24px; scrollbar-width: none; }
+.android-timeline-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px calc(20px + env(safe-area-inset-bottom, 0px)); scrollbar-width: none; }
 .android-timeline-scroll::-webkit-scrollbar { display: none; }
-.android-timeline-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 16px 0 4px; }
+.android-timeline-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 14px 0 10px; }
 .android-project-lockup { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.android-project-icon { flex: 0 0 44px; height: 44px; display: grid; place-items: center; color: var(--mobile-project); background: color-mix(in srgb, var(--mobile-project) 12%, var(--bg-surface)); border-radius: 14px; }
+.android-project-icon { flex: 0 0 36px; height: 36px; display: grid; place-items: center; color: var(--mobile-project); background: color-mix(in srgb, var(--mobile-project) 12%, var(--bg-surface)); border-radius: 11px; }
 .android-project-icon :deep(svg) { width: 24px; height: 24px; }
 .android-timeline-heading { min-width: 0; }
-.android-timeline-kicker { display: block; color: var(--text-muted); font-size: 11px; letter-spacing: .12em; margin-bottom: 5px; }
-.android-timeline-heading h1 { font-family: var(--font-display); font-size: 27px; font-weight: 750; line-height: 1.2; letter-spacing: -.04em; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.android-date-line { color: var(--text-muted); font-size: 12px; margin-top: 3px; }
+.android-timeline-heading h1 { font-family: var(--font-display); font-size: 24px; font-weight: 750; line-height: 1.3; letter-spacing: -.025em; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .android-sync-status { align-self: start; display: flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 7px; color: var(--text-muted); font-size: 10px; white-space: nowrap; }
 .android-sync-status > span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .android-sync-status.tone-ok { color: var(--success); }
 .android-sync-status.tone-error { color: var(--danger); }
 .android-sync-status.tone-busy { color: var(--accent); }
-.android-header-context { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.android-date-button { display: flex; align-items: center; gap: 7px; min-height: 44px; color: var(--text-secondary); font-size: 12px; }
-.android-date-button[aria-pressed='true'] { color: var(--mobile-project); }
-.android-date-hint { color: var(--text-muted); font-size: 11px; }
-.android-progress-card { padding: 0 0 12px; }
-.android-progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: var(--text-muted); font-size: 12px; }
+.android-progress-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 10px; padding: 0 0 10px; }
+.android-progress-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; color: var(--text-muted); font-size: 11px; }
 .android-progress-head strong { font-family: var(--font-display); color: var(--text-primary); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 3px; }
-.android-progress-track { height: 3px; margin: 10px 0 4px; overflow: hidden; background: var(--border); border-radius: 9px; }
+.android-progress-track { grid-column: 1 / -1; grid-row: 2; height: 3px; margin: 4px 0; overflow: hidden; background: var(--border); border-radius: 9px; }
 .android-progress-track i { display: block; height: 100%; background: var(--mobile-project); border-radius: inherit; transition: width .3s ease; }
-.android-progress-foot { display: flex; gap: 14px; flex-wrap: wrap; }
+.android-progress-foot { grid-column: 2; grid-row: 1; display: flex; gap: 0 8px; flex-wrap: wrap; justify-content: flex-end; max-width: 160px; }
 .android-progress-foot button { min-height: 44px; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
 .android-progress-foot button.danger { color: var(--danger); }
 .android-progress-foot button[aria-pressed='true'] { text-decoration: underline; text-underline-offset: 4px; }
 .android-progress-foot i { width: 5px; height: 5px; border-radius: 50%; background: var(--mobile-project); }
 .android-progress-foot .danger i { background: var(--danger); }
 .android-progress-foot button span { font-size: 17px; }
-.android-timeline-toolbar { position: sticky; top: 0; z-index: 3; padding: 4px 0 10px; background: var(--bg-base); }
+.android-timeline-toolbar { position: sticky; top: 0; z-index: 3; padding: 4px 0 6px; background: var(--bg-base); }
 .android-search-row { display: flex; gap: 10px; margin-bottom: 8px; }
 .android-timeline-search { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; min-height: 46px; padding: 0 12px; border: 1px solid var(--border); border-radius: 13px; color: var(--text-muted); background: var(--bg-surface); }
 .android-timeline-search input { flex: 1; min-width: 0; color: var(--text-primary); font-size: 14px; width: 100%; }
@@ -356,13 +341,13 @@ watch(() => props.statusFilter, value => {
 .android-filter-button { position: relative; flex: 0 0 46px; height: 46px; display: grid; place-items: center; border: 1px solid var(--border); background: var(--bg-surface); border-radius: 13px; color: var(--text-secondary); }
 .android-filter-button.active { color: var(--mobile-project); border-color: var(--mobile-project); }
 .android-filter-button > span { position: absolute; right: -4px; top: -4px; min-width: 18px; height: 18px; padding: 0 3px; background: var(--mobile-project); color: var(--mobile-ink); border-radius: 50%; font-size: 10px; display: grid; place-items: center; }
-.android-timeline-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; border-radius: 12px; background: var(--bg-elevated); }
-.android-timeline-tabs button { min-height: 44px; display: flex; justify-content: center; align-items: center; gap: 7px; color: var(--text-muted); border-radius: 9px; font-size: 13px; }
-.android-timeline-tabs button.active { background: var(--bg-surface); color: var(--text-primary); font-weight: 650; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.android-timeline-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: 1px solid var(--border-soft); }
+.android-timeline-tabs button { min-height: 44px; display: flex; justify-content: center; align-items: center; gap: 6px; color: var(--text-muted); border-bottom: 2px solid transparent; font-size: 13px; }
+.android-timeline-tabs button.active { border-bottom-color: var(--mobile-project); color: var(--text-primary); font-weight: 650; }
 .android-timeline-tabs small { font-size: 11px; font-variant-numeric: tabular-nums; opacity: .75; }
 .android-active-filters { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--mobile-project); font-size: 12px; }
 .android-active-filters button { min-height: 44px; color: var(--text-muted); }
-.android-agenda-group { margin: 8px 0 22px; animation: agenda-rise .25s ease both; animation-delay: calc(var(--group-index, 0) * 30ms); }
+.android-agenda-group { margin: 4px 0 18px; animation: agenda-rise .25s ease both; animation-delay: calc(var(--group-index, 0) * 30ms); }
 .android-group-heading { width: 100%; min-height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 2px 8px; text-align: left; color: var(--text-secondary); }
 .android-group-marker { width: 3px; height: 13px; border-radius: 3px; background: var(--mobile-project); }
 .tone-danger .android-group-marker { background: var(--danger); }
@@ -371,7 +356,7 @@ watch(() => props.statusFilter, value => {
 .android-group-heading small { font-size: 11px; color: var(--text-muted); }
 .android-group-heading b { margin-left: auto; font-size: 12px; color: var(--text-muted); font-weight: 500; }
 .android-task-ledger { border: 1px solid var(--border); background: var(--bg-surface); border-radius: 15px; overflow: hidden; }
-.android-time-task { display: flex; align-items: center; gap: 4px; min-height: 76px; padding: 8px 12px 8px 4px; }
+.android-time-task { display: flex; align-items: center; gap: 4px; min-height: 68px; padding: 6px 12px 6px 4px; }
 .android-time-task + .android-time-task { border-top: 1px solid var(--border-soft); }
 .android-time-check { width: 44px; height: 48px; flex: 0 0 44px; display: grid; place-items: center; border: 0; background: transparent; }
 .android-time-check span { display: grid; place-items: center; width: 23px; height: 23px; border: 1.5px solid var(--border-strong); border-radius: 8px; }
@@ -379,7 +364,7 @@ watch(() => props.statusFilter, value => {
 .priority-high .android-time-check span { border-color: var(--mobile-project); }
 .overdue .android-time-check span { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); }
 .android-time-check.checked span { background: var(--mobile-project); color: var(--mobile-ink); border-color: var(--mobile-project); font-size: 14px; }
-.android-time-task-main { min-width: 0; min-height: 48px; flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 6px; text-align: left; padding-right: 6px; }
+.android-time-task-main { min-width: 0; min-height: 48px; flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; text-align: left; padding-right: 6px; }
 .android-time-task-main strong { font-size: 15px; font-weight: 550; line-height: 1.5; color: var(--text-primary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .android-time-task-main small { display: flex; flex-wrap: wrap; gap: 4px 8px; color: var(--text-muted); font-size: 11px; line-height: 1.5; max-width: 100%; }
 .android-time-task-main small:empty { display: none; }
@@ -437,7 +422,6 @@ button:focus-visible { outline: 2px solid var(--mobile-project); outline-offset:
   .android-timeline-scroll { padding-inline: 14px; }
   .android-timeline-bottom { padding-inline: 14px; }
   .android-timeline-heading h1 { font-size: 24px; }
-  .android-date-hint { display: none; }
   .android-time-task { padding-right: 8px; }
   .android-time-task-main strong { font-size: 14px; }
 }
