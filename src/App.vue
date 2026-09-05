@@ -1295,6 +1295,7 @@ onUnmounted(() => {
             :projects="projects"
             :today="todayKey"
             :cloud-sync="cloudSync"
+            :active-task-id="selectedTaskId"
             @create="onCreateTask"
             @update="onUpdateTask"
             @delete="onDeleteTask"
@@ -1567,6 +1568,8 @@ onUnmounted(() => {
   position: relative;
 }
 .main-area {
+  container: task-canvas / inline-size;
+  isolation: isolate;
   flex: 1;
   overflow: hidden;
   display: flex;

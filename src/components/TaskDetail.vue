@@ -10,6 +10,7 @@ const props = defineProps({
 const emit = defineEmits(['update', 'delete', 'close'])
 
 const tagDraft = ref('')
+const editingTags = ref(false)
 
 const priorityLabel = computed(() => ({
   low: '低',
@@ -19,12 +20,14 @@ const priorityLabel = computed(() => ({
 
 const statusLabel = computed(() => props.task?.completed ? '已完成' : '进行中')
 
-watch(() => props.task?.id, () => {
-  tagDraft.value = (props.task?.tags || []).join(', ')
+watch([() => props.task?.id, () => JSON.stringify(props.task?.tags || [])], ([id], [previousId] = []) => {
+  if (id !== previousId) editingTags.value = false
+  if (!editingTags.value) tagDraft.value = (props.task?.tags || []).join(', ')
 }, { immediate: true })
 
 function updateField(field, value) {
   if (!props.task) return
+  if (props.task[field] === value) return
   updateTaskField(props.task.id, field, value)
 }
 
@@ -32,13 +35,15 @@ function updateTaskField(id, field, value) {
   emit('update', { id, [field]: value })
 }
 
-function commitTags() {
-  const tags = tagDraft.value
-    .split(',')
+function commitTags(event) {
+  if (event?.isComposing || event?.keyCode === 229) return
+  const tags = [...new Set(tagDraft.value
+    .split(/[,，]/)
     .map(tag => tag.trim())
     .filter(Boolean)
-    .slice(0, 8)
-  updateField('tags', [...new Set(tags)])
+    .map(tag => [...tag].slice(0, 40).join('')))].slice(0, 16)
+  tagDraft.value = tags.join(', ')
+  if (JSON.stringify(tags) !== JSON.stringify(props.task?.tags || [])) updateField('tags', tags)
 }
 
 function formatDateTime(value) {
@@ -146,8 +151,10 @@ function formatDateTime(value) {
         <span>标签</span>
         <input
           v-model="tagDraft"
-          placeholder="用英文逗号分隔"
-          @blur="commitTags"
+          placeholder="用逗号分隔标签"
+          @focus="editingTags = true"
+          @change="commitTags"
+          @blur="editingTags = false; tagDraft = (task.tags || []).join(', ')"
           @keydown.enter.prevent="commitTags"
         />
       </label>
@@ -240,6 +247,13 @@ function formatDateTime(value) {
   to { opacity: 1; transform: translateX(0); }
 }
 .detail-head {
+  position: sticky;
+  top: -22px;
+  z-index: 2;
+  margin-inline: -22px;
+  padding: 18px 22px 14px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -291,10 +305,15 @@ function formatDateTime(value) {
 }
 .detail-status.done { color: var(--success); }
 .detail-title {
+  color: var(--text-primary);
   max-width: 230px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
   font-family: var(--font-display);
   font-size: 18px;
   font-weight: 750;
@@ -318,6 +337,7 @@ function formatDateTime(value) {
   background: var(--border);
 }
 .icon-btn {
+  flex-shrink: 0;
   width: 28px;
   height: 28px;
   display: flex;
@@ -465,6 +485,7 @@ function formatDateTime(value) {
 .subtask-row:hover .subtask-delete {
   opacity: 1;
 }
+.subtask-row:focus-within .subtask-delete { opacity: 1; }
 .subtask-delete:hover {
   color: var(--danger);
   background: var(--danger-soft);
@@ -519,7 +540,7 @@ function formatDateTime(value) {
   opacity: .35;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 980px) {
   .detail-panel {
     position: absolute;
     inset: 0 0 0 auto;

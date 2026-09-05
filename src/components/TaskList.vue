@@ -15,6 +15,7 @@ const props = defineProps({
   projects:{ type: Array,  default: () => [] },
   today:   { type: String, default: '' },
   cloudSync: { type: Object, default: null },
+  activeTaskId: { type: String, default: null },
 })
 const emit = defineEmits(['create', 'update', 'delete', 'reorder', 'selectTask', 'openMobileNav'])
 
@@ -77,23 +78,29 @@ function toggleFilterMenu(kind) {
 function selectFilter(kind, value) {
   if (kind === 'due') dueFilter.value = value
   else priorityFilter.value = value
-  openFilterMenu.value = null
+  closeFilterMenu(true)
 }
 
 function handleFilterOptionKeydown(event, kind, index) {
+  event.stopPropagation()
   const options = FILTER_OPTIONS[kind]
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.preventDefault()
     const next = (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length
     nextTick(() => document.querySelector(`[data-filter-kind="${kind}"][data-filter-index="${next}"]`)?.focus())
+  } else if (event.key === 'Escape') {
+    event.preventDefault()
+    closeFilterMenu(true)
   } else if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault()
     selectFilter(kind, options[index].value)
   }
 }
 
-function closeFilterMenu() {
+function closeFilterMenu(restoreFocus = false) {
+  const trigger = openFilterMenu.value === 'due' ? dueTriggerEl.value : priorityTriggerEl.value
   openFilterMenu.value = null
+  if (restoreFocus === true) nextTick(() => trigger?.focus())
 }
 
 function onDocumentPointerdown(event) {
@@ -124,6 +131,12 @@ const statusCounts = computed(() => {
 })
 
 const hasActiveFilters = computed(() => activeFilterItems.value.length > 0)
+
+function clearFilter(key) {
+  if (key === 'status') statusFilter.value = 'open'
+  if (key === 'due') dueFilter.value = 'all'
+  if (key === 'priority') priorityFilter.value = 'all'
+}
 
 function resetFilters() {
   statusFilter.value = 'open'
@@ -388,7 +401,8 @@ async function focusAdd() {
 // 自然语言解析预览（「明天 交报告 #学校 !高」→ 日期/标签/优先级）
 const parsedAdd = computed(() => parseQuickInput(addingTitle.value, props.today))
 
-function submitAdd() {
+function submitAdd(event) {
+  if (event?.isComposing || event?.keyCode === 229) return
   const parsed = parsedAdd.value
   const title = (parsed.title || addingTitle.value).trim()
   if (!title) return
@@ -463,7 +477,8 @@ function isTypingTarget(target) {
 }
 
 function moveFocus(step) {
-  const list = visibleTasks.value
+  const list = taskGroups.value.flatMap(group =>
+    group.label && collapsedGroups.value.has(group.key) ? [] : group.tasks)
   if (!list.length) return
   const idx = list.findIndex(t => t.id === focusedId.value)
   const next = idx === -1
@@ -497,7 +512,8 @@ function moveFocusedTask(step) {
 
 async function handleKeydown(event) {
   // 中文输入法组词中不响应快捷键，避免误触发
-  if (event.isComposing) return
+  if (event.isComposing || event.defaultPrevented || isAndroid) return
+  if (event.target?.closest('[aria-modal="true"]')) return
   if (event.key === 'Escape' && openFilterMenu.value) {
     event.preventDefault()
     closeFilterMenu()
@@ -523,6 +539,8 @@ async function handleKeydown(event) {
     event.preventDefault()
     await focusAdd()
   }
+  // Row navigation belongs to the row itself, not buttons, detail fields or dialogs.
+  if (!event.target?.matches('.task-wrapper')) return
   if (event.altKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp') && focusedId.value) {
     event.preventDefault()
     moveFocusedTask(event.key === 'ArrowDown' ? 1 : -1)
@@ -649,6 +667,13 @@ watch(() => props.project.id, () => {
   clearSelection()
 })
 
+// Hidden or deleted tasks must not remain targets of a later bulk action.
+watch(visibleTasks, list => {
+  const visibleIds = new Set(list.map(task => task.id))
+  selectedTaskIds.value = new Set([...selectedTaskIds.value].filter(id => visibleIds.has(id)))
+  if (!visibleIds.has(focusedId.value)) focusedId.value = null
+})
+
 watch([sortableEnabled, listEl], () => nextTick(syncSortable), { flush: 'post' })
 
 onUnmounted(() => {
@@ -725,7 +750,7 @@ onUnmounted(() => {
           />
         </svg>
         <div class="progress-copy">
-          <span>今日进度</span>
+          <span>{{ project.id === 'today' ? '今日进度' : '完成进度' }}</span>
           <strong :class="{ 'progress-pulse': progressPulse }">{{ completionPercent }}%</strong>
           <small>{{ completedCount }}/{{ totalCount }} 已完成</small>
         </div>
@@ -738,8 +763,9 @@ onUnmounted(() => {
           <circle cx="6.2" cy="6.2" r="4.2" stroke="currentColor" stroke-width="1.4"/>
           <path d="M9.4 9.4l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
-        <input ref="searchInput" v-model="searchQuery" placeholder="搜索任务、项目或标签" />
-        <span class="search-shortcut" aria-hidden="true">Ctrl F</span>
+        <input ref="searchInput" v-model="searchQuery" aria-label="搜索任务、项目或标签" placeholder="搜索任务、项目或标签" @keydown.esc.stop.prevent="searchQuery = ''" />
+        <button v-if="searchQuery" class="search-clear" aria-label="清除搜索" @click="searchQuery = ''; searchInput?.focus()">×</button>
+        <span v-else class="search-shortcut" aria-hidden="true">Ctrl F</span>
       </div>
       <div class="segmented" role="group" aria-label="任务状态筛选">
         <button :class="{ active: statusFilter === 'open' }" :aria-pressed="statusFilter === 'open'" @click="statusFilter = 'open'"><span>未完成</span><small>{{ statusCounts.open }}</small></button>
@@ -826,7 +852,7 @@ onUnmounted(() => {
         :key="item.key"
         type="button"
         class="filter-summary-chip"
-        @click="resetFilters"
+        @click="clearFilter(item.key)"
       >{{ item.label }} <span aria-hidden="true">×</span></button>
       <button type="button" class="filter-reset-btn" @click="resetFilters">清除</button>
       <button type="button" class="filter-save-btn" @click="openSaveView">保存视图</button>
@@ -906,6 +932,7 @@ onUnmounted(() => {
 
     <!-- Task items -->
     <div class="task-scroll">
+      <p v-if="searchQuery.trim() || hasActiveFilters" class="result-count" role="status">找到 {{ visibleTasks.length }} 个任务</p>
       <Transition name="slide">
         <div v-if="selectedTaskIds.size" class="selection-toolbar" role="toolbar" aria-label="批量任务操作">
           <span><strong>{{ selectedTaskIds.size }}</strong> 个任务已选择</span>
@@ -948,6 +975,7 @@ onUnmounted(() => {
                 :projectName="project.readonlyProject ? taskProjectName(task.projectId) : ''"
                 :today="today"
                 :selected="selectedTaskIds.has(task.id)"
+                :active-task-id="activeTaskId"
                 @update="$emit('update', $event)"
                 @delete="$emit('delete', $event)"
                 @addSubtask="handleAddSubtask"
@@ -961,11 +989,13 @@ onUnmounted(() => {
       <!-- Empty state -->
       <div v-if="visibleTasks.length === 0" class="list-empty">
         <div class="empty-glyph">{{ searchQuery ? '◇' : (completedCount > 0 && statusFilter === 'open' ? '☀' : '◇') }}</div>
-        <p v-if="searchQuery">没有匹配的任务</p>
-        <p v-else-if="completedCount > 0 && statusFilter === 'open'">今日事今日毕，全部完成 ✓</p>
+        <p v-if="searchQuery.trim() || dueFilter !== 'all' || priorityFilter !== 'all'">没有符合当前条件的任务</p>
+        <p v-else-if="statusFilter === 'done'">还没有已完成的任务</p>
+        <p v-else-if="completedCount > 0 && openRootCount === 0">当前清单已全部完成 ✓</p>
         <p v-else-if="project.id === 'today'">今天没有到期任务，去项目里安排一些吧</p>
         <p v-else>还没有任务，输入上方添加</p>
-        <div v-if="!searchQuery" class="empty-hints">
+        <button v-if="searchQuery.trim() || dueFilter !== 'all' || priorityFilter !== 'all'" class="empty-reset" @click="searchQuery = ''; resetFilters()">清除搜索和筛选</button>
+        <div v-else class="empty-hints">
           <span class="hint-item"><kbd>Ctrl</kbd><kbd>N</kbd> 新建任务</span>
           <span class="hint-item"><kbd>Ctrl</kbd><kbd>F</kbd> 搜索</span>
           <span class="hint-item"><kbd>↑</kbd><kbd>↓</kbd> 选择 · <kbd>空格</kbd> 完成</span>
@@ -995,6 +1025,8 @@ onUnmounted(() => {
 
 <style scoped>
 .task-list-view {
+  min-height: 0;
+  min-width: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1080,6 +1112,9 @@ onUnmounted(() => {
   letter-spacing: .14em;
 }
 .project-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-display);
   font-size: 31px;
   font-weight: 760;
@@ -1093,6 +1128,7 @@ onUnmounted(() => {
   font-size: 11.5px;
 }
 .header-stats {
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -1210,7 +1246,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(3, 62px);
   height: 34px;
-  background: rgba(255,255,255,.26);
+  background: color-mix(in srgb, var(--bg-elevated) 74%, transparent);
   border: 1px solid var(--border);
   border-radius: 999px;
   overflow: hidden;
@@ -1480,7 +1516,7 @@ onUnmounted(() => {
   gap: 10px;
   min-height: 52px;
   padding: 8px 14px;
-  background: rgba(255,255,255,.42);
+  background: color-mix(in srgb, var(--bg-surface) 74%, transparent);
   border: 1px solid color-mix(in srgb, var(--border-strong) 52%, var(--border));
   border-radius: 14px;
   box-shadow: 0 10px 24px rgba(68,62,52,.06), inset 0 1px rgba(255,255,255,.55);
@@ -1526,6 +1562,7 @@ onUnmounted(() => {
 .add-submit-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
 .add-submit-btn:active { transform: translateY(0); }
 .add-input {
+  min-width: 0;
   flex: 1;
   font-size: 13.5px;
   color: var(--text-primary);
@@ -1620,6 +1657,7 @@ onUnmounted(() => {
 
 /* Task scroll */
 .task-scroll {
+  min-height: 0;
   flex: 1;
   overflow-y: auto;
   padding: 12px 32px 36px;
@@ -1684,7 +1722,7 @@ onUnmounted(() => {
 .task-wrapper:has(.task-row:hover) { z-index: 1; }
 
 /* Keyboard focus */
-.kb-focus :deep(.task-item:not(.is-sub) > .task-row) {
+.kb-focus:focus-visible :deep(.task-item:not(.is-sub) > .task-row) {
   background: var(--bg-surface);
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
@@ -1835,7 +1873,7 @@ onUnmounted(() => {
   font-size: 12.5px;
 }
 
-@media (max-width: 1600px) {
+@container task-canvas (max-width: 1100px) {
   .list-header,
   .filter-bar,
   .add-task-bar,
@@ -1861,12 +1899,12 @@ onUnmounted(() => {
   }
 }
 
-@media (max-width: 980px) {
+@container task-canvas (max-width: 700px) {
   .list-header {
     padding: 22px 24px 14px;
   }
   .filter-bar {
-    grid-template-columns: minmax(180px, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     padding: 0 24px 12px;
   }
   .filter-select {
@@ -1881,5 +1919,37 @@ onUnmounted(() => {
   .task-scroll {
     padding: 10px 18px 22px;
   }
+}
+
+.search-clear { flex-shrink: 0; width: 28px; height: 28px; border-radius: 7px; color: var(--text-muted); font-size: 18px; }
+.search-clear:hover { background: var(--accent-soft); color: var(--accent); }
+.result-count { margin: 0 auto 8px; max-width: 1180px; padding-inline: 8px; color: var(--text-muted); font-size: 11px; }
+.empty-reset { padding: 8px 14px; border-radius: 8px; color: var(--accent); background: var(--accent-soft); }
+.filter-summary { flex-wrap: wrap; flex-shrink: 0; }
+
+@container task-canvas (max-width: 600px) {
+  .list-header { padding: 18px 20px 12px; }
+  .project-title { font-size: 25px; }
+  .header-right { display: none; }
+  .header-eyebrow { display: none; }
+  .filter-bar { grid-template-areas: none; gap: 8px; padding-inline: 20px; }
+  .search-box { grid-area: auto; }
+  .search-box { grid-column: 1 / -1; }
+  .segmented { grid-area: auto; justify-self: start; }
+  .filter-pickers { grid-area: auto; grid-column: 1 / -1; justify-self: stretch; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+  .filter-control { padding-left: 0; border-left: 0; }
+  .filter-control + .filter-control { margin-left: 8px; }
+  .filter-summary, .saved-views, .save-view-row { padding-inline: 20px; }
+  .add-task-bar { padding: 8px 20px 12px; }
+  .add-hint { display: none; }
+  .task-scroll { padding: 8px 12px 24px; }
+  .list-empty { padding: 24px 0; text-align: center; }
+}
+
+@media (max-height: 600px) {
+  .list-header { padding-top: 12px; padding-bottom: 10px; }
+  .header-eyebrow, .header-subtitle { display: none; }
+  .project-title { font-size: 24px; }
+  .project-icon { width: 34px; height: 34px; border-radius: 12px; }
 }
 </style>

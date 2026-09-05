@@ -8,6 +8,7 @@ const props = defineProps({
   projectName: { type: String, default: '' },
   today: { type: String, default: '' },
   selected: { type: Boolean, default: false },
+  activeTaskId: { type: String, default: null },
 })
 const emit = defineEmits(['update', 'delete', 'addSubtask', 'select'])
 
@@ -56,7 +57,9 @@ async function startEdit() {
   editEl.value?.select()
 }
 
-function commitEdit() {
+function commitEdit(event) {
+  if (event?.isComposing || event?.keyCode === 229) return
+  if (!editing.value) return
   editing.value = false
   const t = editTitle.value.trim()
   if (t && t !== props.task.title) {
@@ -78,7 +81,7 @@ function formatDueLabel(dateKey) {
 <template>
   <div
     class="task-item"
-    :class="{ completed: task.completed, 'just-completed': justCompleted, 'is-sub': depth > 0, 'priority-high': task.priority === 'high', selected }"
+    :class="{ completed: task.completed, 'just-completed': justCompleted, 'is-sub': depth > 0, 'priority-high': task.priority === 'high', selected, 'detail-active': task.id === activeTaskId }"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
   >
@@ -125,6 +128,7 @@ function formatDueLabel(dateKey) {
       </button>
 
       <!-- Title -->
+      <div class="task-copy">
       <span
         v-if="!editing"
         class="task-title"
@@ -139,11 +143,12 @@ function formatDueLabel(dateKey) {
         class="task-title-input"
         @blur="commitEdit"
         @keydown.enter="commitEdit"
-        @keydown.escape="cancelEdit"
+        @keydown.escape.stop="cancelEdit"
         @click.stop
       />
 
       <!-- Subtask count badge -->
+      <div class="task-meta">
       <span v-if="projectName" class="project-badge">{{ projectName }}</span>
       <span
         v-if="task.priority && task.priority !== 'normal'"
@@ -168,6 +173,8 @@ function formatDueLabel(dateKey) {
         v-if="subtasks.length && !expanded"
         class="sub-badge"
       >{{ pendingSubtasks }}/{{ subtasks.length }}</span>
+      </div>
+      </div>
 
       <!-- Hover / keyboard actions -->
       <Transition name="fade">
@@ -219,10 +226,11 @@ function formatDueLabel(dateKey) {
           :subtasks="[]"
           :depth="depth + 1"
           :today="today"
+          :active-task-id="activeTaskId"
           @update="$emit('update', $event)"
           @delete="$emit('delete', $event)"
           @addSubtask="$emit('addSubtask', $event)"
-          @select="$emit('select', $event)"
+          @select="(id, event) => $emit('select', id, event)"
         />
       </div>
     </Transition>
@@ -351,10 +359,14 @@ function formatDueLabel(dateKey) {
 
 /* Title */
 .task-title {
-  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   font-size: 14.5px;
   color: var(--text-primary);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
@@ -368,6 +380,8 @@ function formatDueLabel(dateKey) {
 }
 
 .task-title-input {
+  width: 100%;
+  min-width: 0;
   flex: 1;
   font-size: 13px;
   color: var(--text-primary);
@@ -516,4 +530,14 @@ function formatDueLabel(dateKey) {
 /* Subtask sizing */
 .is-sub .task-title { font-size: 13px; }
 .is-sub .task-row   { min-height: 38px; padding-top: 6px; padding-bottom: 6px; }
+.task-copy { flex: 1; min-width: 0; }
+.task-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+.task-meta:empty { display: none; }
+.detail-active > .task-row { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+@container task-canvas (max-width: 700px) {
+  .task-row { gap: 7px; padding-inline: 6px; }
+  .task-actions { gap: 0; }
+  .drag-handle { width: 10px; }
+  .expand-placeholder { width: 4px; }
+}
 </style>
