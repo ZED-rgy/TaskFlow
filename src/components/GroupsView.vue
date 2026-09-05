@@ -203,11 +203,12 @@ async function lookupInvite() {
   busy.value = true
   preview.value = null
   error.value = ''
+  const requestedCode = code.value.trim()
   try {
     const data = await syncRepository.groups('preview', {
-      code: code.value.trim()
+      code: requestedCode
     })
-    if (epoch === generation) preview.value = data
+    if (epoch === generation && code.value.trim() === requestedCode && form.value === 'join') preview.value = data
   } catch (e) {
     if (epoch === generation) error.value = e.message
   } finally {
@@ -268,6 +269,11 @@ watch(selected, () => {
   members.value = []
   management.value = null
   shareDraft.value = blank()
+  confirmation.value = null
+  form.value = ''
+  preview.value = null
+  error.value = ''
+  message.value = ''
   tab.value = 'today'
   memberFilter.value = ''
   projectFilter.value = ''

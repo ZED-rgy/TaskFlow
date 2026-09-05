@@ -32,7 +32,7 @@
         "test:rust": "npm run build:web && cargo test --manifest-path src-tauri/Cargo.toml",
         "check": "npm run test:unit && npm run build:web && cargo check --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
         "verify": "npm run check && npm run test:groups",
-        "test:groups": "node scripts/test-group-views.mjs && node scripts/test-groups-db.mjs"
+        "test:groups": "node scripts/test-group-views.mjs && node scripts/test-group-interactions.mjs && node scripts/test-groups-db.mjs"
     },
     "dependencies": {
         "@floating-ui/vue": "^2.0.1",
