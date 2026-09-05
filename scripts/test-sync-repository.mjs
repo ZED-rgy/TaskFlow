@@ -65,4 +65,14 @@ assert.equal(rpcCall.name, 'push_sync_event', '写入必须经过服务端原子
 assert.equal(rpcCall.args.p_base_cursor, 6)
 assert.equal(pushed.operation_id, 'operation-c')
 
+let logoutScope
+await createSyncRepository({ auth: {
+  async signOut(options) { logoutScope = options.scope; return { error: new Error('offline') } },
+  async getSession() { return { data: { session: null }, error: null } },
+} }).signOut()
+assert.equal(logoutScope, 'local', '退出当前设备不能强制其他设备退出')
+await assert.rejects(() => createSyncRepository({ auth: {
+  async signOut() { return { error: new Error('session still present') } },
+  async getSession() { return { data: { session: { user: { id: 'u' } } }, error: null } },
+} }).signOut(), /session still present/)
 console.log('sync repository rules: ok')

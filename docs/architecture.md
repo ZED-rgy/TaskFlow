@@ -46,6 +46,10 @@ src-tauri/src/main.rs
 
 `src/runtime/api.js` 是前端访问 Rust 的唯一适配器。`taskviews.mjs`、`widget-order.mjs` 和 `quickparse.js` 保存可独立验证的业务规则；主题和字体规则分别位于 `themes.js` 与 `fonts.js`。
 
+`date-clock.mjs` 定时刷新主窗口的本地日期，并在窗口聚焦或页面可见性变化时刷新，支持跨午夜和休眠恢复。`sync-worker.mjs` 管理同步整轮串行执行、轮询、订阅重试与停止清理。
+
+重复任务使用可选的 `repeatGenerated` 持久化标记记录当前期次是否已生成下一期。取消完成后再次完成不会重复生成；新生成的期次从未生成状态开始。旧版已完成的重复任务在修改前保留“已生成”事实；已存在的历史重复条目不会被自动删除。
+
 云同步适配器位于 `src/runtime/sync-repository.js`，与本地 Tauri 适配器分离：未配置 Supabase 环境变量时保持禁用，配置后按需加载 SDK，并提供认证、工作区读取、原子同步事件入队、增量拉取和 Realtime 订阅接口。`sync-engine.mjs` 只编排传输与游标，`sync-merge.mjs` 负责数据识别和无损冲突副本，`sync-workspace.mjs` 负责保持用户明确选择的工作区。
 
 ## Rust 后端

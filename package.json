@@ -28,7 +28,7 @@
         "scan:release": "node scripts/scan-release-privacy.mjs",
         "preview": "vite preview",
         "test": "npm run test:unit && npm run test:rust",
-        "test:unit": "node scripts/test-taskviews.mjs && node scripts/test-widget-order.mjs && node scripts/test-widget-visibility.mjs && node scripts/test-widget-drag.mjs && node scripts/test-widget-snap.mjs && node scripts/test-widget-collapse.mjs && node scripts/test-project-icons.mjs && node scripts/test-sync-engine.mjs && node scripts/test-sync-merge.mjs && node scripts/test-sync-repository.mjs && node scripts/test-sync-workspace.mjs && node scripts/test-csp.mjs",
+        "test:unit": "node scripts/test-date-clock.mjs && node scripts/test-sync-worker.mjs && node scripts/test-sync-app.mjs && node scripts/test-taskviews.mjs && node scripts/test-widget-order.mjs && node scripts/test-widget-visibility.mjs && node scripts/test-widget-drag.mjs && node scripts/test-widget-snap.mjs && node scripts/test-widget-collapse.mjs && node scripts/test-project-icons.mjs && node scripts/test-sync-engine.mjs && node scripts/test-sync-merge.mjs && node scripts/test-sync-repository.mjs && node scripts/test-sync-workspace.mjs && node scripts/test-csp.mjs",
         "test:rust": "npm run build:web && cargo test --manifest-path src-tauri/Cargo.toml",
         "check": "npm run test:unit && npm run build:web && cargo check --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
         "verify": "npm run check"

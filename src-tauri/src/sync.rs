@@ -89,6 +89,14 @@ fn read_valid(path: &Path) -> Result<SyncState, String> {
 }
 
 pub fn load(path: &Path) -> Result<SyncState, String> {
+    let _guard = SYNC_MUTATION_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "同步状态锁异常".to_string())?;
+    load_unlocked(path)
+}
+
+fn load_unlocked(path: &Path) -> Result<SyncState, String> {
     let tmp = path.with_extension("json.tmp");
     let previous = path.with_extension("json.prev");
     let previous_old = path.with_extension("json.prev.old");
@@ -177,7 +185,7 @@ pub fn enqueue(path: &Path, operation: SyncOperation) -> Result<SyncState, Strin
         .get_or_init(|| Mutex::new(()))
         .lock()
         .map_err(|_| "同步状态锁异常".to_string())?;
-    let mut state = load(path)?;
+    let mut state = load_unlocked(path)?;
     if state
         .outbox
         .iter()
@@ -207,7 +215,7 @@ pub fn acknowledge(
         .get_or_init(|| Mutex::new(()))
         .lock()
         .map_err(|_| "同步状态锁异常".to_string())?;
-    let mut state = load(path)?;
+    let mut state = load_unlocked(path)?;
     let mut acknowledged = false;
     state.outbox.retain(|item| {
         let matched = operation_ids.iter().any(|id| id == &item.operation_id);
@@ -236,7 +244,7 @@ pub fn set_workspace(path: &Path, workspace_id: Option<String>) -> Result<SyncSt
         .get_or_init(|| Mutex::new(()))
         .lock()
         .map_err(|_| "同步状态锁异常".to_string())?;
-    let mut state = load(path)?;
+    let mut state = load_unlocked(path)?;
     let next_workspace = workspace_id.and_then(|value| {
         let value = value.trim().to_string();
         (!value.is_empty()).then_some(value)
@@ -249,7 +257,12 @@ pub fn set_workspace(path: &Path, workspace_id: Option<String>) -> Result<SyncSt
         state.cursor = None;
     }
     save(path, &state)?;
-    status(path)
+    Ok(SyncStatus {
+        device_id: state.device_id,
+        workspace_id: state.workspace_id,
+        cursor: state.cursor,
+        pending_count: state.outbox.len(),
+    })
 }
 
 pub fn new_snapshot(payload: Value, base_cursor: Option<String>) -> SyncOperation {

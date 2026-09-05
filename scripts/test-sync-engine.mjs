@@ -110,3 +110,27 @@ assert.equal(racingConflict.nextCursor, 21)
 assert.equal(racePullCount, 2)
 
 console.log('sync engine rules: ok')
+
+// An old pull must not continue into outbox mutation after sign-out/restart.
+let finishStoppedPull
+let stoppedPullStarted
+const beganStoppedPull = new Promise(resolve => { stoppedPullStarted = resolve })
+const stoppedEngine = createSyncEngine({
+  localApi: {
+    getSyncStatus: async () => ({ workspaceId: 'w', deviceId: 'local', cursor: '1' }),
+    getSyncOutbox: async () => assert.fail('停止后的旧请求不能继续读取或刷新 outbox'),
+  },
+  repository: {
+    enabled: true,
+    pullChanges: () => {
+      stoppedPullStarted()
+      return new Promise(resolve => { finishStoppedPull = resolve })
+    },
+  },
+})
+const stoppedPass = stoppedEngine.syncOnce()
+await beganStoppedPull
+stoppedEngine.stop()
+finishStoppedPull([{ seq: 2, client_id: 'remote' }])
+assert.equal((await stoppedPass).kind, 'stopped')
+await assert.rejects(() => stoppedEngine.commitRemoteCursor(2), /同步已停止/)

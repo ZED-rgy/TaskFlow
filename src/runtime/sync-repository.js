@@ -94,8 +94,13 @@ export function createSyncRepository(client = DEFAULT_CLIENT) {
     },
 
     async signOut() {
-      const { error } = await (await requireClient(client)).auth.signOut()
-      if (error) throw error
+      const resolved = await requireClient(client)
+      const { error } = await resolved.auth.signOut({ scope: 'local' })
+      // The SDK clears the local session even when remote revocation fails offline.
+      if (error) {
+        const { data, error: sessionError } = await resolved.auth.getSession()
+        if (sessionError || data?.session) throw error
+      }
     },
 
     async listWorkspaces() {
@@ -178,7 +183,7 @@ export function createSyncRepository(client = DEFAULT_CLIENT) {
       return data || []
     },
 
-    async subscribe(workspaceId, onEvent) {
+    async subscribe(workspaceId, onEvent, onConnectionChange) {
       const resolvedClient = await requireClient(client)
       const channel = resolvedClient
         .channel(`taskflow:workspace:${workspaceId}`)
@@ -196,6 +201,7 @@ export function createSyncRepository(client = DEFAULT_CLIENT) {
           reject(new Error('实时同步连接超时'))
         }, 10_000)
         channel.subscribe(status => {
+          onConnectionChange?.(status === 'SUBSCRIBED')
           if (settled) return
           if (status === 'SUBSCRIBED') {
             settled = true

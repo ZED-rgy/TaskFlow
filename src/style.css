@@ -1281,6 +1281,7 @@ body.widget-mode #app {
 .platform-android .mobile-menu-btn[aria-expanded='true'] { color: var(--accent); background: var(--accent-soft); }
 .platform-android .mobile-menu-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 .platform-android .app-brand { gap: 7px; font-size: 14px; }
+.platform-android .app-brand > span:last-child { display: inline; }
 .platform-android .app-brand-icon { width: 22px; height: 22px; border-radius: 7px; }
 .platform-android .titlebar-controls { padding-right: 8px; }
 .platform-android .titlebar-controls .cloud-sync-indicator { max-width: 92px; padding: 5px 7px; font-size: 9px; }

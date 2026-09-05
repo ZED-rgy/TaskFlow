@@ -72,6 +72,8 @@ struct Task {
     priority: String,
     tags: Vec<String>,
     repeat: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    repeat_generated: bool,
     position: i32,
     created_at: String,
     completed_at: Option<String>,
@@ -109,6 +111,7 @@ struct StoredTask {
     priority: Option<String>,
     tags: Option<Vec<String>>,
     repeat: Option<String>,
+    repeat_generated: Option<bool>,
     position: Option<i32>,
     created_at: Option<String>,
     completed_at: Option<String>,
@@ -282,6 +285,10 @@ where
     Option::<T>::deserialize(deserializer).map(Some)
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 fn now() -> String {
     Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
@@ -382,6 +389,7 @@ fn default_data() -> TaskFlowData {
                 priority: "normal".into(),
                 tags: vec![],
                 repeat: "none".into(),
+                repeat_generated: false,
                 position: 0,
                 created_at: now(),
                 completed_at: None,
@@ -397,6 +405,7 @@ fn default_data() -> TaskFlowData {
                 priority: "low".into(),
                 tags: vec!["入门".into()],
                 repeat: "none".into(),
+                repeat_generated: false,
                 position: 1,
                 created_at: now(),
                 completed_at: Some(now()),
@@ -511,6 +520,7 @@ fn normalize_stored_data(stored: StoredTaskFlowData) -> TaskFlowData {
             priority: normalize_priority(task.priority),
             tags: normalize_tags(task.tags),
             repeat: normalize_repeat(task.repeat),
+            repeat_generated: task.repeat_generated.unwrap_or(false),
             position: task.position.unwrap_or(index as i32),
             created_at: task.created_at.unwrap_or_else(now),
             completed_at: if completed {
@@ -774,6 +784,21 @@ impl ChangeTracker {
         self.revision = self.revision.wrapping_add(1);
         self.synced_revision = self.revision;
         self.dirty_since = None;
+    }
+
+    fn check_remote_apply(
+        &self,
+        pending: bool,
+        expected_revision: Option<u64>,
+    ) -> Result<(), String> {
+        let conflict = match expected_revision {
+            Some(revision) => revision != self.revision,
+            None => self.sync_due() || pending,
+        };
+        if conflict {
+            return Err("LOCAL_SYNC_CONFLICT: 本机数据已修改，请重新选择同步处理方式".into());
+        }
+        Ok(())
     }
 }
 
@@ -2012,7 +2037,19 @@ fn get_sync_status(app: AppHandle) -> Result<sync::SyncStatus, String> {
 
 #[tauri::command]
 fn get_sync_outbox(app: AppHandle) -> Result<sync::SyncState, String> {
+    // Include edits still waiting for the normal debounce before conflict detection.
+    flush_state(&app, true)?;
     sync::load(&sync_state_path(&app)?)
+}
+
+#[tauri::command]
+fn get_sync_local_snapshot(app: AppHandle) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let inner = state
+        .inner
+        .lock()
+        .map_err(|_| "数据状态锁异常".to_string())?;
+    Ok(serde_json::json!({ "data": inner.data, "revision": inner.tracker.revision }))
 }
 
 #[tauri::command]
@@ -2049,6 +2086,7 @@ fn enqueue_local_snapshot(app: AppHandle) -> Result<sync::SyncStatus, String> {
 /// a safe file-name fragment so the frontend cannot influence the path.
 #[tauri::command]
 fn backup_local_data(app: AppHandle, reason: String) -> Result<Option<String>, String> {
+    flush_state(&app, true)?;
     let safe: String = reason
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
@@ -2070,6 +2108,7 @@ fn apply_sync_snapshot(
     app: AppHandle,
     window: WebviewWindow,
     data: TaskFlowData,
+    expected_revision: Option<u64>,
 ) -> Result<TaskFlowData, String> {
     let snapshot = normalize_runtime_data(data)?;
     if let Some(state) = app.try_state::<AppState>() {
@@ -2077,11 +2116,15 @@ fn apply_sync_snapshot(
             .persist_lock
             .lock()
             .map_err(|_| "数据持久化锁异常".to_string())?;
-        write_data_file(&app, &snapshot, false)?;
         let mut inner = state
             .inner
             .lock()
             .map_err(|_| "数据状态锁异常".to_string())?;
+        let pending = !sync::load(&sync_state_path(&app)?)?.outbox.is_empty();
+        inner
+            .tracker
+            .check_remote_apply(pending, expected_revision)?;
+        write_data_file(&app, &snapshot, false)?;
         inner.data = snapshot.clone();
         // 云端状态已经是权威版本，不生成新的 outbox 操作，避免同步回声。
         inner.tracker.mark_remote_applied();
@@ -2323,6 +2366,7 @@ fn create_task(app: AppHandle, window: WebviewWindow, data: TaskPayload) -> Resu
         priority: normalize_priority(data.priority),
         tags: normalize_tags(data.tags),
         repeat: normalize_repeat(data.repeat),
+        repeat_generated: false,
         position,
         created_at: now(),
         completed_at: None,
@@ -2345,6 +2389,7 @@ fn update_task(
         return Ok(serde_json::Value::Null);
     };
     let was_completed = db.tasks[idx].completed;
+    remember_repeat_generation(&mut db.tasks[idx]);
     if let Some(title) = data.title {
         let title = clamp_chars(title.trim().to_string(), MAX_TITLE_LEN);
         if title.is_empty() {
@@ -2391,29 +2436,9 @@ fn update_task(
         db.tasks[idx].completed = completed;
         db.tasks[idx].completed_at = if completed { Some(now()) } else { None };
     }
+    let spawned =
+        data.completed == Some(true) && !was_completed && spawn_next_repeat(&mut db.tasks, idx);
     let updated = db.tasks[idx].clone();
-    // 完成一个重复任务时，会自动生成下一期任务——这种情况下任务列表整体变化，
-    // 需要回传完整列表；其余更新只回传被改动的单条，避免无谓的全量序列化。
-    let mut spawned = false;
-    if data.completed == Some(true) && !was_completed && updated.repeat != "none" {
-        if let Some(next_due) = next_repeat_date(updated.due_date.as_deref(), &updated.repeat) {
-            let mut next = updated.clone();
-            next.id = new_id();
-            next.completed = false;
-            next.due_date = Some(next_due);
-            next.created_at = now();
-            next.completed_at = None;
-            next.position = db
-                .tasks
-                .iter()
-                .filter(|task| {
-                    task.project_id == next.project_id && task.parent_id == next.parent_id
-                })
-                .count() as i32;
-            db.tasks.push(next);
-            spawned = true;
-        }
-    }
     write_state(&app, &db, Some(window.label()))?;
     if spawned {
         Ok(serde_json::json!({ "task": updated, "tasks": db.tasks }))
@@ -2837,6 +2862,43 @@ fn collect_task_tree(tasks: &[Task], id: &str) -> Vec<String> {
     ids
 }
 
+// Older completed occurrences had already spawned their next task before this
+// marker existed. Preserve that fact before an edit can clear completion/date.
+fn remember_repeat_generation(task: &mut Task) {
+    if task.completed
+        && task.repeat != "none"
+        && next_repeat_date(task.due_date.as_deref(), &task.repeat).is_some()
+    {
+        task.repeat_generated = true;
+    }
+}
+
+// A completed occurrence remembers its successor even if it is unchecked or the
+// successor is later deleted. Completing that occurrence again must be idempotent.
+fn spawn_next_repeat(tasks: &mut Vec<Task>, index: usize) -> bool {
+    let source = &tasks[index];
+    if source.repeat == "none" || source.repeat_generated {
+        return false;
+    }
+    let Some(next_due) = next_repeat_date(source.due_date.as_deref(), &source.repeat) else {
+        return false;
+    };
+    let mut next = source.clone();
+    next.id = new_id();
+    next.repeat_generated = false;
+    next.completed = false;
+    next.due_date = Some(next_due);
+    next.created_at = now();
+    next.completed_at = None;
+    next.position = tasks
+        .iter()
+        .filter(|task| task.project_id == next.project_id && task.parent_id == next.parent_id)
+        .count() as i32;
+    tasks[index].repeat_generated = true;
+    tasks.push(next);
+    true
+}
+
 fn next_repeat_date(date: Option<&str>, repeat: &str) -> Option<String> {
     let date = chrono::NaiveDate::parse_from_str(date?, "%Y-%m-%d").ok()?;
     let next = match repeat {
@@ -3102,6 +3164,7 @@ fn main() {
             get_app_info,
             get_sync_status,
             get_sync_outbox,
+            get_sync_local_snapshot,
             set_sync_workspace,
             acknowledge_sync,
             enqueue_local_snapshot,
@@ -3188,6 +3251,7 @@ pub fn run() {
             get_app_info,
             get_sync_status,
             get_sync_outbox,
+            get_sync_local_snapshot,
             set_sync_workspace,
             acknowledge_sync,
             enqueue_local_snapshot,
@@ -3245,6 +3309,7 @@ mod tests {
             priority: "normal".into(),
             tags: vec![],
             repeat: "none".into(),
+            repeat_generated: false,
             position: 0,
             created_at: now(),
             completed_at: None,
@@ -3293,6 +3358,7 @@ mod tests {
             priority: None,
             tags: None,
             repeat: None,
+            repeat_generated: None,
             position: None,
             created_at: None,
             completed_at: None,
@@ -3737,5 +3803,98 @@ mod tests {
         assert!(sync::load(&path).is_ok(), "恢复后主文件也应可再次读取");
         let _ = fs::remove_file(path);
         let _ = fs::remove_file(previous);
+    }
+    #[test]
+    fn remote_apply_rejects_debounced_and_queued_local_edits() {
+        let mut tracker = ChangeTracker::default();
+        assert!(tracker.check_remote_apply(false, None).is_ok());
+        tracker.mark_changed();
+        assert!(tracker
+            .check_remote_apply(false, None)
+            .unwrap_err()
+            .contains("LOCAL_SYNC_CONFLICT"));
+        tracker.mark_sync_enqueued(tracker.revision);
+        assert!(tracker.check_remote_apply(true, None).is_err());
+        assert!(tracker.check_remote_apply(false, None).is_ok());
+    }
+
+    #[test]
+    fn explicit_sync_choice_requires_unchanged_local_revision() {
+        let mut tracker = ChangeTracker::default();
+        tracker.mark_changed();
+        let revision = tracker.revision;
+        assert!(tracker.check_remote_apply(true, Some(revision)).is_ok());
+        tracker.mark_changed();
+        assert!(
+            tracker.check_remote_apply(true, Some(revision)).is_err(),
+            "弹窗期间来自其他窗口的新修改不能被旧选择覆盖"
+        );
+    }
+
+    #[test]
+    fn repeated_completion_keeps_one_successor_after_reload() {
+        let mut data = default_data();
+        data.tasks.truncate(1);
+        data.tasks[0].repeat = "daily".into();
+        data.tasks[0].due_date = Some("2026-09-05".into());
+        data.tasks[0].completed = true;
+        assert!(spawn_next_repeat(&mut data.tasks, 0));
+        let successor = data.tasks[1].id.clone();
+        assert!(data.tasks[0].repeat_generated);
+        let raw = serde_json::to_string(&data).unwrap();
+        let mut restored = normalize_stored_data(parse_stored_data(&raw).unwrap().0);
+        restored.tasks[0].completed = false;
+        restored.tasks[0].completed = true;
+        assert!(!spawn_next_repeat(&mut restored.tasks, 0));
+        assert_eq!(restored.tasks.len(), 2);
+        assert_eq!(restored.tasks[1].due_date.as_deref(), Some("2026-09-06"));
+        restored.tasks[1].completed = true;
+        assert!(
+            spawn_next_repeat(&mut restored.tasks, 1),
+            "下一期仍可正常生成后续期次"
+        );
+        assert_eq!(restored.tasks[2].due_date.as_deref(), Some("2026-09-07"));
+        restored.tasks.retain(|task| task.id != successor);
+        assert!(
+            !spawn_next_repeat(&mut restored.tasks, 0),
+            "删除下一期后重复勾选不能将其复活"
+        );
+    }
+
+    #[test]
+    fn concurrent_sync_reads_do_not_recover_mid_write() {
+        let path = sync_temp_path("concurrent-read");
+        sync::load(&path).unwrap();
+        let read_path = path.clone();
+        let reader = thread::spawn(move || {
+            for _ in 0..50 {
+                sync::load(&read_path).unwrap();
+            }
+        });
+        for value in 0..20 {
+            sync::enqueue(
+                &path,
+                sync::new_snapshot(serde_json::json!({"v": value}), None),
+            )
+            .unwrap();
+        }
+        reader.join().unwrap();
+        let state = sync::load(&path).unwrap();
+        assert_eq!(state.outbox.len(), 1);
+        assert_eq!(state.outbox[0].payload["v"], 19);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("json.prev"));
+    }
+
+    #[test]
+    fn legacy_completed_repeat_does_not_spawn_again() {
+        let mut task = make_task("legacy", "p", None, "daily");
+        task.completed = true;
+        task.repeat = "daily".into();
+        task.due_date = Some("2026-09-05".into());
+        remember_repeat_generation(&mut task);
+        task.completed = false;
+        task.completed = true;
+        assert!(!spawn_next_repeat(&mut vec![task], 0));
     }
 }

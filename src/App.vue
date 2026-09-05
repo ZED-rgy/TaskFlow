@@ -13,6 +13,8 @@ import { isAndroid } from './runtime/platform.js'
 import { countSmartViews, localDateKey, matchesSmartView } from './runtime/taskviews.mjs'
 import { hasMeaningfulData, mergeWorkspaces } from './runtime/sync-merge.mjs'
 import { selectAccessibleWorkspace } from './runtime/sync-workspace.mjs'
+import { createSyncWorker } from './runtime/sync-worker.mjs'
+import { createDateClock } from './runtime/date-clock.mjs'
 import {
   FONT_SIZES,
   FALLBACK_FONTS,
@@ -72,12 +74,13 @@ let unlistenOpenTask = null
 let unlistenAuthDeepLink = null
 let unlistenDeepLink = null
 let syncEngine = null
-let syncTimer = null
-let syncUnsubscribe = null
+let syncWorker = null
+let syncGeneration = 0
+let realtimeConnected = false
 let syncStartPromise = null
 let syncLastError = ''
 let deferredConflictCursor = null
-let syncConflictPromise = null
+let cancelSyncChoice = null
 
 // ── Undo stack（Ctrl+Z 撤销删除）────────────────────────
 const undoStack = []
@@ -259,7 +262,8 @@ const selectedProject = computed(() =>
   projects.value.find(p => p.id === selectedId.value) || null
 )
 
-const todayKey = computed(() => localDateKey())
+const todayKey = ref(localDateKey())
+const dateClock = createDateClock(value => { todayKey.value = value })
 
 const projectTasks = computed(() =>
   tasks.value.filter(t => {
@@ -306,15 +310,13 @@ function setCloudSyncState(kind, text, detail = '') {
 }
 
 function stopCloudSync() {
-  if (syncTimer) {
-    clearInterval(syncTimer)
-    syncTimer = null
-  }
-  if (syncUnsubscribe) {
-    try { syncUnsubscribe() } catch (error) { console.warn('[sync] unsubscribe failed', error) }
-    syncUnsubscribe = null
-  }
+  syncGeneration += 1
+  cancelSyncChoice?.()
+  syncEngine?.stop()
+  syncWorker?.stop()
+  syncWorker = null
   syncEngine = null
+  realtimeConnected = false
 }
 
 function applySnapshotToView(snapshot) {
@@ -329,9 +331,13 @@ function applySnapshotToView(snapshot) {
   }
 }
 
-async function runCloudSync() {
-  if (!syncEngine) return
-  const result = await syncEngine.syncOnce()
+function runCloudSync() {
+  return syncWorker?.run()
+}
+
+async function runCloudSyncPass(engine, isActive) {
+  const result = await engine.syncOnce()
+  if (!isActive() || result.kind === 'stopped') return
   if (result.kind === 'busy') return
   if (result.kind === 'disabled') {
     setCloudSyncState('disabled', '云同步未配置')
@@ -359,14 +365,11 @@ async function runCloudSync() {
       setCloudSyncState('conflict', '等待处理同步冲突', '本机和另一台设备都修改了任务，请重新连接同步后选择处理方式')
       return
     }
-    if (!syncConflictPromise) {
-      syncConflictPromise = resolveSyncConflict(result)
-        .finally(() => { syncConflictPromise = null })
-    }
     try {
-      await syncConflictPromise
+      await resolveSyncConflict(result, isActive)
     } catch (error) {
-      const message = String(error?.message || '同步冲突处理失败')
+      if (!isActive()) return
+      const message = String(error?.message || error || '同步冲突处理失败')
       setCloudSyncState('error', '冲突处理失败', message)
       if (message !== syncLastError) {
         syncLastError = message
@@ -378,28 +381,36 @@ async function runCloudSync() {
 
   try {
     const status = await api.getSyncStatus()
+    if (!isActive()) return
     const latestSnapshot = [...(result.remoteEvents || [])]
       .reverse()
-      .find(event => event && event.client_id !== status?.deviceId &&
-        event.entity === 'workspace' && event.action === 'snapshot')
-    if (latestSnapshot) {
+      .find(event => event && event.entity === 'workspace' && event.action === 'snapshot')
+    if (latestSnapshot && latestSnapshot.client_id !== status?.deviceId) {
       const snapshot = await api.applySyncSnapshot(latestSnapshot.payload)
+      if (!isActive()) return
       applySnapshotToView(snapshot)
     }
     if (result.nextCursor !== null && result.nextCursor !== undefined) {
-      await syncEngine.commitRemoteCursor(result.nextCursor)
+      await engine.commitRemoteCursor(result.nextCursor)
     }
     const nextStatus = await api.getSyncStatus()
+    if (!isActive()) return
     syncLastError = ''
     setCloudSyncState(
       nextStatus?.pendingCount ? 'pending' : 'ready',
-      nextStatus?.pendingCount ? `正在同步 · 待 ${nextStatus.pendingCount}` : '实时已同步',
+      nextStatus?.pendingCount ? `正在同步 · 待 ${nextStatus.pendingCount}` : realtimeConnected ? '实时已同步' : '已同步 · 轮询模式',
       nextStatus?.pendingCount
         ? `还有 ${nextStatus.pendingCount} 条本地变更正在上传`
-        : '云端实时连接正常，最新数据已同步',
+        : realtimeConnected ? '云端实时连接正常，最新数据已同步' : '实时连接暂不可用，每 5 秒自动同步',
     )
   } catch (error) {
-    const message = String(error?.message || '远端变更应用失败')
+    if (!isActive()) return
+    if (String(error?.message || error).includes('LOCAL_SYNC_CONFLICT')) {
+      const cursor = String(result.nextCursor)
+      if (cursor !== deferredConflictCursor) await resolveSyncConflict(result, isActive)
+      return
+    }
+    const message = String(error?.message || error || '远端变更应用失败')
     setCloudSyncState('error', '同步失败', message)
     if (message !== syncLastError) {
       syncLastError = message
@@ -408,27 +419,31 @@ async function runCloudSync() {
   }
 }
 
-async function resolveSyncConflict(result) {
+async function resolveSyncConflict(result, isActive) {
   const status = await api.getSyncStatus()
+  if (!isActive()) return
   const latest = [...(result.remoteEvents || [])]
     .reverse()
-    .find(event => event && event.client_id !== status?.deviceId &&
-      event.entity === 'workspace' && event.action === 'snapshot')
+    .find(event => event && event.entity === 'workspace' && event.action === 'snapshot')
   const cursor = result.nextCursor === null || result.nextCursor === undefined
     ? null
     : String(result.nextCursor)
-  if (!latest?.payload) {
+  if (!latest?.payload || latest.client_id === status?.deviceId) {
     if (cursor) await api.acknowledgeSync([], cursor)
+    if (isActive() && result.pendingCount) await api.enqueueLocalSnapshot()
     return
   }
 
   setCloudSyncState('conflict', '发现同步冲突', '本机和另一台设备在上次同步后都修改了任务')
-  const localData = { projects: projects.value, tasks: tasks.value }
+  const localSnapshot = await api.getSyncLocalSnapshot()
+  if (!isActive()) return
+  const localData = localSnapshot.data
   const choice = await askSyncDataChoice({
     title: '两台设备都有新修改',
     localCount: localData.tasks.length,
     remoteCount: Array.isArray(latest.payload.tasks) ? latest.payload.tasks.length : 0,
   })
+  if (!isActive()) return
   if (choice === 'cancel') {
     deferredConflictCursor = cursor
     setCloudSyncState('conflict', '同步已暂停', '数据保持不变；重新连接同步时可再次选择')
@@ -438,18 +453,23 @@ async function resolveSyncConflict(result) {
   if (hasMeaningfulData(localData)) await api.backupLocalData('before-sync-conflict')
   const outbox = await api.getSyncOutbox()
   const staleIds = (outbox?.outbox || []).map(operation => operation.operationId).filter(Boolean)
+  if (!isActive()) return
   if (choice === 'remote') {
-    applySnapshotToView(await api.applySyncSnapshot(latest.payload))
+    applySnapshotToView(await api.applySyncSnapshot(latest.payload, localSnapshot.revision))
+    if (!isActive()) return
     await api.acknowledgeSync(staleIds, cursor)
   } else {
     if (choice === 'merge') {
-      applySnapshotToView(await api.applySyncSnapshot(mergeWorkspaces(localData, latest.payload)))
+      applySnapshotToView(await api.applySyncSnapshot(mergeWorkspaces(localData, latest.payload), localSnapshot.revision))
+      if (!isActive()) return
       await api.acknowledgeSync(staleIds, cursor)
     } else if (cursor) {
       await api.acknowledgeSync([], cursor)
     }
+    if (!isActive()) return
     await api.enqueueLocalSnapshot()
   }
+  if (!isActive()) return
   deferredConflictCursor = null
   setCloudSyncState('pending', '冲突已处理，等待同步', '下一轮同步会提交选择后的完整快照')
 }
@@ -459,6 +479,12 @@ async function resolveSyncConflict(result) {
 // 所以这里让用户显式选择，并在覆盖本地前先落一份备份。
 function askSyncDataChoice({ title = '云端已有任务数据', localCount, remoteCount }) {
   return new Promise(resolve => {
+    const finish = choice => {
+      cancelSyncChoice = null
+      closeConfirm()
+      resolve(choice)
+    }
+    cancelSyncChoice = () => finish('cancel')
     askConfirm({
       title,
       body: `本机有 ${localCount} 条任务，云端已有 ${remoteCount} 条。请选择如何处理：合并会保留两边所有任务；` +
@@ -469,9 +495,9 @@ function askSyncDataChoice({ title = '云端已有任务数据', localCount, rem
         { key: 'remote', label: '使用云端数据', danger: true },
         { key: 'local', label: '使用本机数据', danger: true },
       ],
-      onConfirm: () => { closeConfirm(); resolve('merge') },
-      onChoice: key => { closeConfirm(); resolve(key) },
-      onCancel: () => { closeConfirm(); resolve('cancel') },
+      onConfirm: () => finish('merge'),
+      onChoice: finish,
+      onCancel: () => finish('cancel'),
     })
   })
 }
@@ -499,32 +525,39 @@ async function decideFirstBind(workspaceId, localData) {
 // 绑定之后按选择落实。三种选择最终都把游标推到云端最新事件：
 // 本机/合并方案如果不推游标，常规同步会先把旧的云端快照拉下来覆盖掉刚保留的数据；
 // 云端方案直接应用最新快照，避免逐条重放历史快照。
-async function applyFirstBindChoice(workspaceId, { choice, remoteData, latestSeq }, localData) {
+async function applyFirstBindChoice(workspaceId, { choice, remoteData, latestSeq }, localSnapshot, isActive) {
+  const localData = localSnapshot.data
   const cursor = latestSeq !== null && latestSeq !== undefined ? String(latestSeq) : null
   if (choice === 'remote') {
-    if (remoteData) applySnapshotToView(await api.applySyncSnapshot(remoteData))
     // 登录前的本地编辑已经在 outbox 里排队；选择云端后必须丢弃它们，
     // 否则下一轮同步会把旧的本机快照推上去覆盖云端。
     const outbox = await api.getSyncOutbox()
     const staleIds = (outbox?.outbox || []).map(op => op.operationId).filter(Boolean)
+    if (!isActive()) return
+    if (remoteData) applySnapshotToView(await api.applySyncSnapshot(remoteData, localSnapshot.revision))
+    if (!isActive()) return
     if (staleIds.length || cursor) await api.acknowledgeSync(staleIds, cursor)
     return
   }
   if (choice === 'merge') {
-    applySnapshotToView(await api.applySyncSnapshot(mergeWorkspaces(localData, remoteData)))
+    if (!isActive()) return
+    applySnapshotToView(await api.applySyncSnapshot(mergeWorkspaces(localData, remoteData), localSnapshot.revision))
   }
+  if (!isActive()) return
   if (cursor) await api.acknowledgeSync([], cursor)
+  if (!isActive()) return
   await api.enqueueLocalSnapshot()
 }
 
 async function startCloudSync(requestedWorkspaceId = null) {
   if (syncStartPromise) {
     await syncStartPromise
-    if (requestedWorkspaceId) return startCloudSync(requestedWorkspaceId)
-    return
+    return startCloudSync(requestedWorkspaceId)
   }
   syncStartPromise = (async () => {
     stopCloudSync()
+    const generation = syncGeneration
+    const isActive = () => generation === syncGeneration
     syncLastError = ''
     if (!syncConfig.enabled) {
       setCloudSyncState('disabled', '云同步未配置')
@@ -532,12 +565,14 @@ async function startCloudSync(requestedWorkspaceId = null) {
     }
     try {
       const session = await syncRepository.getSession()
+      if (!isActive()) return
       if (!session) {
         setCloudSyncState('signed-out', '未登录云端')
         return
       }
       let status = await api.getSyncStatus()
       const workspaces = await syncRepository.listWorkspaces()
+      if (!isActive()) return
       let workspace = selectAccessibleWorkspace(workspaces, status?.workspaceId, requestedWorkspaceId)
       if (!workspace) {
         setCloudSyncState('syncing', '准备实时同步', '正在为当前账户准备个人同步空间')
@@ -545,34 +580,46 @@ async function startCloudSync(requestedWorkspaceId = null) {
       } else {
         setCloudSyncState('syncing', '准备实时同步', `正在连接工作区「${workspace.name || '未命名'}」`)
       }
+      if (!isActive()) return
       if (!workspace?.id) {
         throw new Error('云端同步空间创建失败')
       }
       if (status?.workspaceId !== workspace.id) {
-        const localData = { projects: projects.value, tasks: tasks.value }
+        const localSnapshot = await api.getSyncLocalSnapshot()
+        const localData = localSnapshot.data
+        if (!isActive()) return
         const decision = await decideFirstBind(workspace.id, localData)
+        if (!isActive()) return
         if (decision.choice === 'cancel') {
           setCloudSyncState('signed-out', '未开启同步', '已取消绑定云端工作区，本机数据保持不变')
           return
         }
         if (hasMeaningfulData(localData)) await api.backupLocalData('before-cloud-bind')
+        if (!isActive()) return
         status = await api.setSyncWorkspace(workspace.id)
-        await applyFirstBindChoice(workspace.id, decision, localData)
+        if (!isActive()) return
+        await applyFirstBindChoice(workspace.id, decision, localSnapshot, isActive)
       }
-      syncEngine = createSyncEngine({
+      if (!isActive()) return
+      const engine = createSyncEngine({
         localApi: api,
         repository: syncRepository,
         onStateChange: state => {
-          if (state?.kind === 'syncing') setCloudSyncState('syncing', '同步中…')
+          if (isActive() && state?.kind === 'syncing') setCloudSyncState('syncing', '同步中…')
         },
       })
-      syncUnsubscribe = await syncRepository.subscribe(status.workspaceId, () => {
-        void runCloudSync()
+      syncEngine = engine
+      syncWorker = createSyncWorker({
+        run: active => runCloudSyncPass(engine, active).catch(error => {
+          if (isActive()) setCloudSyncState('error', '同步失败', String(error?.message || error))
+        }),
+        subscribe: (onEvent, onConnectionChange) => syncRepository.subscribe(status.workspaceId, onEvent, onConnectionChange),
+        onConnectionChange: connected => { realtimeConnected = connected },
       })
-      await runCloudSync()
-      syncTimer = setInterval(() => { void runCloudSync() }, 5000)
+      syncWorker.start()
     } catch (error) {
-      const message = String(error?.message || '云同步启动失败')
+      if (!isActive()) return
+      const message = String(error?.message || error || '云同步启动失败')
       setCloudSyncState('error', '同步不可用', message)
       showToast(`云同步启动失败：${message}`)
     }
@@ -585,7 +632,7 @@ async function startCloudSync(requestedWorkspaceId = null) {
 function handleSyncConfigChanged(event) {
   if (event?.detail?.stop) {
     stopCloudSync()
-    setCloudSyncState('unbound', '未绑定工作区')
+    setCloudSyncState('signed-out', '同步已停止')
     return
   }
   deferredConflictCursor = null
@@ -1124,6 +1171,7 @@ function onClearLogs() {
 }
 
 onMounted(() => {
+  dateClock.start()
   loadProjects().then(() => startCloudSync()).catch(error => {
     showToast(`数据加载失败：${error?.message || error}`)
   })
@@ -1155,6 +1203,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  dateClock.stop()
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('taskflow-sync-config-changed', handleSyncConfigChanged)
   stopCloudSync()

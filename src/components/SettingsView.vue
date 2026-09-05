@@ -289,7 +289,8 @@ async function cloudSignOut() {
   cloudBusy.value = true
   cloudMessage.value = ''
   try {
-    cloudStatus.value = await api.setSyncWorkspace(null)
+    // Pending changes retain their workspace binding for the next login.
+    notifySyncChanged({ stop: true })
     await syncRepository.signOut()
     cloudSession.value = null
     cloudWorkspaces.value = []
@@ -297,6 +298,7 @@ async function cloudSignOut() {
     notifySyncChanged({ stop: true })
   } catch (error) {
     cloudMessage.value = error?.message || '退出失败'
+    notifySyncChanged()
   } finally {
     cloudBusy.value = false
   }

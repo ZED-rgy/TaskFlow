@@ -59,6 +59,17 @@ VITE_SUPABASE_ANON_KEY=your-public-anon-key
 
 绑定后的多设备冲突采用相同选择界面。选择前写入 `before-sync-conflict` 备份；合并时如果同一个实体 ID 的内容不同，远端条目保持原 ID，本机条目以“本机冲突副本”新 ID 保留，避免表面合并实际丢字段。取消会暂停在该游标，不会反复弹窗或推进游标。
 
+## 同步并发与离线恢复
+
+- 同步读取 outbox 前先刷新尚在防抖窗口内的本地编辑；Rust 应用远端快照时，在持久化锁内再次检查未入队修改和待确认队列。有本地修改时返回 `LOCAL_SYNC_CONFLICT`，不覆盖数据或推进游标。
+- `get_sync_local_snapshot` 返回后端当前数据及修改版本。用户选择合并或使用云端时，`apply_sync_snapshot` 必须携带该版本；弹窗期间如有其他窗口修改数据，旧选择会被拒绝，下一轮重新处理。备份失败也会阻止覆盖。
+- `sync-worker.mjs` 将拉取、上传、快照应用和冲突弹窗作为一轮串行执行。停止或重新连接会使旧 worker 和引擎失效，并取消尚未完成的选择弹窗。
+- 5 秒轮询独立于 Realtime 订阅启动；初次订阅失败后每 30 秒重试连接，界面显示轮询模式。读取云端时始终以最新完整快照为准，不回退到更早的外部设备快照。
+- 退出登录先停止 worker，只退出当前设备的认证会话，保留本地数据、原工作区绑定和 outbox。相同账号重新登录后可继续同步；有待同步数据时仍禁止直接切换到其他工作区。
+- `sync-state.json` 的读取、恢复与修改共用互斥锁，避免原子替换中途的读取触发错误恢复。
+
+相关回归测试：`scripts/test-sync-app.mjs`、`scripts/test-sync-worker.mjs`、`scripts/test-sync-engine.mjs`，以及 Rust 的远端应用版本检查和并发读写测试。
+
 ## 邮箱验证回跳
 
 桌面安装包注册了 `taskflow://auth/callback` 自定义协议。请在 Supabase Dashboard 的 Authentication → URL Configuration 中，将 `taskflow://auth/callback` 加入 Redirect URLs；生产环境应将 Site URL 改为真实可访问的 HTTPS 地址，`http://localhost:3000` 仅保留给本地 Web 开发。认证使用 PKCE 流程：回跳链接只携带一次性 `code`，应用用本机保存的 verifier 调用 `exchangeCodeForSession` 换取会话；不是本机发起的登录、或直接携带 `access_token` 的旧式链接都会被拒绝，第三方无法通过构造 `taskflow://` 链接把用户登录到别人的账户。点击验证邮件后，Windows 会唤起小光任务，应用会自动完成换取并刷新登录状态。若应用未运行，首次启动也会读取该回调；若系统阻止协议唤起，仍可回到应用手动登录。

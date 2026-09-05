@@ -307,6 +307,10 @@ const overdueCount = computed(() =>
   props.tasks.filter(t => !t.parentId && !t.completed && t.dueDate && t.dueDate < props.today).length
 )
 
+const highPriorityCount = computed(() =>
+  props.tasks.filter(t => !t.parentId && !t.completed && t.priority === 'high').length
+)
+
 const completionPercent = computed(() =>
   totalCount.value ? Math.round((completedCount.value / totalCount.value) * 100) : 0
 )
@@ -670,6 +674,7 @@ onUnmounted(() => {
     :open-root-count="openRootCount"
     :completed-count="completedCount"
     :overdue-count="overdueCount"
+    :high-priority-count="highPriorityCount"
     :completion-percent="completionPercent"
     :status-counts="statusCounts"
     :status-filter="statusFilter"
