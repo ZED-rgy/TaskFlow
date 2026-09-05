@@ -95,11 +95,13 @@ async function startEdit(p) {
   editingId.value   = p.id
   editingName.value = p.name
   await nextTick()
-  editInput.value?.focus()
-  editInput.value?.select()
+  const input = Array.isArray(editInput.value) ? editInput.value[0] : editInput.value
+  input?.focus()
+  input?.select()
 }
 
 function submitEdit(p) {
+  if (editingId.value !== p.id) return
   const name = editingName.value.trim()
   if (name && name !== p.name) {
     emit('update', { id: p.id, name })
@@ -113,8 +115,11 @@ const ctxProject= ref(null)
 
 function showCtx(e, p) {
   e.preventDefault()
+  e.stopPropagation()
+  removePointerDragListeners()
+  pointerCandidate.value = null
   ctxProject.value = p
-  ctxMenu.value = { x: e.clientX, y: e.clientY }
+  ctxMenu.value = { x: Math.max(8, Math.min(e.clientX, window.innerWidth - 192)), y: Math.max(8, Math.min(e.clientY, window.innerHeight - 130)) }
 }
 
 function closeCtx() {
@@ -158,7 +163,7 @@ function removePointerDragListeners() {
 }
 
 function onProjectPointerDown(event, i) {
-  if (event.button !== 0) return
+  if (event.button !== 0 || event.pointerType === 'touch') return
   if (editingId.value) return
   if (event.target.closest('input, button, .ctx-menu')) return
   pointerCandidate.value = {
@@ -241,7 +246,7 @@ function selectProject(p) {
         <span class="smart-icon" aria-hidden="true">
           <svg viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="3.2" fill="currentColor"/><path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg>
         </span>
-        <span class="smart-name">今天</span>
+        <span class="smart-name">今日计划</span>
         <span v-if="smartCounts.today" class="proj-count">{{ smartCounts.today }}</span>
       </button>
       <button
@@ -253,7 +258,7 @@ function selectProject(p) {
         <span class="smart-icon" aria-hidden="true">
           <svg viewBox="0 0 18 18" fill="none"><path d="M3 5.5h6.2a2.8 2.8 0 1 1-2.8 2.8H5.2A2.2 2.2 0 1 0 7.4 10.5H15" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/><path d="m12.8 3.4 2.2 2.1-2.2 2.1" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>
-        <span class="smart-name">近 7 天</span>
+        <span class="smart-name">即将到期</span>
         <span v-if="smartCounts.upcoming" class="proj-count">{{ smartCounts.upcoming }}</span>
       </button>
       <button
@@ -265,8 +270,8 @@ function selectProject(p) {
         <span class="smart-icon" aria-hidden="true">
           <svg viewBox="0 0 18 18" fill="none"><path d="m4 9.2 3.1 3.1L14 5.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>
-        <span class="smart-name">已完成</span>
-        <span v-if="smartCounts.completed" class="proj-count">{{ smartCounts.completed }}</span>
+        <span class="smart-name">完成记录</span>
+
       </button>
 
       <button class="smart-row" :class="{ active: currentView === 'groups' }" title="我的小组" @click="$emit('selectView', 'groups')">
@@ -305,6 +310,7 @@ function selectProject(p) {
           @click.stop
         />
 
+        <button v-if="editingId !== p.id" class="project-more" aria-label="项目操作" @click.stop="showCtx($event, p)">⋯</button>
         <!-- Pending count -->
         <span
           v-if="pendingCount[p.id] && editingId !== p.id"
@@ -380,6 +386,9 @@ function selectProject(p) {
       </button>
     </div>
 
+  </aside>
+  <Teleport to="body">
+    <div v-if="ctxMenu" class="ctx-overlay" @click="closeCtx" @contextmenu.prevent="closeCtx" />
     <!-- Context menu -->
     <Transition name="fade">
       <div
@@ -393,10 +402,7 @@ function selectProject(p) {
         <button class="ctx-item ctx-danger" @click="ctxDelete">删除项目</button>
       </div>
     </Transition>
-  </aside>
-
-  <!-- Click outside to close context menu -->
-  <div v-if="ctxMenu" class="ctx-overlay" @click="closeCtx" @contextmenu.prevent="closeCtx" />
+  </Teleport>
 </template>
 
 <style scoped>
@@ -453,7 +459,7 @@ function selectProject(p) {
   to { opacity: 1; transform: translateX(0); }
 }
 .project-row {
-  touch-action: none;
+  touch-action: pan-y;
   user-select: none;
 }
 .smart-row:hover,
@@ -696,28 +702,29 @@ function selectProject(p) {
   background: var(--accent-soft);
 }
 
+.project-more { flex-shrink: 0; min-width: 32px; min-height: 32px; color: var(--text-muted); }
 /* Context menu */
 .utility-label { display: none; }
 .ctx-overlay {
   position: fixed;
   inset: 0;
-  z-index: 99;
+  z-index: 1099;
 }
 .ctx-menu {
   position: fixed;
-  z-index: 100;
+  z-index: 1100;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(0,0,0,.5);
   padding: 4px;
-  min-width: 130px;
+  min-width: 176px;
 }
 .ctx-item {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 6px 10px;
+  padding: 12px 14px;
   font-size: 12px;
   color: var(--text-secondary);
   border-radius: var(--radius-sm);

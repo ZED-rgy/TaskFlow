@@ -125,8 +125,12 @@ function formatDateTime(value) {
         </label>
       </div>
 
+      <label v-if="!task.parentId" class="field">
+        <span>计划日期 · 打算哪天做</span>
+        <input type="date" :value="task.plannedDate || ''" @change="updateField('plannedDate', $event.target.value || null)" />
+      </label>
       <label class="field">
-        <span>截止日期</span>
+        <span>截止日期 · 最晚何时完成</span>
         <input
           type="date"
           :value="task.dueDate || ''"

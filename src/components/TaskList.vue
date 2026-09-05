@@ -715,6 +715,8 @@ onUnmounted(() => {
     @reset-filters="resetFilters"
     @update="$emit('update', $event)"
     @select="$emit('selectTask', $event)"
+    @delete="emit('delete', $event)"
+    @reorder="emit('reorder', $event)"
     @create="submitMobileAdd"
     @open-mobile-nav="$emit('openMobileNav')"
   />

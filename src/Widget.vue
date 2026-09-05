@@ -58,8 +58,8 @@ const widgetOrders = ref(loadWidgetOrders())
 const todayKey = ref(localDateKey())
 
 const SMART_VIEWS = [
-  { id: 'view:today', name: '今天', icon: '☀️' },
-  { id: 'view:upcoming', name: '近 7 天', icon: '📅' },
+  { id: 'view:today', name: '今日计划', icon: '☀️' },
+  { id: 'view:upcoming', name: '即将到期', icon: '📅' },
 ]
 
 const scopeId = computed(() => config.value?.projectId || projects.value[0]?.id || '')
@@ -99,12 +99,7 @@ const scopeTasks = computed(() => {
   if (scopeId.value === 'view:today') {
     scoped = roots
       .filter(task => matchesSmartView(task, 'today', todayKey.value))
-      .sort((a, b) => {
-        const sa = dateState(a.dueDate) === 'overdue' ? 0 : 1
-        const sb = dateState(b.dueDate) === 'overdue' ? 0 : 1
-        if (sa !== sb) return sa - sb
-        return String(a.dueDate || '').localeCompare(String(b.dueDate || '')) || (a.position || 0) - (b.position || 0)
-      })
+      .sort((a, b) => (a.planPosition || 0) - (b.planPosition || 0))
   } else if (scopeId.value === 'view:upcoming') {
     scoped = roots
       .filter(task => matchesSmartView(task, 'upcoming', todayKey.value))
@@ -411,7 +406,9 @@ async function createTask() {
     await withTimeout(api.createTask({
       projectId: targetProject.id,
       title: (parsed.title || title).trim(),
-      dueDate: parsed.dueDate || (isSmartView.value ? todayKey.value : null),
+      dueDate: parsed.dueDate || (scopeId.value === 'view:upcoming' ? todayKey.value : null),
+      plannedDate: scopeId.value === 'view:today' ? todayKey.value : null,
+      planPosition: Date.now(),
       priority: parsed.priority || undefined,
       tags: parsed.tags.length ? parsed.tags : undefined,
     }), 12000, 'create task')

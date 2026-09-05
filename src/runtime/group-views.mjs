@@ -15,6 +15,7 @@ export function filterGroupTasks(
   return tasks.filter(
     (t) =>
       (mode !== 'today' ||
+        t.plannedDate === date ||
         t.dueDate === date ||
         t.completedToday ||
         (!t.completed && t.dueDate && t.dueDate < date)) &&

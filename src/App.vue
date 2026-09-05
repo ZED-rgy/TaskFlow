@@ -1,7 +1,8 @@
 ﻿<script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted, provide } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import TaskList from './components/TaskList.vue'
+import DailyPlan from './components/DailyPlan.vue'
 import TaskDetail from './components/TaskDetail.vue'
 import SettingsView from './components/SettingsView.vue'
 import GroupsView from './components/GroupsView.vue'
@@ -27,8 +28,9 @@ import {
 
 const projects = ref([])
 const tasks    = ref([])
+provide('taskflow-projects', projects)
 const selectedId = ref(null)
-const currentView = ref('project')
+const currentView = ref('today')
 const mobileNavOpen = ref(false)
 const appInfo = ref(null)
 const toast = ref(null)
@@ -130,6 +132,10 @@ function collectTaskTreeIds(id) {
 // ── Theme ─────────────────────────────────────────────
 // THEMES / normalizeTheme 见 ./runtime/themes.js
 const theme = ref(normalizeTheme(localStorage.getItem('taskflow-theme') || 'morning'))
+watch(theme, value => {
+  for (const name of ['morning', 'midnight', 'forest', 'graphite', 'apricot']) document.body.classList.remove(`theme-${name}`)
+  document.body.classList.add(`theme-${value}`)
+}, { immediate: true })
 
 function setTheme(nextTheme) {
   beginSettingsSave()
@@ -277,13 +283,13 @@ const projectTasks = computed(() =>
 
 const activeScope = computed(() => {
   if (currentView.value === 'today') {
-    return { id: 'today', name: '今天', icon: '☀️', color: '#D4922A', readonlyProject: true }
+    return { id: 'today', name: '今日计划', icon: '☀️', color: '#D4922A', readonlyProject: true }
   }
   if (currentView.value === 'upcoming') {
-    return { id: 'upcoming', name: '近 7 天', icon: '⌁', color: '#5B8EC0', readonlyProject: true }
+    return { id: 'upcoming', name: '即将到期', icon: '⌁', color: '#5B8EC0', readonlyProject: true }
   }
   if (currentView.value === 'completed') {
-    return { id: 'completed', name: '已完成', icon: '✓', color: '#5E9E72', readonlyProject: true }
+    return { id: 'completed', name: '完成记录', icon: '✓', color: '#5E9E72', readonlyProject: true }
   }
   return selectedProject.value
 })
@@ -825,7 +831,7 @@ async function paletteJumpTask(id) {
 
 async function paletteAction(id) {
   if (id === 'add-task') {
-    if (currentView.value !== 'project' || activeScope.value?.readonlyProject) {
+    if (currentView.value !== 'today' && (currentView.value !== 'project' || activeScope.value?.readonlyProject)) {
       const fallback = selectedId.value || projects.value[0]?.id
       if (fallback) await selectProject(fallback)
     }
@@ -946,13 +952,25 @@ async function onReorderProjects(ids) {
 
 // ── Task handlers ─────────────────────────────────────
 async function onCreateTask(data) {
-  if (!selectedId.value || currentView.value !== 'project') return
+  const { onDone, projectId: requestedProject, ...payload } = data
   try {
-    const t = await api.createTask({ ...data, projectId: selectedId.value })
-    tasks.value.push(t)
-    showToast(`已添加「${data.title}」`)
+    let projectId = currentView.value === 'today' ? requestedProject : selectedId.value
+    if (!projectId && currentView.value === 'today') {
+      let inbox = projects.value.find(p => p.name === '收集箱')
+      if (!inbox) {
+        inbox = await api.createProject({ name: '收集箱', icon: '📋', color: '#A09080' })
+        projects.value.push(inbox)
+      }
+      projectId = inbox.id
+    }
+    if (!projectId) throw new Error('请先选择项目')
+    const task = await api.createTask({ ...payload, projectId })
+    tasks.value.push(task)
+    onDone?.(true)
+    showToast(`已添加「${payload.title}」`)
   } catch (error) {
-    showToast(`添加任务失败：${error.message || '未知错误'}`)
+    onDone?.(false)
+    showToast(`添加任务失败：${error.message || error}`)
   }
 }
 
@@ -1063,23 +1081,32 @@ async function onDeleteTask(id) {
   })
 }
 
+const reorderVersions = new Map()
 async function onReorderTasks(data) {
   // Sortable 已经改了 DOM。先同步模型（乐观），失败时回滚模型；
   // 回滚会让列表按旧 position 重新渲染，DOM 随之复原。
   const previousTasks = tasks.value
+  const scope = data.planDate ? `plan:${data.planDate}` : `project:${data.projectId}:${data.parentId || ''}`
+  const version = (reorderVersions.get(scope) || 0) + 1
+  reorderVersions.set(scope, version)
+  const field = data.planDate ? 'planPosition' : 'position'
   const order = new Map(data.orderedIds.map((id, index) => [id, index]))
   tasks.value = tasks.value.map(task => {
     if (!order.has(task.id)) return task
     return {
       ...task,
-      position: order.get(task.id),
+      [field]: order.get(task.id),
       parentId: data.parentId ?? task.parentId,
     }
   })
   try {
     await api.reorderTasks(data)
   } catch (error) {
-    tasks.value = previousTasks
+    if (reorderVersions.get(scope) === version) {
+      const previous = new Map(previousTasks.map(task => [task.id, task]))
+      tasks.value = tasks.value.map(task => order.has(task.id) && previous.has(task.id)
+        ? { ...task, [field]: previous.get(task.id)[field] } : task)
+    }
     showToast(`任务排序失败：${error.message || '未知错误'}`)
   }
 }
@@ -1289,8 +1316,9 @@ onUnmounted(() => {
 
       <main class="main-area">
         <Transition name="view-switch" mode="out-in">
+          <DailyPlan v-if="['today', 'completed'].includes(currentView)" :key="currentView" :tasks="tasks" :projects="projects" :today="todayKey" :history="currentView === 'completed'" @create="onCreateTask" @update="onUpdateTask" @delete="onDeleteTask" @select="selectTask" @reorder="onReorderTasks" />
           <TaskList
-            v-if="activeScope && !['settings', 'groups'].includes(currentView)"
+            v-else-if="activeScope && !['settings', 'groups'].includes(currentView)"
             :key="`project:${activeScope.id}`"
             :project="activeScope"
             :tasks="projectTasks"

@@ -300,6 +300,17 @@ await assert.rejects(rpc(users[1], 'board', { groupId, date }), /无权/)
 await assert.rejects(rpc(users[0], 'leave', { groupId }), /解散/)
 await rpc(users[0], 'dissolve', { groupId })
 assert.deepEqual(await rpc(users[0], 'list'), [])
+// Rolling upgrades: old clients may edit status/title, but must not erase plans.
+await snapshot(1, [task('plan', { plannedDate: '2026-09-06', planPosition: 12 })])
+await snapshot(1, [task('plan', { title: '旧版更新标题' })])
+let latestPlan = (await db.query('select payload from public.sync_events where workspace_id=$1 order by seq desc limit 1', [workspaces[1]])).rows[0].payload.tasks[0]
+assert.equal(latestPlan.plannedDate, '2026-09-06')
+assert.equal(latestPlan.planPosition, 12)
+assert.equal(latestPlan.title, '旧版更新标题')
+assert.equal((await db.query("select body->>'plannedDate' as date from private.task_history where workspace_id=$1 and task_id='plan' order by revision desc limit 1", [workspaces[1]])).rows[0].date, '2026-09-06')
+await snapshot(1, [task('plan', { plannedDate: null, planPosition: 0 })])
+latestPlan = (await db.query('select payload from public.sync_events where workspace_id=$1 order by seq desc limit 1', [workspaces[1]])).rows[0].payload.tasks[0]
+assert.equal(latestPlan.plannedDate, null, '新版主动清除计划必须保留')
 await db.close()
 console.log(
   'groups database: migration, approval/rejection, isolation, dated history, retention, sharing, invite expiry, revocation passed'

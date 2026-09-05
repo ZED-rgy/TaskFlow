@@ -1,4 +1,5 @@
 <script setup>
+import TaskActions from './TaskActions.vue'
 import { ref, computed, nextTick, watch, onUnmounted } from 'vue'
 
 const props = defineProps({
@@ -176,6 +177,7 @@ function formatDueLabel(dateKey) {
       </div>
       </div>
 
+      <TaskActions v-if="!task.parentId" :task="task" :today="today" @update="emit('update', $event)" @delete="emit('delete', $event)" @select="emit('select', $event)" />
       <!-- Hover / keyboard actions -->
       <Transition name="fade">
         <div v-if="!editing" class="task-actions">

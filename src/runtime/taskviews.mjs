@@ -36,8 +36,7 @@ export function isWithinNextWeek(dueDate, today) {
 
 export function matchesSmartView(task, view, today) {
   if (view === 'today') {
-    const key = toDateKey(task.dueDate)
-    return !task.completed && Boolean(key && key <= today)
+    return !task.completed && task.plannedDate === today
   }
   if (view === 'upcoming') {
     return !task.completed && isWithinNextWeek(task.dueDate, today)

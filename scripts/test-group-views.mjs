@@ -72,3 +72,5 @@ assert.deepEqual(groupSummary([], '2026-09-05'), {
   overdue: 0
 })
 console.log('group view filters and daily counts: passed')
+
+assert.equal(filterGroupTasks([{ id: 'planned', plannedDate: '2026-09-06', completed: false }], {date:'2026-09-06',mode:'today'}).length, 1)

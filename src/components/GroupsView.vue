@@ -664,7 +664,7 @@ onUnmounted(() => {
                       >{{ task.parentId ? '↳ ' : '' }}{{ task.title }}</strong
                     ><small
                       >{{ task.projectName
-                      }}<template v-if="task.dueDate">
+                      }}<template v-if="task.plannedDate"> · 计划 {{ task.plannedDate }}</template><template v-if="task.dueDate">
                         · {{ task.dueDate }}</template
                       ><template v-if="task.priority === 'high'">
                         · 高优先级</template

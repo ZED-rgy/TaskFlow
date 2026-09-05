@@ -101,6 +101,7 @@ pub(crate) fn normalize_runtime_data(mut data: TaskFlowData) -> Result<TaskFlowD
         task.title = clamp_chars(task.title.trim().to_string(), MAX_TITLE_LEN);
         task.notes = clamp_chars(task.notes.clone(), MAX_NOTES_LEN);
         task.due_date = normalize_due_date(task.due_date.clone());
+        task.planned_date = normalize_due_date(task.planned_date.clone());
         task.priority = normalize_priority(Some(task.priority.clone()));
         task.tags = normalize_tags(Some(task.tags.clone()));
         task.repeat = normalize_repeat(Some(task.repeat.clone()));

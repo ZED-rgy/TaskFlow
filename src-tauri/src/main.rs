@@ -69,6 +69,9 @@ struct Task {
     notes: String,
     completed: bool,
     due_date: Option<String>,
+    planned_date: Option<String>,
+    #[serde(default)]
+    plan_position: i64,
     priority: String,
     tags: Vec<String>,
     repeat: String,
@@ -108,6 +111,8 @@ struct StoredTask {
     notes: Option<String>,
     completed: Option<bool>,
     due_date: Option<String>,
+    planned_date: Option<String>,
+    plan_position: Option<i64>,
     priority: Option<String>,
     tags: Option<Vec<String>>,
     repeat: Option<String>,
@@ -263,6 +268,9 @@ struct TaskPayload {
     completed: Option<bool>,
     #[serde(default, deserialize_with = "deserialize_present_option")]
     due_date: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    planned_date: Option<Option<String>>,
+    plan_position: Option<i64>,
     priority: Option<String>,
     tags: Option<Vec<String>>,
     repeat: Option<String>,
@@ -272,6 +280,7 @@ struct TaskPayload {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ReorderTaskPayload {
+    plan_date: Option<String>,
     project_id: String,
     ordered_ids: Vec<String>,
     parent_id: Option<String>,
@@ -386,6 +395,8 @@ fn default_data() -> TaskFlowData {
                 notes: "".into(),
                 completed: false,
                 due_date: None,
+                planned_date: None,
+                plan_position: 0,
                 priority: "normal".into(),
                 tags: vec![],
                 repeat: "none".into(),
@@ -402,6 +413,8 @@ fn default_data() -> TaskFlowData {
                 notes: "".into(),
                 completed: true,
                 due_date: None,
+                planned_date: None,
+                plan_position: 0,
                 priority: "low".into(),
                 tags: vec!["入门".into()],
                 repeat: "none".into(),
@@ -517,6 +530,8 @@ fn normalize_stored_data(stored: StoredTaskFlowData) -> TaskFlowData {
             notes: task.notes.unwrap_or_default(),
             completed,
             due_date: task.due_date.filter(|date| !date.trim().is_empty()),
+            planned_date: task.planned_date,
+            plan_position: task.plan_position.unwrap_or(0),
             priority: normalize_priority(task.priority),
             tags: normalize_tags(task.tags),
             repeat: normalize_repeat(task.repeat),
@@ -2363,6 +2378,8 @@ fn create_task(app: AppHandle, window: WebviewWindow, data: TaskPayload) -> Resu
         notes: clamp_chars(data.notes.unwrap_or_default(), MAX_NOTES_LEN),
         completed: false,
         due_date: data.due_date.flatten(),
+        planned_date: domain::normalize_due_date(data.planned_date.flatten()),
+        plan_position: data.plan_position.unwrap_or(0),
         priority: normalize_priority(data.priority),
         tags: normalize_tags(data.tags),
         repeat: normalize_repeat(data.repeat),
@@ -2389,6 +2406,22 @@ fn update_task(
         return Ok(serde_json::Value::Null);
     };
     let was_completed = db.tasks[idx].completed;
+    if let Some(project_id) = &data.project_id {
+        if !db.projects.iter().any(|project| &project.id == project_id) {
+            return Err("目标项目不存在".into());
+        }
+        if db.tasks[idx].parent_id.is_some() && &db.tasks[idx].project_id != project_id {
+            return Err("请移动父任务以保留子任务关系".into());
+        }
+        db.tasks[idx].project_id = project_id.clone();
+        for child in db
+            .tasks
+            .iter_mut()
+            .filter(|task| task.parent_id.as_deref() == Some(&id))
+        {
+            child.project_id = project_id.clone();
+        }
+    }
     remember_repeat_generation(&mut db.tasks[idx]);
     if let Some(title) = data.title {
         let title = clamp_chars(title.trim().to_string(), MAX_TITLE_LEN);
@@ -2402,6 +2435,12 @@ fn update_task(
     }
     if let Some(due_date) = data.due_date {
         db.tasks[idx].due_date = due_date;
+    }
+    if let Some(planned_date) = data.planned_date {
+        db.tasks[idx].planned_date = domain::normalize_due_date(planned_date);
+    }
+    if let Some(position) = data.plan_position {
+        db.tasks[idx].plan_position = position;
     }
     if data.priority.is_some() {
         db.tasks[idx].priority = normalize_priority(data.priority);
@@ -2440,7 +2479,7 @@ fn update_task(
         data.completed == Some(true) && !was_completed && spawn_next_repeat(&mut db.tasks, idx);
     let updated = db.tasks[idx].clone();
     write_state(&app, &db, Some(window.label()))?;
-    if spawned {
+    if spawned || data.project_id.is_some() {
         Ok(serde_json::json!({ "task": updated, "tasks": db.tasks }))
     } else {
         Ok(serde_json::json!({ "task": updated }))
@@ -2491,13 +2530,22 @@ fn reorder_tasks(
 ) -> Result<bool, String> {
     let mut db = read_state(&app)?;
     for (index, id) in data.ordered_ids.iter().enumerate() {
-        if let Some(task) = db
-            .tasks
-            .iter_mut()
-            .find(|item| item.id == *id && item.project_id == data.project_id)
-        {
-            task.position = index as i32;
-            if data.parent_id.is_some() {
+        if let Some(task) = db.tasks.iter_mut().find(|item| {
+            item.id == *id
+                && if let Some(date) = &data.plan_date {
+                    item.parent_id.is_none()
+                        && !item.completed
+                        && item.planned_date.as_ref() == Some(date)
+                } else {
+                    item.project_id == data.project_id && item.parent_id == data.parent_id
+                }
+        }) {
+            if data.plan_date.is_some() {
+                task.plan_position = index as i64;
+            } else {
+                task.position = index as i32;
+            }
+            if data.plan_date.is_none() && data.parent_id.is_some() {
                 task.parent_id = data.parent_id.clone().filter(|item| !item.is_empty());
             }
         }
@@ -2888,6 +2936,8 @@ fn spawn_next_repeat(tasks: &mut Vec<Task>, index: usize) -> bool {
     next.repeat_generated = false;
     next.completed = false;
     next.due_date = Some(next_due);
+    next.planned_date = None;
+    next.plan_position = 0;
     next.created_at = now();
     next.completed_at = None;
     next.position = tasks
@@ -3306,6 +3356,8 @@ mod tests {
             notes: String::new(),
             completed: false,
             due_date: None,
+            planned_date: None,
+            plan_position: 0,
             priority: "normal".into(),
             tags: vec![],
             repeat: "none".into(),
@@ -3355,6 +3407,8 @@ mod tests {
             notes: None,
             completed: None,
             due_date: None,
+            planned_date: None,
+            plan_position: None,
             priority: None,
             tags: None,
             repeat: None,
@@ -3403,6 +3457,41 @@ mod tests {
         assert_eq!(missing.due_date, None);
         assert_eq!(clear.due_date, Some(None));
         assert_eq!(value.due_date, Some(Some("2026-07-10".into())));
+    }
+
+    #[test]
+    fn plan_dates_roundtrip_and_clear_without_changing_deadlines() {
+        let missing: TaskPayload = serde_json::from_str(r#"{}"#).unwrap();
+        let clear: TaskPayload = serde_json::from_str(r#"{"plannedDate":null}"#).unwrap();
+        let value: TaskPayload =
+            serde_json::from_str(r#"{"plannedDate":"2026-09-06","planPosition":1788678000000}"#)
+                .unwrap();
+        assert_eq!(missing.planned_date, None);
+        assert_eq!(clear.planned_date, Some(None));
+        assert_eq!(value.planned_date, Some(Some("2026-09-06".into())));
+        let mut data = default_data();
+        data.tasks[0].planned_date = Some("2026-09-06".into());
+        data.tasks[0].plan_position = value.plan_position.unwrap();
+        data.tasks[0].due_date = Some("2026-10-01".into());
+        let encoded = serde_json::to_value(&data).unwrap();
+        let restored: TaskFlowData = serde_json::from_value(encoded.clone()).unwrap();
+        assert_eq!(
+            restored.tasks[0].planned_date.as_deref(),
+            Some("2026-09-06")
+        );
+        assert_eq!(restored.tasks[0].due_date.as_deref(), Some("2026-10-01"));
+        assert_eq!(restored.tasks[0].plan_position, 1788678000000);
+        let mut legacy = encoded;
+        for task in legacy["tasks"].as_array_mut().unwrap() {
+            task.as_object_mut().unwrap().remove("plannedDate");
+            task.as_object_mut().unwrap().remove("planPosition");
+        }
+        let legacy: TaskFlowData = serde_json::from_value(legacy).unwrap();
+        assert_eq!(legacy.tasks[0].planned_date, None);
+        assert_eq!(legacy.tasks[0].plan_position, 0);
+        data.tasks[0].repeat = "daily".into();
+        assert!(spawn_next_repeat(&mut data.tasks, 0));
+        assert_eq!(data.tasks.last().unwrap().planned_date, None);
     }
 
     // ── clamp_chars ────────────────────────────────────────
