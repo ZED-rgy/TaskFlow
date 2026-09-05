@@ -28,6 +28,18 @@ for (const file of (await fs.readdir('supabase/migrations')).sort()) {
     throw e
   }
 }
+// Test both clean installs (helper absent above) and hosted projects with the helper.
+await db.exec(`create function public.rls_auto_enable() returns void language plpgsql security definer as $$ begin end $$;
+  grant execute on function public.rls_auto_enable() to anon,authenticated;`)
+const hardeningFile = (await fs.readdir('supabase/migrations')).find(name => name.endsWith('_harden_helper_and_group_indexes.sql'))
+await db.exec(await fs.readFile(`supabase/migrations/${hardeningFile}`, 'utf8'))
+const helperGrants = (await db.query(`select
+  has_function_privilege('anon','public.rls_auto_enable()','execute') as anon,
+  has_function_privilege('authenticated','public.rls_auto_enable()','execute') as authenticated`)).rows[0]
+assert.deepEqual(helperGrants, { anon: false, authenticated: false })
+assert.equal((await db.query(`select count(*)::int as count from pg_indexes where indexname in
+  ('group_shares_workspace_idx','task_groups_owner_idx','tasks_project_workspace_idx')`)).rows[0].count, 3)
+
 const users = [1, 2, 3].map(
   (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`
 )

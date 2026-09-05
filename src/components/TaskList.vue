@@ -654,7 +654,6 @@ function toggleGroupingFromCommandPalette() {
 onMounted(() => {
   loadSavedViews()
   nextTick(syncSortable)
-  focusAdd()
   window.addEventListener('keydown', handleKeydown)
   document.addEventListener('pointerdown', onDocumentPointerdown)
   window.addEventListener('taskflow-focus-add', focusAddFromCommandPalette)
@@ -1524,9 +1523,8 @@ onUnmounted(() => {
 }
 .add-task-inner.has-content { border-color: color-mix(in srgb, var(--accent) 48%, var(--border)); background: color-mix(in srgb, var(--bg-surface) 66%, transparent); }
 .add-task-inner:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
-  box-shadow: var(--focus-ring), 0 10px 26px rgba(68,62,52,.09), inset 0 1px rgba(255,255,255,.65);
-  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 .add-task-inner.is-sub       { border-color: var(--accent); background: var(--accent-soft); }
 
@@ -1569,6 +1567,9 @@ onUnmounted(() => {
   caret-color: var(--accent);
 }
 .add-input::placeholder { color: var(--text-muted); }
+/* The containing control already marks focus; avoid a second inner rectangle. */
+.add-input:focus-visible,
+.search-box input:focus-visible { outline: none; }
 
 .sub-hint {
   font-size: 10.5px;
