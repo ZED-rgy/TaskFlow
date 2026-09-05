@@ -44,6 +44,23 @@ export function createSyncRepository(client = DEFAULT_CLIENT) {
   return {
     enabled: client === DEFAULT_CLIENT ? syncConfig.enabled : Boolean(client),
 
+    async groups(action, args = {}) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 12000)
+      try {
+        const { data, error } = await (await requireClient(client))
+          .rpc('groups_api', { action, args }).abortSignal(controller.signal)
+        if (error) {
+          if (controller.signal.aborted) throw new Error('小组请求超时，请检查网络后重试')
+          if (['PGRST202', '42883'].includes(error.code)) throw new Error('小组服务尚未启用，请联系维护者完成数据库升级')
+          throw error
+        }
+        return data
+      } finally {
+        clearTimeout(timer)
+      }
+    },
+
     async getSession() {
       const { data, error } = await (await requireClient(client)).auth.getSession()
       if (error) throw error

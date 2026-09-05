@@ -75,4 +75,12 @@ await assert.rejects(() => createSyncRepository({ auth: {
   async signOut() { return { error: new Error('session still present') } },
   async getSession() { return { data: { session: { user: { id: 'u' } } }, error: null } },
 } }).signOut(), /session still present/)
+let groupCall
+const groupsRepo = createSyncRepository({rpc(name, args) {
+  groupCall = {name,args}
+  return {abortSignal(signal) { assert.ok(signal instanceof AbortSignal); return Promise.resolve({data:[],error:null}) }}
+}})
+assert.deepEqual(await groupsRepo.groups('list'),[])
+assert.deepEqual(groupCall,{name:'groups_api',args:{action:'list',args:{}}})
+await assert.rejects(createSyncRepository({rpc() { return {abortSignal() {return Promise.resolve({error:{code:'PGRST202'}})}} }}).groups('list'), /尚未启用/)
 console.log('sync repository rules: ok')

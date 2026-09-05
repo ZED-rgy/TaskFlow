@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar.vue'
 import TaskList from './components/TaskList.vue'
 import TaskDetail from './components/TaskDetail.vue'
 import SettingsView from './components/SettingsView.vue'
+import GroupsView from './components/GroupsView.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import appIconUrl from '../assets/icon.svg'
 import { api, createSyncEngine, syncConfig, syncRepository } from './runtime/api.js'
@@ -344,7 +345,7 @@ async function runCloudSyncPass(engine, isActive) {
     return
   }
   if (result.kind === 'unbound') {
-    setCloudSyncState('unbound', '未绑定工作区')
+    setCloudSyncState('unbound', '个人云同步尚未连接')
     return
   }
   if (result.kind === 'error') {
@@ -578,7 +579,7 @@ async function startCloudSync(requestedWorkspaceId = null) {
         setCloudSyncState('syncing', '准备实时同步', '正在为当前账户准备个人同步空间')
         workspace = await syncRepository.ensurePersonalWorkspace()
       } else {
-        setCloudSyncState('syncing', '准备实时同步', `正在连接工作区「${workspace.name || '未命名'}」`)
+        setCloudSyncState('syncing', '准备实时同步', '正在连接个人云同步')
       }
       if (!isActive()) return
       if (!workspace?.id) {
@@ -591,7 +592,7 @@ async function startCloudSync(requestedWorkspaceId = null) {
         const decision = await decideFirstBind(workspace.id, localData)
         if (!isActive()) return
         if (decision.choice === 'cancel') {
-          setCloudSyncState('signed-out', '未开启同步', '已取消绑定云端工作区，本机数据保持不变')
+          setCloudSyncState('signed-out', '未开启同步', '已取消连接云端，本机数据保持不变')
           return
         }
         if (hasMeaningfulData(localData)) await api.backupLocalData('before-cloud-bind')
@@ -757,6 +758,7 @@ async function selectProject(id) {
 
 function selectView(view) {
   currentView.value = view
+  if (view === 'groups') closeTaskDetail()
   if (view === 'settings') {
     refreshLogs()
     refreshDueSummary()
@@ -1288,7 +1290,7 @@ onUnmounted(() => {
       <main class="main-area">
         <Transition name="view-switch" mode="out-in">
           <TaskList
-            v-if="activeScope && currentView !== 'settings'"
+            v-if="activeScope && !['settings', 'groups'].includes(currentView)"
             :key="`project:${activeScope.id}`"
             :project="activeScope"
             :tasks="projectTasks"
@@ -1303,6 +1305,7 @@ onUnmounted(() => {
             @selectTask="selectTask"
             @openMobileNav="mobileNavOpen = true"
           />
+          <GroupsView v-else-if="currentView === 'groups'" key="groups" :projects="projects" :tasks="tasks" @login="selectView('settings')" />
           <SettingsView
             v-else-if="currentView === 'settings'"
             key="settings"

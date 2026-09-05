@@ -154,8 +154,6 @@ const cloudEmail = ref('')
 const cloudPassword = ref('')
 const cloudSession = ref(null)
 const cloudStatus = ref(null)
-const cloudWorkspaces = ref([])
-const cloudWorkspaceName = ref('')
 const cloudBusy = ref(false)
 const cloudMessage = ref('')
 const cloudRuntimeState = ref(null)
@@ -197,14 +195,6 @@ async function loadCloudState() {
   try {
     cloudSession.value = await syncRepository.getSession()
     cloudStatus.value = await api.getSyncStatus()
-    if (cloudSession.value) {
-      // 工作区的准备与绑定统一由主窗口 startCloudSync 负责：
-      // 它会在首次绑定时检查本机/云端数据冲突并征求用户选择。
-      // 这里只读取列表用于展示，不直接绑定，避免绕过那道检查。
-      cloudWorkspaces.value = await syncRepository.listWorkspaces()
-    } else {
-      cloudWorkspaces.value = []
-    }
   } catch (error) {
     cloudMessage.value = error?.message || '云同步状态读取失败'
   }
@@ -221,7 +211,7 @@ async function cloudAuth(action) {
     cloudPassword.value = ''
     cloudStatus.value = await api.getSyncStatus()
     if (cloudSession.value) {
-      cloudWorkspaces.value = await syncRepository.listWorkspaces()
+
       cloudMessage.value = '登录成功，正在准备云端同步'
       // 绑定与首次数据冲突处理交给主窗口。
       notifySyncChanged()
@@ -229,57 +219,11 @@ async function cloudAuth(action) {
       // Email confirmation may be required before Supabase creates a session.
       // Do not query protected tables as anon in that state; it produces a
       // misleading "permission denied for table workspaces" error.
-      cloudWorkspaces.value = []
+
       cloudMessage.value = '注册成功，请先完成邮箱验证，再登录'
     }
   } catch (error) {
     cloudMessage.value = error?.message || '认证失败'
-  } finally {
-    cloudBusy.value = false
-  }
-}
-
-async function createCloudWorkspace() {
-  cloudBusy.value = true
-  cloudMessage.value = ''
-  try {
-    if (!cloudWorkspaceName.value.trim()) throw new Error('请输入工作区名称')
-    const workspace = await syncRepository.createWorkspace(cloudWorkspaceName.value.trim())
-    cloudWorkspaceName.value = ''
-    cloudWorkspaces.value = await syncRepository.listWorkspaces()
-    await bindCloudWorkspace(workspace?.id)
-  } catch (error) {
-    cloudMessage.value = error?.message || '创建工作区失败'
-  } finally {
-    cloudBusy.value = false
-  }
-}
-
-async function bindCloudWorkspace(workspaceId) {
-  if (!workspaceId) return
-  cloudBusy.value = true
-  cloudMessage.value = ''
-  try {
-    // 由主窗口统一完成首次绑定检查、备份和本机/云端数据取舍。
-    // 设置页直接写 workspaceId 会绕过这些保护。
-    cloudMessage.value = '正在检查工作区数据…'
-    notifySyncChanged({ workspaceId })
-  } catch (error) {
-    cloudMessage.value = error?.message || '绑定工作区失败'
-  } finally {
-    cloudBusy.value = false
-  }
-}
-
-async function unbindCloudWorkspace() {
-  cloudBusy.value = true
-  cloudMessage.value = ''
-  try {
-    cloudStatus.value = await api.setSyncWorkspace(null)
-    cloudMessage.value = '已解除工作区绑定'
-    notifySyncChanged({ stop: true })
-  } catch (error) {
-    cloudMessage.value = error?.message || '解除绑定失败'
   } finally {
     cloudBusy.value = false
   }
@@ -293,7 +237,7 @@ async function cloudSignOut() {
     notifySyncChanged({ stop: true })
     await syncRepository.signOut()
     cloudSession.value = null
-    cloudWorkspaces.value = []
+
     cloudMessage.value = '已退出登录'
     notifySyncChanged({ stop: true })
   } catch (error) {
@@ -341,7 +285,7 @@ async function cloudSignOut() {
         <div class="cloud-sync-head">
           <div>
             <h2>云端同步</h2>
-            <p>登录后绑定工作区，让电脑和手机共享任务数据。</p>
+            <p>登录后，任务会自动同步到你的电脑和手机。</p>
           </div>
           <span class="cloud-state-pill" :class="{ active: cloudSession && cloudStatus?.workspaceId && cloudRuntimeState?.kind !== 'error' }">{{ cloudStateLabel }}</span>
         </div>
@@ -365,25 +309,6 @@ async function cloudSignOut() {
             </div>
             <button class="secondary-btn" :disabled="cloudBusy" @click="cloudSignOut">退出登录</button>
           </div>
-          <details class="cloud-advanced">
-            <summary>高级：工作区管理</summary>
-            <p class="cloud-hint">工作区由系统自动准备。仅在需要加入团队空间或切换数据范围时使用。</p>
-            <div class="cloud-workspace-row">
-              <select
-                :value="cloudStatus?.workspaceId || ''"
-                :disabled="cloudBusy"
-                aria-label="云端工作区"
-                @change="bindCloudWorkspace($event.target.value)"
-              >
-                <option value="">选择工作区</option>
-                <option v-for="workspace in cloudWorkspaces" :key="workspace.id" :value="workspace.id">{{ workspace.name }}</option>
-              </select>
-            </div>
-            <div class="cloud-workspace-create">
-              <input v-model="cloudWorkspaceName" type="text" maxlength="80" placeholder="新建工作区…" aria-label="新建工作区名称" />
-              <button class="primary-btn" :disabled="cloudBusy" @click="createCloudWorkspace">创建并绑定</button>
-            </div>
-          </details>
         </template>
         <p v-if="cloudMessage" class="cloud-message" role="status" aria-live="polite">{{ cloudMessage }}</p>
       </div>

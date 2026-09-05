@@ -269,6 +269,10 @@ function selectProject(p) {
         <span v-if="smartCounts.completed" class="proj-count">{{ smartCounts.completed }}</span>
       </button>
 
+      <button class="smart-row" :class="{ active: currentView === 'groups' }" title="我的小组" @click="$emit('selectView', 'groups')">
+        <span class="smart-icon" aria-hidden="true"><svg viewBox="0 0 18 18" fill="none"><circle cx="6.5" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M2 15v-2a4.5 4.5 0 0 1 9 0v2M12 3.5a2.5 2.5 0 0 1 0 5M13 10a4 4 0 0 1 3 4v1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
+        <span class="smart-name">我的小组</span>
+      </button>
       <div class="section-label">项目</div>
 
       <div
