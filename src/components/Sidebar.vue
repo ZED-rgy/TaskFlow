@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import ProjectIcon from './ProjectIcon.vue'
+import { createLongPressSort } from '../runtime/long-press-sort.mjs'
 
 const props = defineProps({
   projects:   { type: Array, default: () => [] },
@@ -27,11 +28,6 @@ const PRESET_COLORS = ['#D4922A','#5B8EC0','#5E9E72','#9B6CC8','#C0504A','#E08C4
 const PRESET_ICONS  = ['📋','☀️','📚','💼','🏠','🎯','💡','🔬','🎨','✈️','💪','🌱']
 
 const projectListEl = ref(null)
-const orderedProjects = ref([])
-const dragIndex = ref(null)
-const dragChanged = ref(false)
-const suppressClick = ref(false)
-const pointerCandidate = ref(null)
 const uniqueProjects = computed(() => {
   const seen = new Set()
   return props.projects.filter(project => {
@@ -41,9 +37,15 @@ const uniqueProjects = computed(() => {
     return true
   })
 })
-const visibleProjects = computed(() =>
-  dragIndex.value === null ? uniqueProjects.value : orderedProjects.value
-)
+const visibleProjects = uniqueProjects
+let projectSortable
+watch([projectListEl, () => uniqueProjects.value.map(p => p.id).join(',')], () => {
+  projectSortable?.destroy()
+  if (projectListEl.value) projectSortable = createLongPressSort(projectListEl.value, {
+    draggable: '.project-row', handle: '.proj-name, .proj-icon', onReorder: ids => emit('reorder', ids),
+  })
+}, { flush: 'post' })
+onUnmounted(() => projectSortable?.destroy())
 
 const showNewForm  = ref(false)
 const newName      = ref('')
@@ -54,10 +56,6 @@ const newInput     = ref(null)
 // 确保 project-list 不被残留 scrollLeft 推偏（HMR 或旧 <select> 触发的焦点滚动）
 onMounted(() => {
   if (projectListEl.value) projectListEl.value.scrollLeft = 0
-})
-
-onUnmounted(() => {
-  removePointerDragListeners()
 })
 
 async function openNewForm() {
@@ -116,8 +114,6 @@ const ctxProject= ref(null)
 function showCtx(e, p) {
   e.preventDefault()
   e.stopPropagation()
-  removePointerDragListeners()
-  pointerCandidate.value = null
   ctxProject.value = p
   ctxMenu.value = { x: Math.max(8, Math.min(e.clientX, window.innerWidth - 192)), y: Math.max(8, Math.min(e.clientY, window.innerHeight - 130)) }
 }
@@ -139,95 +135,10 @@ function ctxDelete() {
   if (id) emit('delete', id)
 }
 
-// ── Drag & drop ───────────────────────────────────────
-function moveProjectTo(i) {
-  if (dragIndex.value === null || dragIndex.value === i || i < 0 || i >= orderedProjects.value.length) return
-  const arr = [...orderedProjects.value]
-  const [moved] = arr.splice(dragIndex.value, 1)
-  arr.splice(i, 0, moved)
-  orderedProjects.value = arr
-  dragIndex.value = i
-  dragChanged.value = true
-}
-
-function addPointerDragListeners() {
-  window.addEventListener('pointermove', onProjectPointerMove)
-  window.addEventListener('pointerup', onProjectPointerUp)
-  window.addEventListener('pointercancel', onProjectPointerUp)
-}
-
-function removePointerDragListeners() {
-  window.removeEventListener('pointermove', onProjectPointerMove)
-  window.removeEventListener('pointerup', onProjectPointerUp)
-  window.removeEventListener('pointercancel', onProjectPointerUp)
-}
-
-function onProjectPointerDown(event, i) {
-  if (event.button !== 0 || event.pointerType === 'touch') return
-  if (editingId.value) return
-  if (event.target.closest('input, button, .ctx-menu')) return
-  pointerCandidate.value = {
-    index: i,
-    startX: event.clientX,
-    startY: event.clientY,
-  }
-  addPointerDragListeners()
-}
-
-function targetProjectIndex(clientY) {
-  const rows = [...document.querySelectorAll('[data-project-index]')]
-  if (!rows.length) return null
-  let nearest = null
-  let nearestDistance = Number.POSITIVE_INFINITY
-  for (const row of rows) {
-    const rect = row.getBoundingClientRect()
-    const distance = Math.abs(clientY - (rect.top + rect.height / 2))
-    if (distance < nearestDistance) {
-      nearestDistance = distance
-      nearest = Number(row.dataset.projectIndex)
-    }
-  }
-  return Number.isFinite(nearest) ? nearest : null
-}
-
-function onProjectPointerMove(event) {
-  const candidate = pointerCandidate.value
-  if (!candidate) return
-  const distance = Math.abs(event.clientY - candidate.startY) + Math.abs(event.clientX - candidate.startX)
-  if (dragIndex.value === null) {
-    if (distance < 6) return
-    dragIndex.value = candidate.index
-    dragChanged.value = false
-    orderedProjects.value = [...uniqueProjects.value]
-    suppressClick.value = true
-  }
-  event.preventDefault()
-  const nextIndex = targetProjectIndex(event.clientY)
-  if (nextIndex !== null) moveProjectTo(nextIndex)
-}
-
-function commitDrag() {
-  const wasDragging = dragIndex.value !== null
-  const changed = dragIndex.value !== null && dragChanged.value
-  if (changed) {
-    emit('reorder', orderedProjects.value.map(p => p.id))
-  }
-  dragIndex.value = null
-  dragChanged.value = false
-  if (wasDragging) {
-    suppressClick.value = true
-    window.setTimeout(() => { suppressClick.value = false }, 80)
-  }
-}
-
-function onProjectPointerUp() {
-  removePointerDragListeners()
-  pointerCandidate.value = null
-  commitDrag()
-}
-function selectProject(p) {
-  if (suppressClick.value) return
-  emit('select', p.id)
+function selectProject(p) { emit('select', p.id) }
+function projectContext(event, p) {
+  if (event.pointerType === 'touch' || matchMedia('(pointer: coarse)').matches) { event.preventDefault(); return }
+  showCtx(event, p)
 }
 </script>
 
@@ -283,13 +194,12 @@ function selectProject(p) {
       <div
         v-for="(p, i) in visibleProjects"
         :key="p.id"
-        :data-project-index="i"
+        :data-project-index="i" :data-id="p.id"
         class="project-row"
         :style="{ '--row-delay': `${54 + i * 18}ms` }"
-        :class="{ active: currentView === 'project' && selectedId === p.id, dragging: dragIndex === i }"
+        :class="{ active: currentView === 'project' && selectedId === p.id }"
         @click="selectProject(p)"
-        @contextmenu="showCtx($event, p)"
-        @pointerdown="onProjectPointerDown($event, i)"
+        @contextmenu="projectContext($event, p)"
       >
         <!-- Color stripe -->
         <span class="proj-stripe" :style="{ background: p.color }" />

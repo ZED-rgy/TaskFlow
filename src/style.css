@@ -1460,3 +1460,9 @@ body.widget-mode #app {
   .platform-android .sidebar,
   .platform-android .mobile-nav-scrim { transition: none; animation: none; }
 }
+
+/* Shared touch drag feedback, including the preview attached to document.body. */
+.long-press-chosen { background: var(--accent-soft) !important; outline: 1px solid var(--accent); border-radius: 10px; }
+.long-press-ghost { opacity: .3; }
+.long-press-preview { opacity: .95 !important; background: var(--bg-surface) !important; color: var(--text-primary); box-shadow: 0 10px 30px rgb(0 0 0 / .18); border-radius: 12px; pointer-events: none; }
+.project-row .proj-name, .project-row .proj-icon, .android-time-task-main { user-select: none; -webkit-touch-callout: none; }

@@ -1,5 +1,5 @@
 <script setup>
-import Sortable from 'sortablejs'
+import { createLongPressSort } from '../runtime/long-press-sort.mjs'
 import TaskActions from './TaskActions.vue'
 import { computed, nextTick, ref, watch, onUnmounted } from 'vue'
 import ProjectIcon from './ProjectIcon.vue'
@@ -33,24 +33,15 @@ const emit = defineEmits([
   'resetFilters', 'delete', 'reorder',
 ])
 
-const sorting = ref(false)
 const sortList = ref(null)
 let sortable
 const canSort = computed(() => !props.project.readonlyProject && !props.searchQuery && props.dueFilter === 'all' && props.priorityFilter === 'all' && props.statusFilter !== 'done' && props.tasks.filter(t => !t.completed).length > 1)
-watch(canSort, ok => { if (!ok) sorting.value = false })
-watch([sorting, sortList, () => props.tasks.map(t => t.id).join(',')], async () => {
-  await nextTick()
+watch([canSort, sortList, () => props.project.id, () => props.tasks.map(t => t.id).join(',')], () => {
   sortable?.destroy(); sortable = null
-  if (!sorting.value || !sortList.value) return
-  sortable = Sortable.create(sortList.value, {
-    handle: '.mobile-sort-handle', draggable: '.android-time-task', animation: 150,
-    forceFallback: true, fallbackClass: 'task-fallback', ghostClass: 'task-ghost',
-    onEnd(event) {
-      const orderedIds = [...sortList.value.children].map(el => el.dataset.id).filter(Boolean)
-      const siblings = [...sortList.value.children].filter(el => el !== event.item)
-      sortList.value.insertBefore(event.item, siblings[event.oldIndex] || null)
-      emit('reorder', { projectId: props.project.id, parentId: null, orderedIds })
-    },
+  if (!canSort.value || !sortList.value) return
+  sortable = createLongPressSort(sortList.value, {
+    handle: '.android-time-task-main', draggable: '.android-time-task',
+    onReorder: orderedIds => emit('reorder', { projectId: props.project.id, parentId: null, orderedIds }),
   })
 }, { flush: 'post' })
 onUnmounted(() => sortable?.destroy())
@@ -107,7 +98,7 @@ const todayTasks = computed(() => openTasks.value.filter(task => task.dueDate ==
 const overdueTasks = computed(() => openTasks.value.filter(task => task.dueDate && task.dueDate < props.today))
 const upcomingTasks = computed(() => openTasks.value.filter(task => task.dueDate && task.dueDate > props.today))
 const undatedTasks = computed(() => openTasks.value.filter(task => !task.dueDate))
-const timelineGroups = computed(() => !props.project.readonlyProject ? [{ key: 'project', label: '任务清单', note: '按手动顺序', tone: 'accent', tasks: openTasks.value }].filter(g => g.tasks.length) : [
+const timelineGroups = computed(() => !props.project.readonlyProject ? [{ key: 'project', label: '任务清单', note: '长按任务拖动', tone: 'accent', tasks: openTasks.value }].filter(g => g.tasks.length) : [
   { key: 'overdue', label: '已逾期', note: '优先处理', tone: 'danger', tasks: overdueTasks.value },
   { key: 'today', label: '今天', note: formatDate(props.today), tone: 'accent', tasks: todayTasks.value },
   { key: 'upcoming', label: '接下来', note: '已安排日期', tone: 'blue', tasks: upcomingTasks.value },
@@ -230,7 +221,6 @@ watch(() => props.statusFilter, value => {
       </div>
     </div>
 
-    <button v-if="!project.readonlyProject" class="mobile-sort-toggle" :disabled="!canSort" @click="sorting = !sorting">{{ sorting ? '完成排序' : '调整任务顺序' }}</button>
     <p v-if="!project.readonlyProject && !canSort && tasks.length > 1" class="mobile-sort-hint">清除搜索和筛选后可排序</p>
     <div v-if="filterSummary" class="android-active-filters"><span>{{ filterSummary }}</span><button type="button" @click="resetMobileFilters">清除筛选</button></div>
       <section
@@ -249,7 +239,6 @@ watch(() => props.statusFilter, value => {
         </header>
         <div class="android-task-ledger" :ref="el => { if (group.key === 'project') sortList = el }">
           <article v-for="task in group.tasks" :key="task.id" :data-id="task.id" class="android-time-task" :class="[`priority-${task.priority || 'normal'}`, { overdue: isOverdue(task) }]">
-            <span v-if="sorting" class="mobile-sort-handle" aria-label="拖动排序">⠿</span>
             <button class="android-time-check" type="button" :aria-label="`完成任务：${task.title}`" @click.stop="emit('update', { id: task.id, completed: true })"><span></span></button>
             <button class="android-time-task-main" type="button" @click="emit('select', task.id)">
               <strong>{{ task.title }}</strong>

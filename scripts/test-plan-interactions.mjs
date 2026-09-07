@@ -14,3 +14,17 @@ await pending
 assert.equal(tasks.value[0].title,'edited while sorting','排序失败不能覆盖并发编辑')
 assert.deepEqual(tasks.value.map(t=>t.planPosition),[1,2])
 console.log('plan interactions: independent order and scoped failure rollback passed')
+
+const projectSource = source.slice(source.indexOf('let projectReorderVersion'), source.indexOf('// ── Task handlers'))
+const projects = { value: [{ id:'p1', position:0, name:'before' }, { id:'p2', position:1 }] }
+let rejectProject
+const projectHandler = new Function('projects','api','showToast',`${projectSource}; return onReorderProjects`)(projects,{reorderProjects:()=>new Promise((_,reject)=>rejectProject=reject)},()=>{})
+const projectRequest = projectHandler(['p2','p1'])
+projects.value.find(p=>p.id==='p1').name='renamed during reorder'
+projects.value.push({id:'p3',position:2,name:'new project'})
+rejectProject(new Error('failed'))
+await projectRequest
+assert.equal(projects.value.find(p=>p.id==='p1').name,'renamed during reorder')
+assert.equal(projects.value.length,3)
+assert.deepEqual(projects.value.map(p=>p.id),['p1','p2','p3'])
+console.log('project reorder: rollback preserves concurrent edits and new projects')

@@ -936,8 +936,10 @@ async function onDeleteProject(id) {
   })
 }
 
+let projectReorderVersion = 0
 async function onReorderProjects(ids) {
-  const previousProjects = projects.value
+  const version = ++projectReorderVersion
+  const previousPositions = new Map(projects.value.map(p => [p.id, p.position]))
   const order = new Map(ids.map((id, index) => [id, index]))
   projects.value = [...projects.value]
     .map(project => ({ ...project, position: order.get(project.id) ?? project.position }))
@@ -945,7 +947,8 @@ async function onReorderProjects(ids) {
   try {
     await api.reorderProjects(ids)
   } catch (error) {
-    projects.value = previousProjects
+    if (version !== projectReorderVersion) return
+    projects.value = projects.value.map(p => previousPositions.has(p.id) ? { ...p, position: previousPositions.get(p.id) } : p).sort((a, b) => a.position - b.position)
     showToast(`项目排序失败：${error.message || '未知错误'}`)
   }
 }
@@ -1316,7 +1319,7 @@ onUnmounted(() => {
 
       <main class="main-area">
         <Transition name="view-switch" mode="out-in">
-          <DailyPlan v-if="['today', 'completed'].includes(currentView)" :key="currentView" :tasks="tasks" :projects="projects" :today="todayKey" :history="currentView === 'completed'" @create="onCreateTask" @update="onUpdateTask" @delete="onDeleteTask" @select="selectTask" @reorder="onReorderTasks" />
+          <DailyPlan v-if="['today', 'completed'].includes(currentView)" :key="currentView" :tasks="tasks" :projects="projects" :today="todayKey" :history="currentView === 'completed'" :cloud-sync="cloudSync" @create="onCreateTask" @update="onUpdateTask" @delete="onDeleteTask" @select="selectTask" @reorder="onReorderTasks" />
           <TaskList
             v-else-if="activeScope && !['settings', 'groups'].includes(currentView)"
             :key="`project:${activeScope.id}`"
@@ -1748,5 +1751,8 @@ onUnmounted(() => {
 .toast button {
   color: var(--accent);
   font-size: 12px;
+}
+@media (max-width: 700px) {
+  .toast { left: 14px; right: 14px; bottom: calc(100px + env(safe-area-inset-bottom)); min-width: 0; overflow-wrap: anywhere; }
 }
 </style>
