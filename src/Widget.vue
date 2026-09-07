@@ -58,11 +58,13 @@ const widgetOrders = ref(loadWidgetOrders())
 const todayKey = ref(localDateKey())
 
 const SMART_VIEWS = [
-  { id: 'view:today', name: '今日计划', icon: '☀️' },
   { id: 'view:upcoming', name: '即将到期', icon: '📅' },
 ]
 
-const scopeId = computed(() => config.value?.projectId || projects.value[0]?.id || '')
+const scopeId = computed(() => {
+  const id = config.value?.projectId
+  return id && id !== 'view:today' ? id : projects.value[0]?.id || ''
+})
 
 const isSmartView = computed(() => String(scopeId.value).startsWith('view:'))
 
@@ -96,11 +98,7 @@ function formatDueShort(dueDate) {
 const scopeTasks = computed(() => {
   const roots = tasks.value.filter(task => !task.parentId)
   let scoped
-  if (scopeId.value === 'view:today') {
-    scoped = roots
-      .filter(task => matchesSmartView(task, 'today', todayKey.value))
-      .sort((a, b) => (a.planPosition || 0) - (b.planPosition || 0))
-  } else if (scopeId.value === 'view:upcoming') {
+  if (scopeId.value === 'view:upcoming') {
     scoped = roots
       .filter(task => matchesSmartView(task, 'upcoming', todayKey.value))
       .sort((a, b) =>
@@ -407,7 +405,6 @@ async function createTask() {
       projectId: targetProject.id,
       title: (parsed.title || title).trim(),
       dueDate: parsed.dueDate || (scopeId.value === 'view:upcoming' ? todayKey.value : null),
-      plannedDate: scopeId.value === 'view:today' ? todayKey.value : null,
       planPosition: Date.now(),
       priority: parsed.priority || undefined,
       tags: parsed.tags.length ? parsed.tags : undefined,

@@ -150,18 +150,6 @@ function projectContext(event, p) {
       <div class="section-label">快捷视图</div>
       <button
         class="smart-row"
-        style="--row-delay: 0ms"
-        :class="{ active: currentView === 'today' }"
-        @click="$emit('selectView', 'today')"
-      >
-        <span class="smart-icon" aria-hidden="true">
-          <svg viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="3.2" fill="currentColor"/><path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M14.3 3.7l-1.4 1.4M5.1 12.9l-1.4 1.4" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/></svg>
-        </span>
-        <span class="smart-name">今日计划</span>
-        <span v-if="smartCounts.today" class="proj-count">{{ smartCounts.today }}</span>
-      </button>
-      <button
-        class="smart-row"
         style="--row-delay: 18ms"
         :class="{ active: currentView === 'upcoming' }"
         @click="$emit('selectView', 'upcoming')"
@@ -171,18 +159,6 @@ function projectContext(event, p) {
         </span>
         <span class="smart-name">即将到期</span>
         <span v-if="smartCounts.upcoming" class="proj-count">{{ smartCounts.upcoming }}</span>
-      </button>
-      <button
-        class="smart-row"
-        style="--row-delay: 36ms"
-        :class="{ active: currentView === 'completed' }"
-        @click="$emit('selectView', 'completed')"
-      >
-        <span class="smart-icon" aria-hidden="true">
-          <svg viewBox="0 0 18 18" fill="none"><path d="m4 9.2 3.1 3.1L14 5.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </span>
-        <span class="smart-name">完成记录</span>
-
       </button>
 
       <button class="smart-row" :class="{ active: currentView === 'groups' }" title="我的小组" @click="$emit('selectView', 'groups')">

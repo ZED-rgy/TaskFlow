@@ -2,7 +2,6 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, provide } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import TaskList from './components/TaskList.vue'
-import DailyPlan from './components/DailyPlan.vue'
 import TaskDetail from './components/TaskDetail.vue'
 import SettingsView from './components/SettingsView.vue'
 import GroupsView from './components/GroupsView.vue'
@@ -30,7 +29,7 @@ const projects = ref([])
 const tasks    = ref([])
 provide('taskflow-projects', projects)
 const selectedId = ref(null)
-const currentView = ref('today')
+const currentView = ref('project')
 const mobileNavOpen = ref(false)
 const appInfo = ref(null)
 const toast = ref(null)
@@ -282,14 +281,8 @@ const projectTasks = computed(() =>
 )
 
 const activeScope = computed(() => {
-  if (currentView.value === 'today') {
-    return { id: 'today', name: '今日计划', icon: '☀️', color: '#D4922A', readonlyProject: true }
-  }
   if (currentView.value === 'upcoming') {
     return { id: 'upcoming', name: '即将到期', icon: '⌁', color: '#5B8EC0', readonlyProject: true }
-  }
-  if (currentView.value === 'completed') {
-    return { id: 'completed', name: '完成记录', icon: '✓', color: '#5E9E72', readonlyProject: true }
   }
   return selectedProject.value
 })
@@ -763,6 +756,7 @@ async function selectProject(id) {
 }
 
 function selectView(view) {
+  if (!['project', 'upcoming', 'groups', 'settings'].includes(view)) return
   currentView.value = view
   if (view === 'groups') closeTaskDetail()
   if (view === 'settings') {
@@ -802,7 +796,7 @@ function handleKeydown(event) {
   }
   if (event.ctrlKey && event.key === '1') {
     event.preventDefault()
-    selectView('today')
+    selectProject(selectedId.value || projects.value[0]?.id || null)
   }
   if (event.ctrlKey && event.key === '2') {
     event.preventDefault()
@@ -810,7 +804,7 @@ function handleKeydown(event) {
   }
   if (event.ctrlKey && event.key === '3') {
     event.preventDefault()
-    selectView('completed')
+    selectView('groups')
   }
   if (event.ctrlKey && event.key === ',') {
     event.preventDefault()
@@ -831,7 +825,7 @@ async function paletteJumpTask(id) {
 
 async function paletteAction(id) {
   if (id === 'add-task') {
-    if (currentView.value !== 'today' && (currentView.value !== 'project' || activeScope.value?.readonlyProject)) {
+    if (currentView.value !== 'project' || activeScope.value?.readonlyProject) {
       const fallback = selectedId.value || projects.value[0]?.id
       if (fallback) await selectProject(fallback)
     }
@@ -955,17 +949,9 @@ async function onReorderProjects(ids) {
 
 // ── Task handlers ─────────────────────────────────────
 async function onCreateTask(data) {
-  const { onDone, projectId: requestedProject, ...payload } = data
+  const { onDone, projectId: _requestedProject, ...payload } = data
   try {
-    let projectId = currentView.value === 'today' ? requestedProject : selectedId.value
-    if (!projectId && currentView.value === 'today') {
-      let inbox = projects.value.find(p => p.name === '收集箱')
-      if (!inbox) {
-        inbox = await api.createProject({ name: '收集箱', icon: '📋', color: '#A09080' })
-        projects.value.push(inbox)
-      }
-      projectId = inbox.id
-    }
+    const projectId = selectedId.value
     if (!projectId) throw new Error('请先选择项目')
     const task = await api.createTask({ ...payload, projectId })
     tasks.value.push(task)
@@ -1319,9 +1305,8 @@ onUnmounted(() => {
 
       <main class="main-area">
         <Transition name="view-switch" mode="out-in">
-          <DailyPlan v-if="['today', 'completed'].includes(currentView)" :key="currentView" :tasks="tasks" :projects="projects" :today="todayKey" :history="currentView === 'completed'" :cloud-sync="cloudSync" @create="onCreateTask" @update="onUpdateTask" @delete="onDeleteTask" @select="selectTask" @reorder="onReorderTasks" />
           <TaskList
-            v-else-if="activeScope && !['settings', 'groups'].includes(currentView)"
+            v-if="activeScope && !['settings', 'groups'].includes(currentView)"
             :key="`project:${activeScope.id}`"
             :project="activeScope"
             :tasks="projectTasks"

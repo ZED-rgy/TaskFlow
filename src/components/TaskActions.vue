@@ -23,9 +23,6 @@ function keydown(event) {
     <div v-if="open" class="task-menu-backdrop" @click.self="close">
       <section ref="panel" class="task-menu-panel" role="dialog" aria-modal="true" :aria-label="`任务操作：${task.title}`" tabindex="-1" @keydown="keydown">
         <header><strong>{{ task.title }}</strong><button @click="close" aria-label="关闭任务操作">×</button></header>
-        <button v-if="!task.completed" @click="act('update', { id: task.id, plannedDate: today, planPosition: Date.now() })">加入今日计划</button>
-        <label v-if="!task.completed">计划哪天做<input type="date" :value="task.plannedDate || ''" @change="act('update', { id: task.id, plannedDate: $event.target.value || null })" /></label>
-        <button v-if="task.plannedDate && !task.completed" @click="act('update', { id: task.id, plannedDate: null })">取消计划安排（保留任务）</button>
         <button @click="act('select', task.id)">查看详情</button>
         <label v-if="!task.parentId && projects.length">移动到项目<select :value="task.projectId" @change="act('update', { id: task.id, projectId: $event.target.value })"><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
         <button class="danger" @click="act('delete', task.id)">删除任务</button>
