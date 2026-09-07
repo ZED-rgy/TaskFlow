@@ -44,6 +44,21 @@ export function createSyncRepository(client = DEFAULT_CLIENT) {
   return {
     enabled: client === DEFAULT_CLIENT ? syncConfig.enabled : Boolean(client),
 
+    async syncCompletions(workspaceId, cursor, records) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 12000)
+      try {
+        const { data, error } = await (await requireClient(client)).rpc('completion_sync', {
+          p_workspace_id: workspaceId, p_after_revision: cursor, p_changes: records,
+        }).abortSignal(controller.signal)
+        if (error) {
+          if (['PGRST202', '42883'].includes(error.code)) throw new Error('完成记录已保存在本机；云端需要更新数据库后才能同步')
+          throw error
+        }
+        return data
+      } finally { clearTimeout(timer) }
+    },
+
     async groups(action, args = {}) {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 12000)

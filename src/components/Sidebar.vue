@@ -165,6 +165,10 @@ function projectContext(event, p) {
         <span class="smart-icon" aria-hidden="true"><svg viewBox="0 0 18 18" fill="none"><circle cx="6.5" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M2 15v-2a4.5 4.5 0 0 1 9 0v2M12 3.5a2.5 2.5 0 0 1 0 5M13 10a4 4 0 0 1 3 4v1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
         <span class="smart-name">我的小组</span>
       </button>
+      <button class="smart-row" :class="{ active: currentView === 'completions' }" title="完成记录" @click="$emit('selectView', 'completions')">
+        <span class="smart-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 3v4m8-4v4M4 9h16M8 14l3 3 5-6"/><rect x="4" y="5" width="16" height="16" rx="3"/></svg></span>
+        <span class="smart-name">完成记录</span>
+      </button>
       <div class="section-label">项目</div>
 
       <div

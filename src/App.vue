@@ -5,6 +5,8 @@ import TaskList from './components/TaskList.vue'
 import TaskDetail from './components/TaskDetail.vue'
 import SettingsView from './components/SettingsView.vue'
 import GroupsView from './components/GroupsView.vue'
+import CompletionHistory from './components/CompletionHistory.vue'
+import { syncCompletions } from './runtime/completion-sync.mjs'
 import CommandPalette from './components/CommandPalette.vue'
 import appIconUrl from '../assets/icon.svg'
 import { api, createSyncEngine, syncConfig, syncRepository } from './runtime/api.js'
@@ -27,6 +29,9 @@ import {
 
 const projects = ref([])
 const tasks    = ref([])
+const completionRefresh = ref(0)
+watch(tasks, () => { completionRefresh.value++ }, { deep: true })
+let unlistenCompletions = null
 provide('taskflow-projects', projects)
 const selectedId = ref(localStorage.getItem('taskflow-last-project') || null)
 watch(selectedId, id => { if (id) localStorage.setItem('taskflow-last-project', id); else localStorage.removeItem('taskflow-last-project') })
@@ -395,14 +400,17 @@ async function runCloudSyncPass(engine, isActive) {
     if (result.nextCursor !== null && result.nextCursor !== undefined) {
       await engine.commitRemoteCursor(result.nextCursor)
     }
+    const historyResult = await syncCompletions({ api, repository: syncRepository, workspaceId: status.workspaceId, isActive })
+    if (!isActive()) return
+    if (historyResult.conflicts) showToast(`${historyResult.conflicts} 条完成记录与另一台设备冲突，已保留云端最新记录`)
     const nextStatus = await api.getSyncStatus()
     if (!isActive()) return
     syncLastError = ''
     setCloudSyncState(
-      nextStatus?.pendingCount ? 'pending' : 'ready',
-      nextStatus?.pendingCount ? `正在同步 · 待 ${nextStatus.pendingCount}` : realtimeConnected ? '实时已同步' : '已同步 · 轮询模式',
-      nextStatus?.pendingCount
-        ? `还有 ${nextStatus.pendingCount} 条本地变更正在上传`
+      nextStatus?.pendingCount || historyResult.pending ? 'pending' : 'ready',
+      (nextStatus?.pendingCount || historyResult.pending) ? `正在同步 · 待处理记录` : realtimeConnected ? '实时已同步' : '已同步 · 轮询模式',
+      (nextStatus?.pendingCount || historyResult.pending)
+        ? `正在同步任务和完成记录`
         : realtimeConnected ? '云端实时连接正常，最新数据已同步' : '实时连接暂不可用，每 5 秒自动同步',
     )
   } catch (error) {
@@ -529,6 +537,8 @@ async function decideFirstBind(workspaceId, localData) {
 // 云端方案直接应用最新快照，避免逐条重放历史快照。
 async function applyFirstBindChoice(workspaceId, { choice, remoteData, latestSeq }, localSnapshot, isActive) {
   const localData = localSnapshot.data
+  await api.bindCompletionRecords(workspaceId, choice !== 'remote')
+  if (!isActive()) return
   const cursor = latestSeq !== null && latestSeq !== undefined ? String(latestSeq) : null
   if (choice === 'remote') {
     // 登录前的本地编辑已经在 outbox 里排队；选择云端后必须丢弃它们，
@@ -758,9 +768,9 @@ async function selectProject(id) {
 }
 
 function selectView(view) {
-  if (!['project', 'upcoming', 'groups', 'settings'].includes(view)) return
+  if (!['project', 'upcoming', 'groups', 'settings', 'completions'].includes(view)) return
   currentView.value = view
-  if (view === 'groups') closeTaskDetail()
+  if (view === 'groups' || view === 'completions') closeTaskDetail()
   if (view === 'settings') {
     refreshLogs()
     refreshDueSummary()
@@ -949,6 +959,23 @@ async function onReorderProjects(ids) {
   }
 }
 
+function onDeleteCompletion(record) {
+  askConfirm({
+    title: '删除完成记录',
+    body: `删除「${record.title}」的完成记录？这不会删除原任务，删除记录会同步到其他设备。`,
+    confirmText: '删除记录', danger: true,
+    onConfirm: async () => {
+      closeConfirm()
+      try {
+        await api.deleteCompletionRecord(record.id)
+        completionRefresh.value++
+        showToast('完成记录已删除')
+        void runCloudSync()
+      } catch (error) { showToast(`删除失败：${error.message || error}`) }
+    },
+  })
+}
+
 const cleaningProjects = new Set()
 function onClearTasks(projectId) {
   if (cleaningProjects.has(projectId)) return
@@ -958,7 +985,7 @@ function onClearTasks(projectId) {
   const unfinished = selected.filter(t => !t.completed).length
   askConfirm({
     title: '清空任务',
-    body: `将清空「${project.name}」的 ${selected.length} 项任务（包含 ${unfinished} 项未完成任务及子任务）。项目本身保留，清空后可以撤销。搜索和筛选不会限制清空范围。`,
+    body: `将清空「${project.name}」的 ${selected.length} 项任务（包含 ${unfinished} 项未完成任务及子任务）。项目本身和完成记录保留，清空后可以撤销。搜索和筛选不会限制清空范围。`,
     confirmText: '清空任务', danger: true,
     onConfirm: async () => {
       closeConfirm()
@@ -1229,6 +1256,7 @@ onMounted(() => {
     showToast(`数据加载失败：${error?.message || error}`)
   })
   refreshWidgetConfig()
+  window.__TAURI__?.event?.listen?.('taskflow-completions-changed', () => { completionRefresh.value++ }).then(unlisten => { unlistenCompletions = unlisten })
   window.__TAURI__?.event?.listen?.('taskflow-data-changed', async () => {
     await loadProjects()
     void runCloudSync()
@@ -1262,6 +1290,7 @@ onUnmounted(() => {
   stopCloudSync()
   if (settingsSaveTimer) clearTimeout(settingsSaveTimer)
   if (unlistenDataChanged) unlistenDataChanged()
+  if (unlistenCompletions) unlistenCompletions()
   if (unlistenAuthDeepLink) unlistenAuthDeepLink()
   if (unlistenDeepLink) unlistenDeepLink()
   if (unlistenOpenTask) unlistenOpenTask()
@@ -1341,7 +1370,7 @@ onUnmounted(() => {
       <main class="main-area">
         <Transition name="view-switch" mode="out-in">
           <TaskList
-            v-if="activeScope && !['settings', 'groups'].includes(currentView)"
+            v-if="activeScope && !['settings', 'groups', 'completions'].includes(currentView)"
             :key="`project:${activeScope.id}`"
             :project="activeScope"
             :tasks="projectTasks"
@@ -1357,6 +1386,7 @@ onUnmounted(() => {
             @clearTasks="onClearTasks(selectedId)"
             @returnProject="selectProject(selectedId || projects[0]?.id || null)" @openMobileNav="mobileNavOpen = true"
           />
+          <CompletionHistory v-else-if="currentView === 'completions'" key="completions" :today="todayKey" :refresh-key="completionRefresh" :cloud-sync="cloudSync" @delete="onDeleteCompletion" />
           <GroupsView v-else-if="currentView === 'groups'" key="groups" :projects="projects" :tasks="tasks" @login="selectView('settings')" />
           <SettingsView
             v-else-if="currentView === 'settings'"

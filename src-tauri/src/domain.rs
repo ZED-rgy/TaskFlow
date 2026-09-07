@@ -109,7 +109,7 @@ pub(crate) fn normalize_runtime_data(mut data: TaskFlowData) -> Result<TaskFlowD
             task.created_at = now();
         }
         task.completed_at = if task.completed {
-            task.completed_at.clone().or_else(|| Some(now()))
+            task.completed_at.clone()
         } else {
             None
         };

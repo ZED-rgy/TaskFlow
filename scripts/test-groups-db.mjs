@@ -311,6 +311,34 @@ assert.equal((await db.query("select body->>'plannedDate' as date from private.t
 await snapshot(1, [task('plan', { plannedDate: null, planPosition: 0 })])
 latestPlan = (await db.query('select payload from public.sync_events where workspace_id=$1 order by seq desc limit 1', [workspaces[1]])).rows[0].payload.tasks[0]
 assert.equal(latestPlan.plannedDate, null, '新版主动清除计划必须保留')
+// Personal ledger is owner-only, incremental, idempotent, and resistant to stale resurrection.
+const completionRpc = (user,w,changes=[],cursor=0) => as(user, async()=> (await db.query('select public.completion_sync($1,$2,$3) result',[w,cursor,JSON.stringify(changes)])).rows[0].result)
+const completion = {id:'done-one',projectId:'p1',title:'完成事项',projectName:'学习',completedAt:'2026-09-07T08:20:00Z',completedDay:'2026-09-07',completedTime:'16:20',deleted:false,revision:0,mutationId:'11111111-1111-4111-8111-111111111111'}
+let ledger = await completionRpc(users[0],workspaces[0],[completion])
+assert.equal(ledger.records.length,1)
+const firstRevision=ledger.records[0].revision
+assert.equal((await completionRpc(users[0],workspaces[0],[completion])).records[0].revision,firstRevision,'retry must not allocate another revision')
+await assert.rejects(completionRpc(users[1],workspaces[0]),/Not authorized/)
+await assert.rejects(as(users[0],()=>db.query('select * from private.completion_records')),/permission denied/)
+const deleted={...completion,deleted:true,revision:firstRevision,mutationId:'22222222-2222-4222-8222-222222222222'}
+ledger=await completionRpc(users[0],workspaces[0],[deleted],firstRevision)
+assert.equal(ledger.records[0].deleted,true)
+assert.equal(ledger.records[0].title,'')
+assert.equal(ledger.records[0].projectName,'')
+const afterDelete=ledger.cursor
+ledger=await completionRpc(users[0],workspaces[0],[completion],afterDelete)
+assert.equal(ledger.conflicts,1)
+assert.equal(ledger.acknowledged[0].deleted,true,'stale client cannot restore deleted record')
+assert.equal(ledger.records.length,0,'unchanged history must not download again')
+await assert.rejects(completionRpc(users[0],workspaces[0],[{...completion,title:'x'.repeat(201)}]),/Invalid completion record/)
+await assert.rejects(completionRpc(users[0],workspaces[0],[{...completion,id:'invalid-text',title:null}]),/completion_record_text_fields/)
+// Pagination must never advance past unseen changes, even when acknowledging a later row.
+for(let batch=0;batch<3;batch++) await completionRpc(users[0],workspaces[0],Array.from({length:100},(_,i)=>({...completion,id:`bulk-${batch}-${i}`,mutationId:`00000000-0000-4000-8000-${String(batch*100+i+1).padStart(12,'0')}`})))
+ledger=await completionRpc(users[0],workspaces[0],[],0)
+assert.equal(ledger.records.length,200)
+const page2=await completionRpc(users[0],workspaces[0],[],ledger.cursor)
+assert.equal(page2.records.length,101)
+assert.equal(new Set([...ledger.records,...page2.records].map(r=>r.id)).size,301)
 await db.close()
 console.log(
   'groups database: migration, approval/rejection, isolation, dated history, retention, sharing, invite expiry, revocation passed'

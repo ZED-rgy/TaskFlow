@@ -50,6 +50,11 @@ export const api = {
   reorderProjects: ids => invoke('reorder_projects', { ids }),
 
   getTasks: projectId => invoke('get_tasks', { projectId }),
+  getCompletionRecords: data => invoke('get_completion_records', data),
+  deleteCompletionRecord: id => invoke('delete_completion_record', { id }),
+  getCompletionSync: workspaceId => invoke('get_completion_sync', { workspaceId }),
+  applyCompletionSync: (workspaceId, records, receipts, cursor) => invoke('apply_completion_sync', { workspaceId, records, receipts, cursor }),
+  bindCompletionRecords: (workspaceId, keepLocal) => invoke('bind_completion_records', { workspaceId, keepLocal }),
   createTask: data => invoke('create_task', { data }),
   updateTask: data => invoke('update_task', { id: data.id, data }),
   deleteTask: (id, onlyCompleted = false) => invoke('delete_task', { id, onlyCompleted }),

@@ -23,6 +23,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 mod domain;
+mod completions;
 mod sync;
 
 use domain::normalize_runtime_data;
@@ -30,7 +31,7 @@ use uuid::Uuid;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
 
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
 const WIDGET_COLLAPSED_HEIGHT: f64 = 46.0;
 const WIDGET_MINI_SIZE: f64 = 48.0;
 const WIDGET_SCREEN_MARGIN: f64 = 24.0;
@@ -85,6 +86,8 @@ struct Task {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskFlowData {
+    #[serde(default)]
+    completion_archive: completions::Archive,
     schema_version: u32,
     projects: Vec<Project>,
     tasks: Vec<Task>,
@@ -125,6 +128,8 @@ struct StoredTask {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredTaskFlowData {
+    #[serde(default)]
+    completion_archive: completions::Archive,
     schema_version: Option<u32>,
     projects: Option<Vec<StoredProject>>,
     tasks: Option<Vec<StoredTask>>,
@@ -322,9 +327,15 @@ fn sync_state_path(app: &AppHandle) -> Result<PathBuf, String> {
 fn enqueue_workspace_snapshot(app: &AppHandle, data: &TaskFlowData) -> Result<(), String> {
     let path = sync_state_path(app)?;
     let state = sync::load(&path)?;
-    let payload = serde_json::to_value(data).map_err(|err| format!("无法生成同步快照：{err}"))?;
+    let payload = workspace_snapshot_payload(data);
     let operation = sync::new_snapshot(payload, state.cursor);
     sync::enqueue(&path, operation).map(|_| ())
+}
+
+fn workspace_snapshot_payload(data: &TaskFlowData) -> serde_json::Value {
+    // Whitelist task data. Personal history (including other locally cached
+    // accounts) must never enter a task snapshot or its retained event copies.
+    serde_json::json!({ "schemaVersion": data.schema_version, "projects": data.projects, "tasks": data.tasks })
 }
 
 fn backup_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -351,6 +362,7 @@ fn default_data() -> TaskFlowData {
     let p3 = new_id();
     let p4 = new_id();
     TaskFlowData {
+        completion_archive: completions::Archive::default(),
         schema_version: SCHEMA_VERSION,
         projects: vec![
             Project {
@@ -539,7 +551,7 @@ fn normalize_stored_data(stored: StoredTaskFlowData) -> TaskFlowData {
             position: task.position.unwrap_or(index as i32),
             created_at: task.created_at.unwrap_or_else(now),
             completed_at: if completed {
-                task.completed_at.or_else(|| Some(now()))
+                task.completed_at
             } else {
                 None
             },
@@ -547,6 +559,7 @@ fn normalize_stored_data(stored: StoredTaskFlowData) -> TaskFlowData {
     }
 
     let data = TaskFlowData {
+        completion_archive: stored.completion_archive,
         schema_version: SCHEMA_VERSION,
         projects,
         tasks,
@@ -975,6 +988,10 @@ fn emit_data_changed(app: &AppHandle, origin: Option<&str>) {
 }
 
 fn write_state(app: &AppHandle, data: &TaskFlowData, origin: Option<&str>) -> Result<(), String> {
+    write_state_with_import(app, data, origin, false)
+}
+
+fn write_state_with_import(app: &AppHandle, data: &TaskFlowData, origin: Option<&str>, importing: bool) -> Result<(), String> {
     let data = normalize_runtime_data(data.clone())?;
     match app.try_state::<AppState>() {
         Some(state) => {
@@ -986,6 +1003,13 @@ fn write_state(app: &AppHandle, data: &TaskFlowData, origin: Option<&str>) -> Re
                 .inner
                 .lock()
                 .map_err(|_| "数据状态锁异常".to_string())?;
+            let mut data = data;
+            let mut archive = inner.data.completion_archive.clone();
+            let scope = completions::scope(app)?;
+            if importing { archive.import_missing(&data.completion_archive, &scope); }
+            archive.backfill(&inner.data, &scope);
+            archive.capture(&inner.data, &data, &scope);
+            data.completion_archive = archive;
             inner.data = data;
             inner.tracker.mark_changed();
             drop(inner);
@@ -2125,7 +2149,7 @@ fn apply_sync_snapshot(
     data: TaskFlowData,
     expected_revision: Option<u64>,
 ) -> Result<TaskFlowData, String> {
-    let snapshot = normalize_runtime_data(data)?;
+    let mut snapshot = normalize_runtime_data(data)?;
     if let Some(state) = app.try_state::<AppState>() {
         let _persist = state
             .persist_lock
@@ -2139,6 +2163,7 @@ fn apply_sync_snapshot(
         inner
             .tracker
             .check_remote_apply(pending, expected_revision)?;
+        snapshot.completion_archive = inner.data.completion_archive.clone();
         write_data_file(&app, &snapshot, false)?;
         inner.data = snapshot.clone();
         // 云端状态已经是权威版本，不生成新的 outbox 操作，避免同步回声。
@@ -2192,6 +2217,8 @@ fn get_projects(app: AppHandle) -> Result<Vec<Project>, String> {
 
 #[tauri::command]
 fn get_tasks(app: AppHandle, project_id: Option<String>) -> Result<Vec<Task>, String> {
+    let scope = completions::scope(&app)?;
+    completions::mutate(&app, |archive, data| { archive.backfill(data, &scope); Ok(()) })?;
     let data = read_state(&app)?;
     Ok(match project_id {
         Some(id) => data
@@ -2472,8 +2499,10 @@ fn update_task(
         db.tasks[idx].parent_id = parent_id;
     }
     if let Some(completed) = data.completed {
-        db.tasks[idx].completed = completed;
-        db.tasks[idx].completed_at = if completed { Some(now()) } else { None };
+        if completed != was_completed {
+            db.tasks[idx].completed = completed;
+            db.tasks[idx].completed_at = if completed { Some(now()) } else { None };
+        }
     }
     let spawned =
         data.completed == Some(true) && !was_completed && spawn_next_repeat(&mut db.tasks, idx);
@@ -2536,6 +2565,9 @@ fn clear_project_tasks(app: AppHandle, window: WebviewWindow, project_id: String
     let deleted = if let Some(state) = app.try_state::<AppState>() {
         let _persist = state.persist_lock.lock().map_err(|_| "数据持久化锁异常".to_string())?;
         let mut inner = state.inner.lock().map_err(|_| "数据状态锁异常".to_string())?;
+        let mut archive = inner.data.completion_archive.clone();
+        archive.backfill(&inner.data, &completions::scope(&app)?);
+        inner.data.completion_archive = archive;
         let deleted = take_project_tasks(&mut inner.data.tasks, &project_id, &task_ids);
         if !deleted.is_empty() { inner.tracker.mark_changed(); }
         drop(inner);
@@ -2721,7 +2753,7 @@ fn import_data(app: AppHandle, window: WebviewWindow) -> Result<ImportResult, St
     let raw = fs::read_to_string(&path).map_err(|err| err.to_string())?;
     let (stored, _) = parse_stored_data(&raw).map_err(|_| "备份文件格式不正确".to_string())?;
     let data = normalize_import_data(normalize_stored_data(stored))?;
-    write_state(&app, &data, Some(window.label()))?;
+    write_state_with_import(&app, &data, Some(window.label()), true)?;
     let _ = flush_state(&app, true);
     append_log(
         &app,
@@ -3277,6 +3309,11 @@ fn main() {
             delete_task,
             restore_tasks,
             clear_project_tasks,
+            completions::get_completion_records,
+            completions::delete_completion_record,
+            completions::get_completion_sync,
+            completions::apply_completion_sync,
+            completions::bind_completion_records,
             reorder_tasks,
             get_due_summary,
             get_logs,
@@ -3365,6 +3402,11 @@ pub fn run() {
             delete_task,
             restore_tasks,
             clear_project_tasks,
+            completions::get_completion_records,
+            completions::delete_completion_record,
+            completions::get_completion_sync,
+            completions::apply_completion_sync,
+            completions::bind_completion_records,
             reorder_tasks,
             get_due_summary,
             get_logs,
@@ -3660,6 +3702,7 @@ mod tests {
     #[test]
     fn stored_data_empty_projects_returns_defaults() {
         let data = normalize_stored_data(StoredTaskFlowData {
+            completion_archive: completions::Archive::default(),
             schema_version: None,
             projects: None,
             tasks: None,
@@ -3671,6 +3714,7 @@ mod tests {
     #[test]
     fn stored_data_fills_project_defaults_and_dedupes_ids() {
         let data = normalize_stored_data(StoredTaskFlowData {
+            completion_archive: completions::Archive::default(),
             schema_version: Some(SCHEMA_VERSION),
             projects: Some(vec![
                 stored_project("p1", "  "),
@@ -3687,6 +3731,7 @@ mod tests {
     #[test]
     fn stored_data_drops_orphan_and_untitled_tasks() {
         let data = normalize_stored_data(StoredTaskFlowData {
+            completion_archive: completions::Archive::default(),
             schema_version: Some(SCHEMA_VERSION),
             projects: Some(vec![stored_project("p1", "项目")]),
             tasks: Some(vec![
@@ -3766,17 +3811,18 @@ mod tests {
     }
 
     #[test]
-    fn stored_data_repairs_completed_at() {
+    fn stored_data_does_not_invent_missing_completion_time() {
         let mut done = stored_task("t1", "p1", "已完成缺时间戳");
         done.completed = Some(true);
         let mut undone = stored_task("t2", "p1", "未完成带时间戳");
         undone.completed_at = Some(now());
         let data = normalize_stored_data(StoredTaskFlowData {
+            completion_archive: completions::Archive::default(),
             schema_version: Some(SCHEMA_VERSION),
             projects: Some(vec![stored_project("p1", "项目")]),
             tasks: Some(vec![done, undone]),
         });
-        assert!(data.tasks[0].completed_at.is_some());
+        assert!(data.tasks[0].completed_at.is_none());
         assert!(data.tasks[1].completed_at.is_none());
     }
 
@@ -3807,6 +3853,7 @@ mod tests {
     #[test]
     fn import_rejects_empty_projects() {
         let data = TaskFlowData {
+            completion_archive: completions::Archive::default(),
             schema_version: SCHEMA_VERSION,
             projects: vec![],
             tasks: vec![],
@@ -3819,6 +3866,7 @@ mod tests {
         let mut project = make_project("p1", "  ");
         project.icon = " ".into();
         let data = TaskFlowData {
+            completion_archive: completions::Archive::default(),
             schema_version: 1,
             projects: vec![project],
             tasks: vec![

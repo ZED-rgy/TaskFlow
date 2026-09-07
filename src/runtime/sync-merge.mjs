@@ -88,6 +88,9 @@ function isSeedProject(project) {
 
 /** 一份数据是否包含用户自己创建的内容（而不只是安装时的示例）。 */
 export function hasMeaningfulData(data) {
+  // A local-only user may have cleared every task but still have valuable history.
+  if (data?.completionArchive?.records?.some(record => !record.deleted && !record.scope &&
+    !tasksOf(data).some(task => task.id === record.id && isSeedTask(task)))) return true
   const projects = projectsOf(data)
   const tasks = tasksOf(data)
   if (!projects.length && !tasks.length) return false

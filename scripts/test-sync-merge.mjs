@@ -134,3 +134,7 @@ assert.equal(fromEmpty.projects.length, local.projects.length)
 assert.equal(fromEmpty.tasks.length, local.tasks.length)
 
 console.log('sync merge rules: ok')
+
+assert.equal(hasMeaningfulData({projects:[],tasks:[],completionArchive:{records:[{id:"done",scope:"",deleted:false}]}}),true,"local archived completions must participate in first-bind choice")
+
+assert.equal(hasMeaningfulData({...seed,completionArchive:{records:[{id:"t-seed-2",scope:"",deleted:false}]}}),false,"seed history must not trigger first-bind conflicts")
