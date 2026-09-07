@@ -10,7 +10,7 @@ const props = defineProps({
   tasks:      { type: Array, default: () => [] },
   smartCounts:{ type: Object, default: () => ({ today: 0, upcoming: 0, completed: 0 }) },
 })
-const emit = defineEmits(['select', 'selectView', 'create', 'update', 'delete', 'reorder', 'exportData', 'importData', 'showSettings', 'clearCompleted'])
+const emit = defineEmits(['select', 'selectView', 'create', 'update', 'delete', 'reorder', 'exportData', 'importData', 'showSettings'])
 
 // ── Task counts ───────────────────────────────────────
 const pendingCount = computed(() => {
@@ -127,12 +127,6 @@ function ctxRename() {
   const p = ctxProject.value
   closeCtx()
   startEdit(p)
-}
-
-function ctxClearCompleted() {
-  const id = ctxProject.value?.id
-  closeCtx()
-  if (id) emit('clearCompleted', id)
 }
 
 function ctxDelete() {
@@ -290,7 +284,6 @@ function projectContext(event, p) {
         @click.stop
       >
         <button class="ctx-item" @click="ctxRename">重命名</button>
-        <button class="ctx-item" @click="ctxClearCompleted">清理已完成</button>
         <div class="ctx-divider" />
         <button class="ctx-item ctx-danger" @click="ctxDelete">删除项目</button>
       </div>

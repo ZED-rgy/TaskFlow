@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { completedCleanup } from '../src/runtime/completed-cleanup.mjs'
 const t=(id,completed,parentId=null,projectId='p')=>({id,completed,parentId,projectId})
-assert.deepEqual(completedCleanup([t('a',true),t('b',true,'a'),t('c',false,'b')],'p'),{ids:[],roots:[]})
-assert.deepEqual(completedCleanup([t('a',false),t('b',true,'a'),t('c',true,'b'),t('x',true,null,'q')],'p'),{ids:['b','c'],roots:['b']})
-assert.deepEqual(completedCleanup([t('a',true),t('b',true,'a'),t('c',false)],'p'),{ids:['a','b'],roots:['a']})
 for (const file of ['TaskList.vue','TaskListMobile.vue']) {
  const source=fs.readFileSync(new URL('../src/components/'+file,import.meta.url),'utf8')
  const start=source.indexOf('function submitAdd(event)')
@@ -24,10 +20,13 @@ for (const file of ['TaskList.vue','TaskListMobile.vue']) {
 }
 const app=fs.readFileSync(new URL('../src/App.vue',import.meta.url),'utf8')
 const cleanup=app.slice(app.indexOf('const cleaningProjects ='),app.indexOf('// ── Task handlers'))
-const tasks={value:[t('a',true),t('b',true),t('c',false)]},undo=[]
-let confirmation
-const handler=new Function('tasks','completedCleanup','showToast','askConfirm','closeConfirm','api','selectedTaskId','closeTaskDetail','pushUndo','undoLast',cleanup+';return onClearCompleted')(tasks,completedCleanup,()=>{},c=>confirmation=c,()=>{},{deleteTask:async id=>{if(id==='b')throw Error('disk failure');return {tasks:[t(id,true)]}}},{value:null},()=>{},e=>undo.push(e),()=>{})
-handler('p');await confirmation.onConfirm()
-assert.deepEqual(tasks.value.map(t=>t.id),['b','c'],'partial failure preserves remaining tasks')
-assert.deepEqual(undo[0].tasks.map(t=>t.id),['a'],'successful partial cleanup remains undoable')
-console.log('project workflow: protected descendants, partial cleanup undo, desktop/mobile draft persistence passed')
+const tasks={value:[t('a',true),t('b',false),t('other',false,null,'q')]},undo=[]
+let confirmation, fail=false
+const handler=new Function('tasks','projects','showToast','askConfirm','closeConfirm','api','selectedTaskId','closeTaskDetail','pushUndo','undoLast',cleanup+';return onClearTasks')(tasks,{value:[{id:'p',name:'Current'}]},()=>{},c=>confirmation=c,()=>{},{clearProjectTasks:async (projectId,ids)=>{if(fail)throw Error('disk failure');assert.equal(projectId,'p');assert.deepEqual(ids,['a','b']);return {tasks:[t('a',true),t('b',false)]}}},{value:null},()=>{},e=>undo.push(e),()=>{})
+handler('p');fail=true;await confirmation.onConfirm()
+assert.deepEqual(tasks.value.map(t=>t.id),['a','b','other'],'failed clear preserves all tasks')
+handler('p');tasks.value.push(t('new',false,'a'));fail=false;await confirmation.onConfirm()
+assert.deepEqual(tasks.value.map(t=>t.id),['other','new'],'clear includes unfinished tasks, excludes other project and newly added task')
+assert.equal(tasks.value[1].parentId,null,'new child remains visible after confirmed parent is cleared')
+assert.deepEqual(undo[0].tasks.map(t=>t.id),['a','b'],'whole clear is undoable')
+console.log('project workflow: scoped clear, failure retention, new task protection, undo and draft persistence passed')

@@ -35,6 +35,7 @@ export function createLongPressSort(element, { draggable, handle, onReorder }) {
   })
   return { destroy() {
     sortable.destroy()
+    if (!Number.isFinite(guard.until)) guard.until = Date.now() + 350
     element.removeEventListener('click', stopClick, true)
     element.removeEventListener('contextmenu', stopMenu)
   } }

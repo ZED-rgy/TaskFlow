@@ -1,6 +1,5 @@
 ﻿<script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, provide } from 'vue'
-import { completedCleanup } from './runtime/completed-cleanup.mjs'
 import Sidebar from './components/Sidebar.vue'
 import TaskList from './components/TaskList.vue'
 import TaskDetail from './components/TaskDetail.vue'
@@ -951,34 +950,34 @@ async function onReorderProjects(ids) {
 }
 
 const cleaningProjects = new Set()
-function onClearCompleted(projectId) {
+function onClearTasks(projectId) {
   if (cleaningProjects.has(projectId)) return
-  const selection = completedCleanup(tasks.value, projectId)
-  if (!selection.ids.length) { showToast('没有可清理的已完成任务；含未完成子任务的任务会保留'); return }
+  const project = projects.value.find(p => p.id === projectId)
+  const selected = tasks.value.filter(t => t.projectId === projectId)
+  if (!project || !selected.length) { showToast('这个项目已经没有任务'); return }
+  const unfinished = selected.filter(t => !t.completed).length
   askConfirm({
-    title: '清理已完成任务', body: `将清理 ${selection.ids.length} 项已完成任务（含已完成子任务）。含未完成子任务的父任务会保留；清理后可以撤销。`,
-    confirmText: '清理', danger: true,
+    title: '清空任务',
+    body: `将清空「${project.name}」的 ${selected.length} 项任务（包含 ${unfinished} 项未完成任务及子任务）。项目本身保留，清空后可以撤销。搜索和筛选不会限制清空范围。`,
+    confirmText: '清空任务', danger: true,
     onConfirm: async () => {
       closeConfirm()
+      if (cleaningProjects.has(projectId)) return
       cleaningProjects.add(projectId)
-      const deleted = []
-      let failed = false
       try {
-        for (const id of selection.roots) {
-          const current = completedCleanup(tasks.value, projectId)
-          if (!current.roots.includes(id)) continue
-          const result = await api.deleteTask(id, true)
-          deleted.push(...result.tasks)
-          const removed = new Set(result.tasks.map(t => t.id))
-          tasks.value = tasks.value.filter(t => !removed.has(t.id))
-          if (removed.has(selectedTaskId.value)) closeTaskDetail()
-        }
-      } catch (error) { failed = true }
-      finally { cleaningProjects.delete(projectId) }
-      if (deleted.length) {
-        pushUndo({ type: 'tasks', tasks: deleted })
-        showToast(`${failed ? '部分清理失败；已' : '已'}清理 ${deleted.length} 项任务`, { label: '撤销', run: undoLast })
-      } else showToast(failed ? '清理失败，请重试' : '任务状态已变化，没有清理任何任务')
+        // Only clear the confirmed set; keep tasks added while the dialog was open.
+        const result = await api.clearProjectTasks(projectId, selected.map(t => t.id))
+        const removed = new Set(result.tasks.map(t => t.id))
+        tasks.value = tasks.value.filter(t => !removed.has(t.id)).map(t =>
+          removed.has(t.parentId) ? { ...t, parentId: null } : t)
+        if (removed.has(selectedTaskId.value)) closeTaskDetail()
+        if (result.tasks.length) {
+          pushUndo({ type: 'tasks', tasks: result.tasks })
+          showToast(`已清空 ${result.tasks.length} 项任务`, { label: '撤销', run: undoLast })
+        } else showToast('任务状态已变化，没有清空任何任务')
+      } catch (error) {
+        showToast(`清空失败：${error.message || '请重试'}`)
+      } finally { cleaningProjects.delete(projectId) }
     },
   })
 }
@@ -1333,7 +1332,7 @@ onUnmounted(() => {
         @create="onCreateProject"
         @update="onUpdateProject"
         @delete="onDeleteProject"
-        @reorder="onReorderProjects" @clearCompleted="onClearCompleted"
+        @reorder="onReorderProjects"
         @exportData="onExportData"
         @importData="onImportData"
         @showSettings="handleSidebarSettings"
@@ -1355,6 +1354,7 @@ onUnmounted(() => {
             @delete="onDeleteTask"
             @reorder="onReorderTasks"
             @selectTask="selectTask"
+            @clearTasks="onClearTasks(selectedId)"
             @returnProject="selectProject(selectedId || projects[0]?.id || null)" @openMobileNav="mobileNavOpen = true"
           />
           <GroupsView v-else-if="currentView === 'groups'" key="groups" :projects="projects" :tasks="tasks" @login="selectView('settings')" />

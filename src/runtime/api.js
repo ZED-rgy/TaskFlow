@@ -53,6 +53,7 @@ export const api = {
   createTask: data => invoke('create_task', { data }),
   updateTask: data => invoke('update_task', { id: data.id, data }),
   deleteTask: (id, onlyCompleted = false) => invoke('delete_task', { id, onlyCompleted }),
+  clearProjectTasks: (projectId, taskIds) => invoke('clear_project_tasks', { projectId, taskIds }),
   restoreTasks: tasks => invoke('restore_tasks', { tasks }),
   reorderTasks: data => invoke('reorder_tasks', { data }),
 }

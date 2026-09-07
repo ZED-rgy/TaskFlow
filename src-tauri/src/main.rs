@@ -2513,6 +2513,43 @@ fn delete_task(
     Ok(serde_json::json!({ "tasks": deleted }))
 }
 
+// A confirmed clear is one persistence operation, scoped to the project and IDs.
+fn take_project_tasks(tasks: &mut Vec<Task>, project_id: &str, task_ids: &[String]) -> Vec<Task> {
+    let mut deleted = Vec::new();
+    tasks.retain(|task| {
+        if task.project_id == project_id && task_ids.contains(&task.id) {
+            deleted.push(task.clone());
+            false
+        } else { true }
+    });
+    let deleted_ids: Vec<&str> = deleted.iter().map(|task| task.id.as_str()).collect();
+    for task in tasks.iter_mut() {
+        if task.parent_id.as_deref().is_some_and(|id| deleted_ids.contains(&id)) {
+            task.parent_id = None;
+        }
+    }
+    deleted
+}
+
+#[tauri::command]
+fn clear_project_tasks(app: AppHandle, window: WebviewWindow, project_id: String, task_ids: Vec<String>) -> Result<serde_json::Value, String> {
+    let deleted = if let Some(state) = app.try_state::<AppState>() {
+        let _persist = state.persist_lock.lock().map_err(|_| "数据持久化锁异常".to_string())?;
+        let mut inner = state.inner.lock().map_err(|_| "数据状态锁异常".to_string())?;
+        let deleted = take_project_tasks(&mut inner.data.tasks, &project_id, &task_ids);
+        if !deleted.is_empty() { inner.tracker.mark_changed(); }
+        drop(inner);
+        emit_data_changed(&app, Some(window.label()));
+        deleted
+    } else {
+        let mut db = read_state(&app)?;
+        let deleted = take_project_tasks(&mut db.tasks, &project_id, &task_ids);
+        write_state(&app, &db, Some(window.label()))?;
+        deleted
+    };
+    Ok(serde_json::json!({ "tasks": deleted }))
+}
+
 #[tauri::command]
 fn restore_tasks(
     app: AppHandle,
@@ -3239,6 +3276,7 @@ fn main() {
             update_task,
             delete_task,
             restore_tasks,
+            clear_project_tasks,
             reorder_tasks,
             get_due_summary,
             get_logs,
@@ -3326,6 +3364,7 @@ pub fn run() {
             update_task,
             delete_task,
             restore_tasks,
+            clear_project_tasks,
             reorder_tasks,
             get_due_summary,
             get_logs,
@@ -3603,6 +3642,17 @@ mod tests {
         assert!(cleanup_tree_is_completed(&tasks));
         tasks[0].completed = false;
         assert!(!cleanup_tree_is_completed(&tasks));
+    }
+
+    #[test]
+    fn clear_project_preserves_other_projects_and_unconfirmed_tasks() {
+        let mut tasks = vec![make_task("a", "p", None, "done"), make_task("b", "p", None, "open"), make_task("c", "q", None, "other"), make_task("new", "p", Some("a"), "new child")];
+        tasks[0].completed = true;
+        let deleted = take_project_tasks(&mut tasks, "p", &["a".into(), "b".into(), "c".into()]);
+        assert_eq!(deleted.len(), 2);
+        assert!(deleted.iter().any(|t| !t.completed));
+        assert_eq!(tasks.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["c", "new"]);
+        assert_eq!(tasks[1].parent_id, None);
     }
 
     // ── normalize_stored_data ──────────────────────────────

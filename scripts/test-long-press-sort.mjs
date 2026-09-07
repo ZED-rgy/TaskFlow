@@ -35,3 +35,15 @@ listeners.get('click')({ preventDefault:()=>{prevented=true},stopImmediatePropag
 assert.ok(prevented,'Vue refresh after reorder preserves the release-click guard')
 replacement.destroy()
 console.log('long press sort: touch delay, control isolation, DOM restore and cleanup passed')
+
+const interrupted = factory(element, {draggable:'.row',handle:'.title',onReorder(){}})
+options.onStart()
+interrupted.destroy()
+const actualNow = Date.now
+Date.now = () => actualNow() + 1000
+const recovered = factory(element, {draggable:'.row',handle:'.title',onReorder(){}})
+prevented = false
+listeners.get('click')({preventDefault:()=>{prevented=true},stopImmediatePropagation(){}})
+assert.equal(prevented,false,'interrupted drag must not block all future clicks')
+Date.now = actualNow
+recovered.destroy()

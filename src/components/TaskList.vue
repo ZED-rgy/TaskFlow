@@ -17,7 +17,7 @@ const props = defineProps({
   cloudSync: { type: Object, default: null },
   activeTaskId: { type: String, default: null },
 })
-const emit = defineEmits(['create', 'update', 'delete', 'reorder', 'selectTask', 'openMobileNav', 'returnProject'])
+const emit = defineEmits(['create', 'update', 'delete', 'reorder', 'selectTask', 'openMobileNav', 'returnProject', 'clearTasks'])
 
 // ── Derived lists ─────────────────────────────────────
 const searchQuery = ref('')
@@ -728,7 +728,7 @@ onUnmounted(() => {
     @delete="emit('delete', $event)"
     @reorder="emit('reorder', $event)"
     @create="submitMobileAdd"
-    @open-mobile-nav="$emit('openMobileNav')" @return-project="emit('returnProject')"
+    @open-mobile-nav="$emit('openMobileNav')" @return-project="emit('returnProject')" @clear-tasks="emit('clearTasks')"
   />
   <div v-else class="task-list-view">
 
@@ -746,6 +746,7 @@ onUnmounted(() => {
             <span v-if="overdueCount" class="stat-danger">{{ overdueCount }} 已逾期</span>
           </p>
           <p v-else class="header-subtitle">在这个项目中记录和处理任务</p>
+          <button v-if="!project.readonlyProject" class="clear-tasks-button" :disabled="!tasks.length" @click="emit('clearTasks')">清空任务</button>
         </div>
       </div>
       <div class="header-right" v-if="!project.readonlyProject && totalCount > 0">

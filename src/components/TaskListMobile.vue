@@ -30,7 +30,7 @@ const props = defineProps({
 const emit = defineEmits([
   'update', 'select', 'create', 'openMobileNav',
   'update:statusFilter', 'update:dueFilter', 'update:priorityFilter', 'update:searchQuery',
-  'resetFilters', 'delete', 'reorder', 'returnProject',
+  'resetFilters', 'delete', 'reorder', 'returnProject', 'clearTasks',
 ])
 
 const sortList = ref(null)
@@ -192,6 +192,7 @@ watch(() => props.statusFilter, value => {
       <div class="android-progress-head">
         <span><strong>{{ openRootCount }}</strong> 项待办</span>
         <span>已完成 {{ completedCount }} / {{ totalCount }}</span>
+        <button class="clear-tasks-button" :disabled="!totalCount" @click="emit('clearTasks')">清空任务</button>
       </div>
       <div class="android-progress-track" role="progressbar" aria-label="任务完成进度" :aria-valuenow="completionPercent" aria-valuemin="0" aria-valuemax="100"><i :style="{ width: `${completionPercent}%` }"></i></div>
       <div v-if="highPriorityCount || overdueCount" class="android-progress-foot">
@@ -417,8 +418,12 @@ watch(() => props.statusFilter, value => {
 .android-timeline-composer.collapsed strong { font-size: 14px; font-weight: 600; }
 .android-timeline-composer.collapsed small { font-size: 11px; color: var(--text-muted); }
 .android-timeline-composer.collapsed > svg { width: 18px; height: 18px; margin-right: 12px; fill: none; stroke: var(--text-muted); stroke-width: 1.5; }
+.android-progress-head .clear-tasks-button { margin-left: auto; }
+.android-timeline-composer input:focus,
+.android-timeline-composer input:focus-visible { outline: none; box-shadow: none; }
 .android-timeline-composer input { flex: 1; min-width: 0; font-size: 16px; color: var(--text-primary); }
-.android-timeline-composer.active { gap: 6px; border-color: var(--mobile-project); }
+.android-timeline-composer.active { gap: 6px; }
+.android-timeline-composer.active:focus-within { border-color: var(--mobile-project); }
 .android-timeline-composer.active .android-composer-plus { width: 30px; color: var(--mobile-project); background: transparent; }
 .android-timeline-composer.active > button { min-width: 48px; height: 44px; padding: 0 10px; color: var(--mobile-ink); background: var(--mobile-project); border-radius: 11px; font-size: 13px; font-weight: 600; }
 .android-timeline-composer.active > .android-composer-cancel { color: var(--text-muted); background: transparent; font-size: 24px; }

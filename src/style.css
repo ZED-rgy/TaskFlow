@@ -1464,5 +1464,9 @@ body.widget-mode #app {
 /* Shared touch drag feedback, including the preview attached to document.body. */
 .long-press-chosen { background: var(--accent-soft) !important; outline: 1px solid var(--accent); border-radius: 10px; }
 .long-press-ghost { opacity: .3; }
-.long-press-preview { opacity: .95 !important; background: var(--bg-surface) !important; color: var(--text-primary); box-shadow: 0 10px 30px rgb(0 0 0 / .18); border-radius: 12px; pointer-events: none; }
+.long-press-preview { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
 .project-row .proj-name, .project-row .proj-icon, .android-time-task-main { user-select: none; -webkit-touch-callout: none; }
+
+.clear-tasks-button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 9px; color: var(--text-secondary); background: var(--bg-surface); font-size: 12px; white-space: nowrap; }
+.clear-tasks-button:disabled { opacity: .4; cursor: default; }
+.clear-tasks-button:not(:disabled):hover { color: var(--danger, #c0504a); border-color: currentColor; }
