@@ -746,7 +746,6 @@ onUnmounted(() => {
             <span v-if="overdueCount" class="stat-danger">{{ overdueCount }} 已逾期</span>
           </p>
           <p v-else class="header-subtitle">在这个项目中记录和处理任务</p>
-          <button v-if="!project.readonlyProject" class="clear-tasks-button" :disabled="!tasks.length" @click="emit('clearTasks')">清空任务</button>
         </div>
       </div>
       <div class="header-right" v-if="!project.readonlyProject && totalCount > 0">
@@ -947,6 +946,7 @@ onUnmounted(() => {
 
     <!-- Task items -->
     <div class="task-scroll">
+      <div v-if="!project.readonlyProject && totalCount" class="task-list-actions"><span>任务清单</span><button class="clear-tasks-button" type="button" @click="emit('clearTasks')"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M6 4V2h4v2M4 4l.6 10h6.8L12 4M6.5 6.5v5M9.5 6.5v5" /></svg>清空任务</button></div>
       <p v-if="searchQuery.trim() || hasActiveFilters" class="result-count" role="status">找到 {{ visibleTasks.length }} 个任务</p>
       <Transition name="slide">
         <div v-if="selectedTaskIds.size" class="selection-toolbar" role="toolbar" aria-label="批量任务操作">

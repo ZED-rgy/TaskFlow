@@ -192,7 +192,6 @@ watch(() => props.statusFilter, value => {
       <div class="android-progress-head">
         <span><strong>{{ openRootCount }}</strong> 项待办</span>
         <span>已完成 {{ completedCount }} / {{ totalCount }}</span>
-        <button class="clear-tasks-button" :disabled="!totalCount" @click="emit('clearTasks')">清空任务</button>
       </div>
       <div class="android-progress-track" role="progressbar" aria-label="任务完成进度" :aria-valuenow="completionPercent" aria-valuemin="0" aria-valuemax="100"><i :style="{ width: `${completionPercent}%` }"></i></div>
       <div v-if="highPriorityCount || overdueCount" class="android-progress-foot">
@@ -228,6 +227,7 @@ watch(() => props.statusFilter, value => {
 
     <p v-if="!project.readonlyProject && !canSort && tasks.length > 1" class="mobile-sort-hint">清除搜索和筛选后可排序</p>
     <div v-if="filterSummary" class="android-active-filters"><span>{{ filterSummary }}</span><button type="button" @click="resetMobileFilters">清除筛选</button></div>
+    <div v-if="!project.readonlyProject && totalCount" class="task-list-actions"><span>任务清单</span><button class="clear-tasks-button" type="button" @click="emit('clearTasks')"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M6 4V2h4v2M4 4l.6 10h6.8L12 4M6.5 6.5v5M9.5 6.5v5" /></svg>清空任务</button></div>
       <section
         v-for="(group, groupIndex) in timelineGroups"
         :key="group.key"
@@ -236,7 +236,7 @@ watch(() => props.statusFilter, value => {
         :style="{ '--group-index': groupIndex }"
         :aria-label="`${group.label}任务`"
       >
-        <header class="android-group-heading">
+        <header v-if="project.readonlyProject" class="android-group-heading">
           <span class="android-group-marker"></span>
           <strong>{{ group.label }}</strong>
           <small>{{ group.note }}</small>
@@ -418,7 +418,6 @@ watch(() => props.statusFilter, value => {
 .android-timeline-composer.collapsed strong { font-size: 14px; font-weight: 600; }
 .android-timeline-composer.collapsed small { font-size: 11px; color: var(--text-muted); }
 .android-timeline-composer.collapsed > svg { width: 18px; height: 18px; margin-right: 12px; fill: none; stroke: var(--text-muted); stroke-width: 1.5; }
-.android-progress-head .clear-tasks-button { margin-left: auto; }
 .android-timeline-composer input:focus,
 .android-timeline-composer input:focus-visible { outline: none; box-shadow: none; }
 .android-timeline-composer input { flex: 1; min-width: 0; font-size: 16px; color: var(--text-primary); }
