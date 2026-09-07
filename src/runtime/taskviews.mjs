@@ -39,7 +39,7 @@ export function matchesSmartView(task, view, today) {
     return !task.completed && task.plannedDate === today
   }
   if (view === 'upcoming') {
-    return !task.completed && isWithinNextWeek(task.dueDate, today)
+    return !task.completed && Boolean(task.dueDate) && (toDateKey(task.dueDate) < today || isWithinNextWeek(task.dueDate, today))
   }
   if (view === 'completed') return Boolean(task.completed)
   return false

@@ -30,7 +30,7 @@ const props = defineProps({
 const emit = defineEmits([
   'update', 'select', 'create', 'openMobileNav',
   'update:statusFilter', 'update:dueFilter', 'update:priorityFilter', 'update:searchQuery',
-  'resetFilters', 'delete', 'reorder',
+  'resetFilters', 'delete', 'reorder', 'returnProject',
 ])
 
 const sortList = ref(null)
@@ -61,10 +61,12 @@ const projectInk = computed(() => {
 const mobileFilterOpen = ref(false)
 const composerOpen = ref(false)
 const addingTitle = ref('')
+const creating = ref(false)
 const addInput = ref(null)
 const doneExpanded = ref(props.statusFilter === 'done')
 const filterTrigger = ref(null)
 const filterPanel = ref(null)
+const hasSearchOrFilters = computed(() => props.activeFilterCount > 0 || Boolean(props.searchQuery.trim()))
 const filterSummary = computed(() => [
   props.dueFilter !== 'all' ? props.filterOptions.due.find(item => item.value === props.dueFilter)?.label : '',
   props.priorityFilter !== 'all' ? props.filterOptions.priority.find(item => item.value === props.priorityFilter)?.label : '',
@@ -148,19 +150,21 @@ async function openComposer() {
 }
 
 function submitAdd(event) {
-  if (event?.isComposing || event?.keyCode === 229) return
+  if (event?.isComposing || event?.keyCode === 229 || creating.value) return
   const title = addingTitle.value.trim()
   if (!title) return
-  emit('create', title)
-  addingTitle.value = ''
+  creating.value = true
+  emit('create', { title, onDone(ok) { creating.value = false; if (ok) addingTitle.value = ''; nextTick(() => addInput.value?.focus({ preventScroll: true })) } })
 }
 
 function cancelComposer() {
+  if (creating.value) return
   composerOpen.value = false
   addingTitle.value = ''
 }
 
 function resetMobileFilters() {
+  emit('update:searchQuery', '')
   emit('resetFilters')
   mobileFilterOpen.value = false
 }
@@ -184,7 +188,7 @@ watch(() => props.statusFilter, value => {
       <div class="android-sync-status" :class="`tone-${syncLabel.tone}`" aria-label="同步状态" :title="cloudSync?.detail || cloudSync?.text || ''"><span></span>{{ syncLabel.text }}</div>
     </header>
 
-    <section class="android-progress-card" aria-label="项目进度">
+    <section v-if="!project.readonlyProject" class="android-progress-card" aria-label="项目进度">
       <div class="android-progress-head">
         <span><strong>{{ openRootCount }}</strong> 项待办</span>
         <span>已完成 {{ completedCount }} / {{ totalCount }}</span>
@@ -208,7 +212,7 @@ watch(() => props.statusFilter, value => {
           <span v-if="activeFilterCount">{{ activeFilterCount }}</span>
         </button>
       </div>
-      <div class="android-timeline-tabs" role="tablist" aria-label="任务状态">
+      <div v-if="!project.readonlyProject" class="android-timeline-tabs" role="tablist" aria-label="任务状态">
         <button
           v-for="option in STATUS_OPTIONS"
           :key="option.value"
@@ -276,9 +280,9 @@ watch(() => props.statusFilter, value => {
 
       <section v-if="!timelineGroups.length && !doneTasks.length" class="android-empty-state" aria-live="polite">
         <span aria-hidden="true">✓</span>
-        <strong>{{ activeFilterCount ? '没有符合条件的任务' : '这里已经清空了' }}</strong>
-        <p>{{ activeFilterCount ? '换个筛选条件再看看' : '把注意力留给下一件重要的事' }}</p>
-        <button v-if="activeFilterCount" type="button" @click="resetMobileFilters">清除筛选</button>
+        <strong>{{ hasSearchOrFilters ? '没有符合条件的任务' : project.readonlyProject ? '目前没有到期提醒' : totalCount ? '当前没有未完成任务' : '这个项目还没有任务' }}</strong>
+        <p>{{ hasSearchOrFilters ? '换个搜索词或筛选条件再看看' : project.readonlyProject ? '汇总已逾期、今天及未来 7 天到期的未完成任务' : totalCount ? '可以切换到全部或已完成查看' : '点击底部新建任务开始记录' }}</p>
+        <button v-if="hasSearchOrFilters" type="button" @click="resetMobileFilters">清除筛选</button><button v-else-if="project.readonlyProject" @click="emit('returnProject')">返回项目</button>
       </section>
     </div>
 
@@ -289,9 +293,9 @@ watch(() => props.statusFilter, value => {
           <span><strong>新建任务</strong><small>支持“明天 交报告”</small></span>
           <svg viewBox="0 0 18 18" aria-hidden="true"><path d="m7 5 4 4-4 4" /></svg>
         </button>
-        <div v-else class="android-timeline-composer active">
+        <div v-else class="android-timeline-composer active" :inert="creating">
           <span class="android-composer-plus" aria-hidden="true">＋</span>
-          <input ref="addInput" v-model="addingTitle" aria-label="添加任务" placeholder="写下下一件事…" @focus="composerOpen = true" @keydown.enter.prevent="submitAdd" enterkeyhint="done" @keydown.escape="cancelComposer" />
+          <input ref="addInput" v-model="addingTitle" :disabled="creating" aria-label="添加任务" placeholder="写下下一件事…" @focus="composerOpen = true" @keydown.enter.prevent="submitAdd" enterkeyhint="done" @keydown.escape="cancelComposer" />
           <button v-if="addingTitle.trim()" type="button" @click="submitAdd">添加</button>
           <button v-else class="android-composer-cancel" type="button" aria-label="关闭添加任务" @click="cancelComposer">×</button>
         </div>

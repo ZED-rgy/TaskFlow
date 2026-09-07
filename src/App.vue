@@ -1,5 +1,6 @@
 ﻿<script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, provide } from 'vue'
+import { completedCleanup } from './runtime/completed-cleanup.mjs'
 import Sidebar from './components/Sidebar.vue'
 import TaskList from './components/TaskList.vue'
 import TaskDetail from './components/TaskDetail.vue'
@@ -28,7 +29,8 @@ import {
 const projects = ref([])
 const tasks    = ref([])
 provide('taskflow-projects', projects)
-const selectedId = ref(null)
+const selectedId = ref(localStorage.getItem('taskflow-last-project') || null)
+watch(selectedId, id => { if (id) localStorage.setItem('taskflow-last-project', id); else localStorage.removeItem('taskflow-last-project') })
 const currentView = ref('project')
 const mobileNavOpen = ref(false)
 const appInfo = ref(null)
@@ -109,6 +111,7 @@ async function undoLast() {
       showToast('已恢复删除的项目')
     }
   } catch (error) {
+    undoStack.push(entry)
     showToast(`撤销失败：${error.message || '未知错误'}`)
   }
 }
@@ -282,7 +285,7 @@ const projectTasks = computed(() =>
 
 const activeScope = computed(() => {
   if (currentView.value === 'upcoming') {
-    return { id: 'upcoming', name: '即将到期', icon: '⌁', color: '#5B8EC0', readonlyProject: true }
+    return { id: 'upcoming', name: '截止提醒', icon: '⌁', color: '#5B8EC0', readonlyProject: true }
   }
   return selectedProject.value
 })
@@ -677,8 +680,8 @@ async function loadProjects() {
   projects.value = loadedProjects
   tasks.value = loadedTasks
   appInfo.value = loadedAppInfo
-  if (projects.value.length && !selectedId.value) {
-    selectedId.value = projects.value[0].id
+  if (!projects.value.some(p => p.id === selectedId.value)) {
+    selectedId.value = projects.value[0]?.id || null
   }
 }
 
@@ -945,6 +948,39 @@ async function onReorderProjects(ids) {
     projects.value = projects.value.map(p => previousPositions.has(p.id) ? { ...p, position: previousPositions.get(p.id) } : p).sort((a, b) => a.position - b.position)
     showToast(`项目排序失败：${error.message || '未知错误'}`)
   }
+}
+
+const cleaningProjects = new Set()
+function onClearCompleted(projectId) {
+  if (cleaningProjects.has(projectId)) return
+  const selection = completedCleanup(tasks.value, projectId)
+  if (!selection.ids.length) { showToast('没有可清理的已完成任务；含未完成子任务的任务会保留'); return }
+  askConfirm({
+    title: '清理已完成任务', body: `将清理 ${selection.ids.length} 项已完成任务（含已完成子任务）。含未完成子任务的父任务会保留；清理后可以撤销。`,
+    confirmText: '清理', danger: true,
+    onConfirm: async () => {
+      closeConfirm()
+      cleaningProjects.add(projectId)
+      const deleted = []
+      let failed = false
+      try {
+        for (const id of selection.roots) {
+          const current = completedCleanup(tasks.value, projectId)
+          if (!current.roots.includes(id)) continue
+          const result = await api.deleteTask(id, true)
+          deleted.push(...result.tasks)
+          const removed = new Set(result.tasks.map(t => t.id))
+          tasks.value = tasks.value.filter(t => !removed.has(t.id))
+          if (removed.has(selectedTaskId.value)) closeTaskDetail()
+        }
+      } catch (error) { failed = true }
+      finally { cleaningProjects.delete(projectId) }
+      if (deleted.length) {
+        pushUndo({ type: 'tasks', tasks: deleted })
+        showToast(`${failed ? '部分清理失败；已' : '已'}清理 ${deleted.length} 项任务`, { label: '撤销', run: undoLast })
+      } else showToast(failed ? '清理失败，请重试' : '任务状态已变化，没有清理任何任务')
+    },
+  })
 }
 
 // ── Task handlers ─────────────────────────────────────
@@ -1297,7 +1333,7 @@ onUnmounted(() => {
         @create="onCreateProject"
         @update="onUpdateProject"
         @delete="onDeleteProject"
-        @reorder="onReorderProjects"
+        @reorder="onReorderProjects" @clearCompleted="onClearCompleted"
         @exportData="onExportData"
         @importData="onImportData"
         @showSettings="handleSidebarSettings"
@@ -1319,7 +1355,7 @@ onUnmounted(() => {
             @delete="onDeleteTask"
             @reorder="onReorderTasks"
             @selectTask="selectTask"
-            @openMobileNav="mobileNavOpen = true"
+            @returnProject="selectProject(selectedId || projects[0]?.id || null)" @openMobileNav="mobileNavOpen = true"
           />
           <GroupsView v-else-if="currentView === 'groups'" key="groups" :projects="projects" :tasks="tasks" @login="selectView('settings')" />
           <SettingsView

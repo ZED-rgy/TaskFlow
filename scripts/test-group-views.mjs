@@ -37,6 +37,7 @@ const tasks = [
   { id: 'e', title: '以后', dueDate: '2026-09-10', completed: false }
 ]
 assert.deepEqual(groupSummary(tasks, '2026-09-05'), {
+  open: 3,
   due: 1,
   completed: 1,
   overdue: 1
@@ -47,7 +48,7 @@ assert.deepEqual(
     mode: 'today',
     status: 'open'
   }).map((t) => t.id),
-  ['a', 'b']
+  ['a', 'b', 'e']
 )
 assert.deepEqual(
   filterGroupTasks(tasks, {
@@ -67,6 +68,7 @@ assert.deepEqual(
   ['a', 'c']
 )
 assert.deepEqual(groupSummary([], '2026-09-05'), {
+  open: 0,
   due: 0,
   completed: 0,
   overdue: 0
@@ -74,3 +76,5 @@ assert.deepEqual(groupSummary([], '2026-09-05'), {
 console.log('group view filters and daily counts: passed')
 
 assert.equal(filterGroupTasks([{ id: 'planned', plannedDate: '2026-09-06', completed: false }], {date:'2026-09-06',mode:'today'}).length, 1)
+
+assert.equal(filterGroupTasks([{id:"undated",completed:false}],{date:"2026-09-07",mode:"today"}).length,1)

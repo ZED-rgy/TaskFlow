@@ -18,7 +18,7 @@ const inputEl = ref(null)
 const listEl = ref(null)
 
 const VIEWS = [
-  { kind: 'view', group: 'view', id: 'upcoming',  icon: '⌁',  label: '即将到期' },
+  { kind: 'view', group: 'view', id: 'upcoming',  icon: '⌁',  label: '截止提醒' },
   { kind: 'view', group: 'view', id: 'settings',  icon: '⚙',  label: '设置' },
 ]
 

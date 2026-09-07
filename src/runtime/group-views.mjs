@@ -1,6 +1,7 @@
 export function groupSummary(tasks, date) {
   const roots = tasks.filter((t) => !t.parentId)
   return {
+    open: roots.filter(t => !t.completed).length,
     due: roots.filter((t) => t.dueDate === date).length,
     completed: roots.filter((t) => t.completedToday).length,
     overdue: roots.filter((t) => !t.completed && t.dueDate && t.dueDate < date)
@@ -14,11 +15,7 @@ export function filterGroupTasks(
   const q = query.trim().toLowerCase()
   return tasks.filter(
     (t) =>
-      (mode !== 'today' ||
-        t.plannedDate === date ||
-        t.dueDate === date ||
-        t.completedToday ||
-        (!t.completed && t.dueDate && t.dueDate < date)) &&
+      (mode !== 'today' || !t.completed || t.completedToday) &&
       (status !== 'open' || !t.completed) &&
       (status !== 'done' || t.completed) &&
       (status !== 'overdue' ||

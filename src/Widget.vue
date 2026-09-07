@@ -58,7 +58,7 @@ const widgetOrders = ref(loadWidgetOrders())
 const todayKey = ref(localDateKey())
 
 const SMART_VIEWS = [
-  { id: 'view:upcoming', name: '即将到期', icon: '📅' },
+  { id: 'view:upcoming', name: '截止提醒', icon: '📅' },
 ]
 
 const scopeId = computed(() => {

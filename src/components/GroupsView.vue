@@ -61,6 +61,20 @@ const projectOptions = computed(() => {
   return [...found].map(([id, name]) => ({ id, name }))
 })
 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+function memberSections(member) {
+  const filtered = visibleTasks(member)
+  if (tab.value !== 'today') return [{ label: '任务', tasks: filtered }]
+  const boundary = new Date(`${date.value}T12:00:00`)
+  boundary.setDate(boundary.getDate() + 7)
+  const limit = localDateKey(boundary)
+  const isReminder = t => !t.completed && t.dueDate && t.dueDate <= limit
+  return [
+    { label: '截止提醒', tasks: filtered.filter(isReminder) },
+    { label: '其他未完成任务', tasks: filtered.filter(t => !t.completed && !isReminder(t)) },
+    { label: '当天完成', tasks: filtered.filter(t => t.completed) },
+  ].filter(section => section.tasks.length)
+}
+
 function visibleTasks(member) {
   return filterGroupTasks(member.tasks, {
     date: date.value,
@@ -425,7 +439,7 @@ onUnmounted(() => {
             :class="{ active: tab === 'today' }"
             @click="tab = 'today'"
           >
-            每日概览</button
+            成员概览</button
           ><button
             v-if="current.status === 'active'"
             :class="{ active: tab === 'members' }"
@@ -618,7 +632,7 @@ onUnmounted(() => {
             {{
               timezone
             }}
-            展示云端已记录的状态；历史日期查看当天结束时的状态。今日完成统计当天记录到的完成变化，不含子任务。未同步的离线变化暂不显示。
+            展示分享范围内的全部未完成任务和当天完成任务；历史日期查看当天结束时的状态。今日完成统计当天记录到的完成变化，不含子任务。未同步的离线变化暂不显示。
           </p>
           <p v-if="loading && !members.length" role="status">
             正在读取小组进展…
@@ -634,7 +648,7 @@ onUnmounted(() => {
                 <h3>{{ member.nickname }}</h3>
                 <small>只读</small>
               </div>
-              <div class="member-stats">
+              <div class="member-stats"><span><b>{{ groupSummary(member.tasks, date).open }}</b> 未完成</span>
                 <span
                   ><b>{{ groupSummary(member.tasks, date).due }}</b>
                   当天到期</span
@@ -653,7 +667,8 @@ onUnmounted(() => {
                 当前条件下没有任务
               </p>
               <ul v-else class="shared-tasks">
-                <li v-for="task in visibleTasks(member)" :key="task.id">
+                <template v-for="section in memberSections(member)" :key="section.label"><li class="member-section-label">{{ section.label }} · {{ section.tasks.length }}</li>
+                <li v-for="task in section.tasks" :key="task.id">
                   <span
                     :class="['task-status', { done: task.completed }]"
                     :aria-label="task.completed ? '已完成' : '未完成'"
@@ -673,7 +688,7 @@ onUnmounted(() => {
                     <p v-if="task.notes" class="task-notes">{{ task.notes }}</p>
                   </div>
                 </li>
-              </ul>
+              </template></ul>
             </article>
           </div>
         </template>
@@ -977,4 +992,8 @@ textarea {
     min-width: 40%;
   }
 }
+</style>
+
+<style scoped>
+.shared-tasks .member-section-label { font-size: 12px; font-weight: 600; color: var(--text-muted); padding-top: 16px; border: 0; }
 </style>

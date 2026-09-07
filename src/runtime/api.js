@@ -52,7 +52,7 @@ export const api = {
   getTasks: projectId => invoke('get_tasks', { projectId }),
   createTask: data => invoke('create_task', { data }),
   updateTask: data => invoke('update_task', { id: data.id, data }),
-  deleteTask: id => invoke('delete_task', { id }),
+  deleteTask: (id, onlyCompleted = false) => invoke('delete_task', { id, onlyCompleted }),
   restoreTasks: tasks => invoke('restore_tasks', { tasks }),
   reorderTasks: data => invoke('reorder_tasks', { data }),
 }

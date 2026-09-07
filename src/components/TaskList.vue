@@ -17,7 +17,7 @@ const props = defineProps({
   cloudSync: { type: Object, default: null },
   activeTaskId: { type: String, default: null },
 })
-const emit = defineEmits(['create', 'update', 'delete', 'reorder', 'selectTask', 'openMobileNav'])
+const emit = defineEmits(['create', 'update', 'delete', 'reorder', 'selectTask', 'openMobileNav', 'returnProject'])
 
 // ── Derived lists ─────────────────────────────────────
 const searchQuery = ref('')
@@ -190,7 +190,7 @@ function saveCurrentView() {
 }
 
 function applySavedView(view) {
-  statusFilter.value = view.status || 'open'
+  statusFilter.value = props.project.readonlyProject ? 'open' : (view.status || 'open')
   dueFilter.value = view.due || 'all'
   priorityFilter.value = view.priority || 'all'
 }
@@ -217,7 +217,7 @@ function cycleGroupMode() {
 const groupModeLabel = computed(() => ({ smart: '智能分组', date: '按日期', none: '无分组' }[groupMode.value] || '智能分组'))
 
 function shouldGroupByDate() {
-  return groupMode.value === 'date' || (groupMode.value === 'smart' && ['today', 'upcoming'].includes(props.project.id))
+  return props.project.readonlyProject || groupMode.value === 'date' || (groupMode.value === 'smart' && ['today', 'upcoming'].includes(props.project.id))
 }
 
 function toggleGroup(key) {
@@ -374,12 +374,12 @@ function postponeAllOverdue() {
 const visibleTasks = computed(() => rootTasks.value)
 
 // Android 布局提交的是纯标题，仍走同一套自然语言解析。
-function submitMobileAdd(rawTitle) {
+function submitMobileAdd({ title: rawTitle, onDone }) {
   const parsed = parseQuickInput(rawTitle, props.today)
   const title = (parsed.title || rawTitle).trim()
-  if (!title) return
+  if (!title) { onDone?.(false); return }
   emit('create', {
-    title,
+    title, onDone,
     parentId: null,
     dueDate: parsed.dueDate || null,
     priority: parsed.priority || 'normal',
@@ -391,6 +391,7 @@ function submitMobileAdd(rawTitle) {
 const addInput    = ref(null)
 const searchInput = ref(null)
 const addingTitle = ref('')
+const creating = ref(false)
 const addSubFor   = ref(null)  // parentId when adding subtask
 
 async function focusAdd() {
@@ -402,25 +403,33 @@ async function focusAdd() {
 const parsedAdd = computed(() => parseQuickInput(addingTitle.value, props.today))
 
 function submitAdd(event) {
-  if (event?.isComposing || event?.keyCode === 229) return
+  if (event?.isComposing || event?.keyCode === 229 || creating.value) return
   const parsed = parsedAdd.value
   const title = (parsed.title || addingTitle.value).trim()
   if (!title) return
+  creating.value = true
   emit('create', {
     title,
+    onDone(ok) {
+      creating.value = false
+      if (ok) {
+        addingTitle.value = ''
+        addSubFor.value = null
+        newDueDate.value = ''
+        newPriority.value = 'normal'
+      }
+      nextTick(() => addInput.value?.focus({ preventScroll: true }))
+    },
     parentId: addSubFor.value,
     // 手动选择优先，其次用解析结果
     dueDate: newDueDate.value || parsed.dueDate || null,
     priority: newPriority.value !== 'normal' ? newPriority.value : (parsed.priority || 'normal'),
     tags: parsed.tags.length ? parsed.tags : undefined,
   })
-  addingTitle.value = ''
-  addSubFor.value   = null
-  newDueDate.value  = ''
-  newPriority.value = 'normal'
 }
 
 async function handleAddSubtask(parentId) {
+  if (creating.value) return
   addSubFor.value   = parentId
   addingTitle.value = ''
   await nextTick()
@@ -662,6 +671,7 @@ onMounted(() => {
 })
 
 watch(() => props.project.id, () => {
+  if (props.project.readonlyProject) statusFilter.value = 'open'
   focusedId.value = null
   clearSelection()
 })
@@ -718,7 +728,7 @@ onUnmounted(() => {
     @delete="emit('delete', $event)"
     @reorder="emit('reorder', $event)"
     @create="submitMobileAdd"
-    @open-mobile-nav="$emit('openMobileNav')"
+    @open-mobile-nav="$emit('openMobileNav')" @return-project="emit('returnProject')"
   />
   <div v-else class="task-list-view">
 
@@ -727,18 +737,18 @@ onUnmounted(() => {
       <div class="header-left">
         <span class="project-icon"><ProjectIcon :icon="project.icon" /></span>
         <div class="header-copy">
-          <span class="header-eyebrow">{{ project.readonlyProject ? 'SMART VIEW' : 'FOCUS / PROJECT' }}</span>
           <h1 class="project-title" :style="{ '--proj-color': project.color }">{{ project.name }}</h1>
-          <p v-if="totalCount" class="header-subtitle header-stats">
+          <p v-if="project.readonlyProject" class="header-subtitle">各项目已逾期、今天及未来 7 天到期的未完成任务</p>
+          <p v-else-if="totalCount" class="header-subtitle header-stats">
             <span>{{ totalCount }} 个任务</span>
             <span>{{ openRootCount }} 待完成</span>
             <span>{{ completedCount }} 已完成</span>
             <span v-if="overdueCount" class="stat-danger">{{ overdueCount }} 已逾期</span>
           </p>
-          <p v-else class="header-subtitle">把今天最重要的事放在这里</p>
+          <p v-else class="header-subtitle">在这个项目中记录和处理任务</p>
         </div>
       </div>
-      <div class="header-right" v-if="totalCount > 0">
+      <div class="header-right" v-if="!project.readonlyProject && totalCount > 0">
         <svg class="progress-ring" width="34" height="34" viewBox="0 0 26 26" :title="`已完成 ${completedCount}/${totalCount}`" role="img" :aria-label="`已完成 ${completedCount}/${totalCount}`">
           <circle cx="13" cy="13" r="10.5" fill="none" stroke="var(--border)" stroke-width="3"/>
           <circle
@@ -758,7 +768,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="filter-bar">
+    <div class="filter-bar" :class="{ reminders: project.readonlyProject }">
       <div class="search-box">
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
           <circle cx="6.2" cy="6.2" r="4.2" stroke="currentColor" stroke-width="1.4"/>
@@ -768,12 +778,14 @@ onUnmounted(() => {
         <button v-if="searchQuery" class="search-clear" aria-label="清除搜索" @click="searchQuery = ''; searchInput?.focus()">×</button>
         <span v-else class="search-shortcut" aria-hidden="true">Ctrl F</span>
       </div>
-      <div class="segmented" role="group" aria-label="任务状态筛选">
+      <div v-if="!project.readonlyProject" class="segmented" role="group" aria-label="任务状态筛选">
         <button :class="{ active: statusFilter === 'open' }" :aria-pressed="statusFilter === 'open'" @click="statusFilter = 'open'"><span>未完成</span><small>{{ statusCounts.open }}</small></button>
         <button :class="{ active: statusFilter === 'all' }" :aria-pressed="statusFilter === 'all'" @click="statusFilter = 'all'"><span>全部</span><small>{{ statusCounts.all }}</small></button>
         <button :class="{ active: statusFilter === 'done' }" :aria-pressed="statusFilter === 'done'" @click="statusFilter = 'done'"><span>已完成</span><small>{{ statusCounts.done }}</small></button>
       </div>
-      <div class="filter-pickers">
+      <details class="advanced-filters">
+        <summary>{{ project.readonlyProject ? '筛选' : '筛选与分组' }}</summary>
+        <div class="filter-pickers">
         <div class="filter-control" :class="{ open: openFilterMenu === 'due' }" aria-label="按日期筛选">
           <span>日期</span>
           <button
@@ -840,11 +852,12 @@ onUnmounted(() => {
             </div>
           </Transition>
         </div>
-        <button class="group-mode-btn" type="button" :title="`当前：${groupModeLabel}，点击切换`" @click="cycleGroupMode">
+        <button v-if="!project.readonlyProject" class="group-mode-btn" type="button" :title="`当前：${groupModeLabel}，点击切换`" @click="cycleGroupMode">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 3h8M2 6h5M2 9h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="8.8" cy="6" r="1.2" stroke="currentColor" stroke-width="1.1"/></svg>
           <span>{{ groupModeLabel }}</span>
         </button>
-      </div>
+        </div>
+      </details>
     </div>
     <div v-if="hasActiveFilters" class="filter-summary" aria-live="polite">
       <span class="filter-summary-label">当前筛选</span>
@@ -875,14 +888,14 @@ onUnmounted(() => {
     </div>
 
     <!-- Add task input -->
-    <div v-if="!project.readonlyProject" class="add-task-bar">
+    <div v-if="!project.readonlyProject" class="add-task-bar" :inert="creating">
       <div class="add-task-inner" :class="{ 'is-sub': addSubFor, 'has-content': addingTitle.trim() }">
         <svg class="add-icon" width="13" height="13" viewBox="0 0 14 14" fill="none">
           <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
         <input
           ref="addInput"
-          v-model="addingTitle"
+          v-model="addingTitle" :disabled="creating"
           class="add-input"
           aria-label="添加任务"
           :placeholder="addSubFor ? '添加子任务...' : '添加任务，试试「明天 交报告 #学校 !高」'"
@@ -993,9 +1006,10 @@ onUnmounted(() => {
         <p v-if="searchQuery.trim() || dueFilter !== 'all' || priorityFilter !== 'all'">没有符合当前条件的任务</p>
         <p v-else-if="statusFilter === 'done'">还没有已完成的任务</p>
         <p v-else-if="completedCount > 0 && openRootCount === 0">当前清单已全部完成 ✓</p>
-        <p v-else-if="project.id === 'today'">今天没有到期任务，去项目里安排一些吧</p>
+        <p v-else-if="project.readonlyProject">目前没有需要提醒的到期任务</p>
         <p v-else>还没有任务，输入上方添加</p>
         <button v-if="searchQuery.trim() || dueFilter !== 'all' || priorityFilter !== 'all'" class="empty-reset" @click="searchQuery = ''; resetFilters()">清除搜索和筛选</button>
+        <button v-else-if="project.readonlyProject" class="empty-reset" @click="emit('returnProject')">返回项目</button>
         <div v-else class="empty-hints">
           <span class="hint-item"><kbd>Ctrl</kbd><kbd>N</kbd> 新建任务</span>
           <span class="hint-item"><kbd>Ctrl</kbd><kbd>F</kbd> 搜索</span>
@@ -1884,15 +1898,13 @@ onUnmounted(() => {
     width: min(100%, 1040px);
   }
   .filter-bar {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "search status"
-      "pickers pickers";
+    grid-template-columns: minmax(160px, 1fr) auto auto;
+    grid-template-areas: "search status pickers";
     row-gap: 6px;
   }
   .search-box { grid-area: search; }
   .segmented { grid-area: status; }
-  .filter-pickers {
+  .advanced-filters {
     grid-area: pickers;
     justify-self: end;
   }
@@ -1954,5 +1966,32 @@ onUnmounted(() => {
   .header-eyebrow, .header-subtitle { display: none; }
   .project-title { font-size: 24px; }
   .project-icon { width: 34px; height: 34px; border-radius: 12px; }
+}
+</style>
+
+<style scoped>
+.filter-bar.reminders {
+  grid-template-columns: minmax(160px, 1fr) auto;
+  grid-template-areas: "search pickers";
+}
+.advanced-filters { position: relative; justify-self: end; }
+.advanced-filters > summary {
+  cursor: pointer;
+  min-height: 40px;
+  line-height: 40px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.advanced-filters[open] .filter-pickers {
+  position: absolute;
+  right: 0;
+  top: 44px;
+  z-index: 50;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  box-shadow: 0 12px 30px #0002;
+  white-space: nowrap;
 }
 </style>

@@ -5,8 +5,8 @@ const today = '2026-07-10'
 
 assert.equal(
   matchesSmartView({ completed: false, dueDate: '2026-07-09' }, 'upcoming', today),
-  false,
-  '近 7 天不应包含逾期任务'
+  true,
+  '截止提醒包含逾期任务'
 )
 
 assert.equal(matchesSmartView({ completed: false, plannedDate: today }, 'today', today), true)

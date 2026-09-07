@@ -2486,11 +2486,16 @@ fn update_task(
     }
 }
 
+fn cleanup_tree_is_completed(tasks: &[Task]) -> bool {
+    tasks.iter().all(|task| task.completed)
+}
+
 #[tauri::command]
 fn delete_task(
     app: AppHandle,
     window: WebviewWindow,
     id: String,
+    only_completed: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let mut db = read_state(&app)?;
     let ids = collect_task_tree(&db.tasks, &id);
@@ -2500,6 +2505,9 @@ fn delete_task(
         .filter(|task| ids.contains(&task.id))
         .cloned()
         .collect();
+    if only_completed.unwrap_or(false) && !cleanup_tree_is_completed(&deleted) {
+        return Err("任务状态已变化，已保留含未完成任务的任务树".into());
+    }
     db.tasks.retain(|task| !ids.contains(&task.id));
     write_state(&app, &db, Some(window.label()))?;
     Ok(serde_json::json!({ "tasks": deleted }))
@@ -3584,6 +3592,17 @@ mod tests {
         ];
         let ids = collect_task_tree(&tasks, "a");
         assert_eq!(ids, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn cleanup_rejects_reopened_or_unfinished_descendants() {
+        let mut tasks = vec![make_task("a", "p", None, "parent"), make_task("b", "p", Some("a"), "child")];
+        tasks[0].completed = true;
+        assert!(!cleanup_tree_is_completed(&tasks));
+        tasks[1].completed = true;
+        assert!(cleanup_tree_is_completed(&tasks));
+        tasks[0].completed = false;
+        assert!(!cleanup_tree_is_completed(&tasks));
     }
 
     // ── normalize_stored_data ──────────────────────────────

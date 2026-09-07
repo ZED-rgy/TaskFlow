@@ -10,7 +10,7 @@ const props = defineProps({
   tasks:      { type: Array, default: () => [] },
   smartCounts:{ type: Object, default: () => ({ today: 0, upcoming: 0, completed: 0 }) },
 })
-const emit = defineEmits(['select', 'selectView', 'create', 'update', 'delete', 'reorder', 'exportData', 'importData', 'showSettings'])
+const emit = defineEmits(['select', 'selectView', 'create', 'update', 'delete', 'reorder', 'exportData', 'importData', 'showSettings', 'clearCompleted'])
 
 // ── Task counts ───────────────────────────────────────
 const pendingCount = computed(() => {
@@ -115,7 +115,7 @@ function showCtx(e, p) {
   e.preventDefault()
   e.stopPropagation()
   ctxProject.value = p
-  ctxMenu.value = { x: Math.max(8, Math.min(e.clientX, window.innerWidth - 192)), y: Math.max(8, Math.min(e.clientY, window.innerHeight - 130)) }
+  ctxMenu.value = { x: Math.max(8, Math.min(e.clientX, window.innerWidth - 192)), y: Math.max(8, Math.min(e.clientY, window.innerHeight - 180)) }
 }
 
 function closeCtx() {
@@ -127,6 +127,12 @@ function ctxRename() {
   const p = ctxProject.value
   closeCtx()
   startEdit(p)
+}
+
+function ctxClearCompleted() {
+  const id = ctxProject.value?.id
+  closeCtx()
+  if (id) emit('clearCompleted', id)
 }
 
 function ctxDelete() {
@@ -157,7 +163,7 @@ function projectContext(event, p) {
         <span class="smart-icon" aria-hidden="true">
           <svg viewBox="0 0 18 18" fill="none"><path d="M3 5.5h6.2a2.8 2.8 0 1 1-2.8 2.8H5.2A2.2 2.2 0 1 0 7.4 10.5H15" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/><path d="m12.8 3.4 2.2 2.1-2.2 2.1" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>
-        <span class="smart-name">即将到期</span>
+        <span class="smart-name">截止提醒</span>
         <span v-if="smartCounts.upcoming" class="proj-count">{{ smartCounts.upcoming }}</span>
       </button>
 
@@ -284,6 +290,7 @@ function projectContext(event, p) {
         @click.stop
       >
         <button class="ctx-item" @click="ctxRename">重命名</button>
+        <button class="ctx-item" @click="ctxClearCompleted">清理已完成</button>
         <div class="ctx-divider" />
         <button class="ctx-item ctx-danger" @click="ctxDelete">删除项目</button>
       </div>
