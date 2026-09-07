@@ -1,8 +1,12 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $androidRoot = Join-Path $projectRoot 'src-tauri\gen\android'
 $releaseRoot = Join-Path $projectRoot 'release'
+
+# Regenerate launcher resources from the same drawing used by the desktop ICO.
+& node (Join-Path $projectRoot 'scripts\generate-icon.js')
+if ($LASTEXITCODE -ne 0) { throw 'Application icon generation failed' }
 
 function Resolve-AndroidSdk {
     $candidates = @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT)

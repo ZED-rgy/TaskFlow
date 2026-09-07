@@ -179,3 +179,53 @@ for (const outputPath of outputPaths) {
   fs.writeFileSync(outputPath, icon)
   console.log(`Generated ${outputPath}`)
 }
+
+// Android and Windows share drawIcon; no independently maintained logo assets.
+const zlib = require('zlib')
+function pngChunk(type, data) {
+  const body = Buffer.concat([Buffer.from(type), data])
+  let crc = 0xffffffff
+  for (const byte of body) {
+    crc ^= byte
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0)
+  }
+  const size = Buffer.alloc(4), checksum = Buffer.alloc(4)
+  size.writeUInt32BE(data.length)
+  checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0)
+  return Buffer.concat([size, body, checksum])
+}
+function iconPng(size, canvasSize = size) {
+  const dib = canvasToDib(drawIcon(size))
+  const rows = Buffer.alloc((canvasSize * 4 + 1) * canvasSize)
+  const inset = Math.floor((canvasSize - size) / 2)
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const src = 40 + ((size - 1 - y) * size + x) * 4
+    const dst = (y + inset) * (canvasSize * 4 + 1) + 1 + (x + inset) * 4
+    rows[dst] = dib[src + 2]
+    rows[dst + 1] = dib[src + 1]
+    rows[dst + 2] = dib[src]
+    rows[dst + 3] = dib[src + 3]
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(canvasSize, 0); ihdr.writeUInt32BE(canvasSize, 4)
+  ihdr[8] = 8; ihdr[9] = 6
+  return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), pngChunk('IHDR', ihdr), pngChunk('IDAT', zlib.deflateSync(rows)), pngChunk('IEND', Buffer.alloc(0))])
+}
+const root = path.join(__dirname, '..')
+fs.writeFileSync(path.join(root, 'src-tauri', 'icons', 'icon.png'), iconPng(256))
+const res = path.join(root, 'src-tauri', 'gen', 'android', 'app', 'src', 'main', 'res')
+for (const [density, scale] of Object.entries({ mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 })) {
+  const dir = path.join(res, `mipmap-${density}`)
+  fs.mkdirSync(dir, { recursive: true })
+  for (const name of ['ic_launcher', 'ic_launcher_round']) fs.writeFileSync(path.join(dir, `${name}.png`), iconPng(48 * scale))
+  // Keep the complete mark inside the adaptive icon's 66dp safe zone.
+  fs.writeFileSync(path.join(dir, 'ic_launcher_foreground.png'), iconPng(64 * scale, 108 * scale))
+}
+const adaptiveDir = path.join(res, 'mipmap-anydpi-v26')
+fs.mkdirSync(adaptiveDir, { recursive: true })
+for (const name of ['ic_launcher', 'ic_launcher_round']) {
+  fs.writeFileSync(path.join(adaptiveDir, `${name}.xml`), '<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@color/taskflow_icon_background" />\n    <foreground android:drawable="@mipmap/ic_launcher_foreground" />\n</adaptive-icon>\n')
+}
+fs.mkdirSync(path.join(res, 'values'), { recursive: true })
+fs.writeFileSync(path.join(res, 'values', 'taskflow_icon.xml'), '<?xml version="1.0" encoding="utf-8"?>\n<resources><color name="taskflow_icon_background">#111827</color></resources>\n')
+console.log('Generated unified Android launcher icons and adaptive safe-zone foregrounds')
