@@ -17,6 +17,7 @@
         "node": ">=20.19"
     },
     "scripts": {
+        "tauri": "tauri",
         "dev": "npx @tauri-apps/cli dev",
         "dev:web": "vite",
         "build:web": "vite build",
