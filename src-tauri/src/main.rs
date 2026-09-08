@@ -28,7 +28,7 @@ mod sync;
 
 use domain::normalize_runtime_data;
 use uuid::Uuid;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(windows)]
 use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
 
 const SCHEMA_VERSION: u32 = 4;
@@ -911,14 +911,16 @@ fn open_quick_add(app: &AppHandle) -> Result<(), String> {
         let _ = window.set_focus();
         return Ok(());
     }
-    let window = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         "quickadd",
         WebviewUrl::App("index.html?quickadd".into()),
     )
     .title("快速添加任务")
-    .decorations(false)
-    .transparent(true)
+    .decorations(false);
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.transparent(true);
+    let window = builder
     .resizable(false)
     .always_on_top(true)
     .skip_taskbar(true)
@@ -1815,10 +1817,12 @@ fn ensure_widget_window(app: &AppHandle) -> Result<WebviewWindow, String> {
     }
     write_widget_config(app, &config)?;
     let (width, height) = effective_widget_size(&config);
-    WebviewWindowBuilder::new(app, "widget", WebviewUrl::App("index.html?widget".into()))
+    let builder = WebviewWindowBuilder::new(app, "widget", WebviewUrl::App("index.html?widget".into()))
         .title("小光任务组件")
-        .decorations(false)
-        .transparent(true)
+        .decorations(false);
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.transparent(true);
+    builder
         .shadow(false)
         .resizable(false)
         .visible(false)
@@ -1838,10 +1842,13 @@ fn ensure_main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
         return Ok(window);
     }
 
-    WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("小光任务")
         .decorations(false)
-        .transparent(false)
+        ;
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.transparent(false);
+    builder
         .resizable(true)
         .inner_size(1100.0, 720.0)
         .min_inner_size(680.0, 480.0)
@@ -2849,7 +2856,7 @@ fn get_system_fonts() -> Vec<SystemFont> {
         );
     }
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(windows)]
     if let Ok(font_key) = RegKey::predef(HKEY_LOCAL_MACHINE)
         .open_subkey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts")
     {
@@ -2888,7 +2895,7 @@ fn get_system_fonts() -> Vec<SystemFont> {
     fonts.into_values().collect()
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(windows)]
 fn reg_value_to_string(value: &winreg::RegValue) -> String {
     let utf16: Vec<u16> = value
         .bytes
