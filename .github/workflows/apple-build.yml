@@ -68,11 +68,15 @@ jobs:
         run: npx tauri ios init --ci
       - name: Build iOS simulator app
         run: npx tauri ios build --target aarch64-sim --export-method debugging
+      - name: Locate iOS artifacts
+        shell: bash
+        run: |
+          find src-tauri/gen/apple -type d \( -name '*.app' -o -name '*.ipa' \) -print
       - name: Upload iOS simulator app
         uses: actions/upload-artifact@v4
         with:
           name: taskflow-ios-simulator-arm64
           if-no-files-found: error
           path: |
-            src-tauri/gen/apple/build/aarch64-sim/**/*.app
-            src-tauri/gen/apple/build/aarch64-sim/**/*.ipa
+            src-tauri/gen/apple/**/*.app
+            src-tauri/gen/apple/**/*.ipa
