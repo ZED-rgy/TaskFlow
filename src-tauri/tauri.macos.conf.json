@@ -1,4 +1,7 @@
 {
+  "build": {
+    "beforeBuildCommand": "npm run build:web"
+  },
   "bundle": {
     "targets": ["app", "dmg"],
     "icon": [
